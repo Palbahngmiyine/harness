@@ -85,9 +85,9 @@
 - Name tests by behavior, edge case, or failure mode.
 
 ## Release Gate
-- Require a human-reviewed release checklist, not only CI green.
+- Produce a concrete human-review checklist for every release candidate; do not merely state that one is required.
+- Enumerate specific, checkable items across user-visible behavior, security posture, performance, compatibility, and rollback readiness — specs and CI cannot capture intent or cross-cutting impact.
 - Re-run the full regression suite before every release candidate.
-- The human checklist must cover user-visible behavior, security posture, performance, compatibility, and rollback readiness — specs and CI cannot capture intent or cross-cutting impact.
 
 ## Forbidden
 - Do not test only happy paths.
