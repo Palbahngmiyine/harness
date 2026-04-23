@@ -38,7 +38,7 @@
 ## Coverage
 - Target 100% branch coverage on core logic.
 - Apply MC/DC (Modified Condition/Decision Coverage) to boolean-heavy code.
-- Verify branches via mutation testing: every branch must change output.
+- Verify branches via mutation testing: every branch must change observable behavior or state.
 
 ## Invariants
 - Assert preconditions, postconditions, and loop invariants in code.
