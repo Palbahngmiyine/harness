@@ -43,7 +43,7 @@
 ## Invariants
 - Assert preconditions, postconditions, and loop invariants in code.
 - Assert expected-unreachable branches; make violations loud, not silent.
-- Enable assertions in debug, disable in production.
+- Required invariant checks must stay enforced in production. Only purely debug-only assertions may be elided.
 
 ## Failure Injection
 - Simulate dependency failures.
@@ -72,9 +72,9 @@
 - Preserve every fuzz or crash finding as a permanent regression case.
 
 ## Sanitizers and Builds
-- Run the full suite under race, address, undefined, and memory sanitizers.
-- Verify optimized and unoptimized builds produce identical output.
-- Test across relevant architectures, endianness, and compilers.
+- Run the full suite under every dynamic analyzer the toolchain provides (race, address, undefined, memory, leak).
+- For compiled languages, verify optimized and unoptimized builds produce identical output.
+- For cross-platform targets, test across relevant architectures, endianness, and compilers.
 
 ## Determinism
 - Do not rely on sleep-based timing.
