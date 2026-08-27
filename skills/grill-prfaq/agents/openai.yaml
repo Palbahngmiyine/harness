@@ -1,0 +1,4 @@
+interface:
+  display_name: "Grill PR/FAQ"
+  short_description: "아이디어를 짧은 라운드로 집요하게 묻고, 합의 뒤에만 PR/FAQ를 쓴다"
+  default_prompt: "Use $grill-prfaq to interview me about this idea in short numbered rounds, record answers verbatim in docs/prfaq/<date>-<slug>.md, and keep the PR section empty until the gate passes."

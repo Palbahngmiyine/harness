@@ -1,6 +1,6 @@
-# Claude Code Skills Collection
+# Agent Skills Collection
 
-A curated collection of [Claude Code](https://docs.claude.com/en/docs/claude-code) Agent Skills for developers. Each skill provides specialized capabilities that Claude Code can automatically discover and use.
+A curated collection of Agent Skills for developers using Claude Code and Codex. Each skill provides a focused workflow that a compatible agent can discover and use.
 
 ## Skills
 
@@ -11,27 +11,33 @@ A curated collection of [Claude Code](https://docs.claude.com/en/docs/claude-cod
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
+| [grill-prfaq](skills/grill-prfaq/) | Pressure-test an idea before writing a Working Backwards PR/FAQ | KO |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
 
 ## Installation
 
-Copy the desired skill directories into your Claude Code skills directory:
+Copy the desired skill directories into the skills directory for your tool:
 
 ```bash
-# Install a single skill (user-level)
+# Claude Code: install a single skill at user level
 cp -r skills/prompt-engineering-patterns ~/.claude/skills/
 
-# Install all skills at once
+# Claude Code: install all skills at once
 cp -r skills/* ~/.claude/skills/
+
+# Codex: install grill-prfaq at user level
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
+cp -R skills/grill-prfaq "${CODEX_HOME:-$HOME/.codex}/skills/"
 ```
 
-After copying, restart Claude Code to load the new skills.
+Start a new session after copying to confirm that the skill is available.
 
 ### Skill Locations
 
 - **User-level** (`~/.claude/skills/`): Available across all projects
 - **Project-level** (`.claude/skills/`): Available only in that project (great for team sharing via git)
+- **Codex user-level** (`${CODEX_HOME:-$HOME/.codex}/skills/`): Available to Codex sessions
 
 ## Skill Details
 
@@ -80,6 +86,21 @@ Automate PR creation from a forked repo to upstream:
 - Auto-generated PR body with summary, changes, and test plan
 - Build verification before PR creation
 
+### grill-prfaq
+
+Pressure-test an idea through short rounds before writing a Working Backwards PR/FAQ:
+- Builds a decision tree from customer, problem, core benefit, evidence, and experience
+- Records facts, user decisions, assumptions, and parked questions in one file
+- Requires a rubric gate, explicit user confirmation, and validator success before writing the PR
+- Includes Codex display metadata, reference material, and a deterministic validator
+
+Validate the skill from the repository root:
+
+```bash
+python3 skills/grill-prfaq/scripts/test_validate_prfaq.py
+python3 skills/grill-prfaq/scripts/validate_prfaq.py --help
+```
+
 ### korean-spell-check
 
 Korean language spell checker:
@@ -104,6 +125,7 @@ Each skill follows this directory convention:
 ```
 skill-name/
 ├── SKILL.md           # Required: Skill definition with YAML frontmatter
+├── agents/            # Optional: Agent-specific display metadata
 ├── references/        # Optional: Reference documentation
 ├── scripts/           # Optional: Executable helper scripts
 └── assets/            # Optional: Templates, examples, data files
@@ -120,7 +142,7 @@ description: What the skill does and when to use it
 
 ## Requirements
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) CLI
+- A compatible Agent Skills client such as [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex
 - Some skills require additional tools:
   - `jq`: Required by claude-code-analyzer scripts
   - `gh`: Optional for GitHub discovery features
