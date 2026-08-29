@@ -358,7 +358,8 @@ def _payload_ledger(payload: dict) -> tuple[tuple[str, str, str], ...]:
 
 def _payload_ledger_block(payload: dict) -> str:
     ledger = _payload_ledger(payload)
-    rows = "".join(f"<tr><td>{html.escape(path, quote=True)}</td><td>{kind}</td><td>{html.escape(_text(value), quote=True)}</td></tr>" for path, kind, value in ledger)
+    _ensure_redaction()
+    rows = "".join(f"<tr><td>{html.escape(_shared_redact(path), quote=True)}</td><td>{kind}</td><td>{html.escape(_text(value), quote=True)}</td></tr>" for path, kind, value in ledger)
     count = len(ledger)
     return (f'<section id="report-data"><h2>정본 데이터 전체 목록</h2>'
             f'<p class="section-intro">{count}개 JSON 값과 빈 컨테이너를 생략 없이 표시합니다. '

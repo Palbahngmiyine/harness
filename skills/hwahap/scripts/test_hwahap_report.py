@@ -678,12 +678,17 @@ class HwahapReportTests(unittest.TestCase):
     def test_report_data_ledger_is_visible_complete_and_bound(self) -> None:
         contract, run, units, events, digests = self.fixture()
         payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
-        payload["ledger-probe"] = {"a/b": "", "~key": 7, "flag": True, "none": None, "empty": [], "obj": {}}
+        pointer_canary = "01234567-89ab-cdef-0123-456789abcdef.md"
+        payload["ledger-probe"] = {"a/b": "", "~key": 7, "flag": True, "none": None,
+                                    "empty": [], "obj": {}}
+        payload["provenance"]["state_digests"][f"docs/prfaq/{pointer_canary}"] = "sha256:" + "e" * 64
         digest = report.canonical_payload_digest(payload)
         data = report.render_report(payload, digest)
         text = data.decode()
         self.assertIn("/ledger-probe/a~1b", text)
         self.assertIn("/ledger-probe/~0key", text)
+        self.assertNotIn(f"/provenance/state_digests/docs~1prfaq~1{pointer_canary}", text)
+        self.assertIn("[redacted possible secret].md", text)
         for literal in ('&quot;&quot;', "7", "true", "null", "[]", "{}"): self.assertIn(literal, text)
         self.assertNotIn('application/json', text)
         self.assertNotIn('#report-data{display:none', text)
