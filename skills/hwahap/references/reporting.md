@@ -24,6 +24,63 @@ and long sanitized text without silent count or length truncation. Its derived
 `scope_audit` is report-only (`affects_gate: false`). It contains
 no raw logs, secrets, or hidden reasoning.
 
+## Human evidence explanation
+
+Every curated claim must explain the judgment before showing its original
+evidence strings. This applies to completion, before/after improvements,
+remaining risk, user decisions, improvement candidates, failures, and
+recoveries. A bare phrase such as `transaction fault injection only` is a
+reference, not a self-explanatory proof.
+
+Each explanation uses all eight 5W3H fields:
+
+- Who: the recorded implementer or reviewer. Say that the item author is not
+  recorded when the payload does not link one.
+- When: the item timestamp, or the first/last event boundary with an explicit
+  warning that item timing is unavailable.
+- Where: the linked unit, changed paths, or final snapshot scope. Do not invent
+  a path-level link for an item that has none.
+- What: the exact claim, decision, risk, or completed goal being judged.
+- Why: why the referenced record supports that claim or why a decision remains.
+- How: the check or review chain used. Distinguish a recorded assertion from a
+  reproducible command/output receipt.
+- How much: relevant item, review, execution, and receipt counts. Keep recorded
+  `test_runs` separate from the count of structured `test_receipts`.
+- How long: recorded elapsed time. Say that item or stage duration is not
+  recorded when it is unavailable.
+
+Show an explicit limitation after the original evidence. Never infer an
+unrecorded author, timestamp, path, receipt, measured effect, failure
+probability, or operational guarantee. Preserve the original sanitized strings
+so the explanation remains auditable.
+
+A remaining risk or improvement candidate is incomplete without a
+`decision_context` object. It contains six nonempty explanations:
+
+- `scenario`: the concrete condition in which the issue becomes relevant;
+- `affected_scope`: the people, artifact, workflow, or boundary affected;
+- `impact`: the consequence if the condition is ignored;
+- `decision_reason`: why the user, rather than an agent, chooses the tradeoff;
+- `evidence_relation`: what the evidence actually demonstrates and how that
+  supports this judgment; and
+- `success_condition`: the observable condition that would resolve the risk or
+  prove the improvement useful.
+
+Show these as a visible causal chain before the 5W3H disclosure. Do not replace
+them with a shared generic warning. If a legacy payload lacks any field, label
+the judgment explanation incomplete and say that the title alone is
+insufficient. A resolved deviation similarly requires
+`evidence_explanation`, which connects its evidence to the stated prevention.
+
+The completion section begins with a plain-language judgment. It states
+whether completed state, all passed units, each latest Luna/Terra review on one
+diff, and the passing Sol final review agree. Metrics follow as supporting
+records, not as the judgment itself. If `metrics.test_runs` differs from the
+number of structured receipts, display both values and state that runs without
+receipts cannot be reproduced from the report alone. Digest-only acceptance
+commands identify the checked command without exposing its raw secret-bearing
+text; they do not replace an execution receipt.
+
 Report generation binds originals and prospective artifacts in the fixed
 `.report-recovery.json` journal and a `run.json` transaction marker, writes via
 same-directory exclusive temporary files and atomic replacement, then clears
