@@ -114,7 +114,7 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn('class="table-wrap"', text)
         self.assertNotIn('<pre>', text)
         for semantic in ('summary-grid', '<nav class="section-nav"', '<details id="evidence-vault"',
-                         'class="outcome-panel panel"',
+                         'class="outcome-panel panel md-card md-card-elevated"',
                          '<aside class="supporting-pane"', '<ol class="timeline">', '<caption>', '<table>', '<dl>'):
             self.assertIn(semantic, text)
 
@@ -135,6 +135,27 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn("@media (min-width:1200px)", text)
         self.assertIn("@media (min-width:1600px)", text)
         self.assertTrue(report.validate_report_bytes(text.encode(), digest, payload))
+
+    def test_cards_use_explicit_material_variants_without_blanket_outlines(self) -> None:
+        contract, run, units, events, digests = self.fixture()
+        run["deviations"] = [{"summary": "finding", "root_cause": "cause", "impact": "impact",
+                              "prevention": "fix", "evidence": ["receipt"]}]
+        payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
+        text = report.render_report(payload, report.canonical_payload_digest(payload)).decode()
+        style = report.STYLE_BLOCK
+        self.assertIn(".panel{min-width:0;overflow:hidden}", style)
+        self.assertIn(".md-card{min-width:0;border-radius:var(--md-sys-shape-corner-medium);overflow:hidden}", style)
+        self.assertIn(".md-card-filled{background:var(--md-sys-color-surface-container-highest);box-shadow:var(--md-sys-elevation-level0)}", style)
+        self.assertIn(".md-card-elevated{background:var(--md-sys-color-surface-container-low);box-shadow:var(--md-sys-elevation-level1)}", style)
+        self.assertNotIn(".md-card-outlined", style)
+        self.assertNotIn(".card,.receipt,.proposal-card,.risk-card{min-width:0;padding:var(--space-5);border", style)
+        self.assertNotIn(".evidence-vault{border:1px", style)
+        self.assertNotIn("border-block-start:4px solid var(--md-sys-color-secondary)", style)
+        self.assertNotIn("border-block-start:4px solid var(--md-sys-color-error)", style)
+        self.assertNotIn("border-inline-start:4px solid var(--md-sys-color-primary)", style)
+        self.assertIn('class="outcome-panel panel md-card md-card-elevated"', text)
+        self.assertIn('class="change-card panel md-card md-card-filled"', text)
+        self.assertIn('class="card md-card md-card-filled"', text)
 
     def test_official_material3_roles_scales_and_accessible_color_pairs(self) -> None:
         style = report.STYLE_BLOCK
@@ -193,9 +214,9 @@ class HwahapReportTests(unittest.TestCase):
         positions = [text.index(f'id="{identifier}"') for identifier in ordered]
         self.assertEqual(positions, sorted(positions))
         self.assertNotIn('id="evidence-vault" class="evidence-vault" open', text)
-        self.assertIn('class="change-card panel"', text)
-        self.assertIn('class="risk-card tile"', text)
-        self.assertIn('class="proposal-card tile"', text)
+        self.assertIn('class="change-card panel md-card md-card-filled"', text)
+        self.assertIn('class="risk-card tile md-card md-card-filled"', text)
+        self.assertIn('class="proposal-card tile md-card md-card-filled"', text)
         for phrase in ("이전 문제", "발생 원인", "적용한 개선", "이전 대비 기대 변화",
                        "아직 남은 위험", "기대 효과", "다음 결정", "실제 운영 효과를 보장"):
             self.assertIn(phrase, text)

@@ -27,6 +27,13 @@ Implementation supplements:
 - https://m3.material.io/styles/shape/corner-radius-scale
 - https://m3.material.io/styles/elevation/overview
 - https://m3.material.io/styles/motion/overview/how-it-works
+- https://m3.material.io/components/cards/overview
+- https://m3.material.io/components/cards/guidelines
+- https://m3.material.io/components/cards/specs
+- https://m3.material.io/components/dialogs/specs
+- https://m3.material.io/components/bottom-sheets/specs
+- https://m3.material.io/components/lists/guidelines
+- https://m3.material.io/foundations/layout/canonical-examples/supporting-pane
 - https://www.w3.org/TR/WCAG22/
 
 Watch and XR pages were reviewed but their round-screen and spatial layout
@@ -57,7 +64,8 @@ colors, spacing, radii, font stacks, or shadows.
 - Surface is the page background. The five surface-container roles establish
   hierarchy and remain mapped to the same regions at every breakpoint.
 - On-colors are used only on their paired container.
-- Outline marks interactive boundaries; outline-variant is decorative.
+- Outline marks strong interactive boundaries. Outline-variant is used for
+  dividers or the boundary of an intentionally selected outlined card.
 - Success and warning are explicit Hwahap add-on roles with paired on-colors,
   literal Korean status text, and an icon. Color is never the only cue.
 
@@ -69,6 +77,27 @@ Every body-size text pair must meet 4.5:1. Large text and meaningful graphical
 boundaries must meet 3:1. Decorative outline-variant dividers are exempt from
 the target-boundary requirement.
 
+## Component surfaces
+
+Choose the component before choosing decoration. Do not apply one generic
+border rule to every region.
+
+- Elevated card: `surface-container-low`, level 1 elevation, no border.
+- Filled card: `surface-container-highest`, level 0 elevation, no border.
+- Outlined card: `surface`, level 0 elevation, and outline-variant border.
+- Hwahap uses filled cards for ordinary records and one elevated card for the
+  outcome summary. It does not render outlined report cards.
+- Cards contain one subject. If spacing, a heading, or a divider gives a simpler
+  hierarchy, do not force that content into another card.
+- Card shape is the official 12px medium corner with 16px minimum content
+  padding. Dividers may separate regions inside a card.
+- The remaining-risk supporting pane is a secondary layout area, not a card.
+  It uses a tonal surface and moves below the focus pane under 840px.
+- The evidence disclosure follows the bottom-sheet surface role:
+  `surface-container-low`, 28px top-level shape, and no outer border.
+- Non-interactive audit lists use filled items and gaps. Do not add decorative
+  leading borders; reserve dividers for complex or uncontained lists.
+
 ## Type, shape, elevation, and spacing
 
 - Declare all 15 baseline type-scale roles. Use only the subset needed for a
@@ -79,7 +108,8 @@ the target-boundary requirement.
 - Declare the ten-step shape scale: 0, 4, 8, 12, 16, 20, 28, 32, 48, and full.
 - Avoid very round shapes on information-dense cards. Use full corners for
   chips and compact targets only.
-- Prefer tonal surface hierarchy over shadows. Keep elevation levels few.
+- Prefer tonal surface hierarchy. Only the outcome's elevated card uses level 1;
+  all filled cards and layout panes use level 0.
 - Use 4px-based spacing. Group related facts by proximity and separate major
   decisions with negative space.
 
@@ -120,9 +150,10 @@ Wide audit tables scroll only inside `.table-wrap`.
 
 - Full-width tonal top app bar with brand and explicit status.
 - Scrollable pill navigation with enabled, hover, focus, and pressed states.
-- Hero with a restrained headline and a primary-container outcome panel.
+- Hero with a restrained headline and one elevated outcome card.
 - Outcome metrics on surface-container-lowest.
-- Problem, cause, and fix grouped in one card with dividers, not nested cards.
+- Problem, cause, and fix grouped in one filled card with internal dividers, not
+  nested cards or an outer outline.
 - Expected change uses the paired success container and states its limitation.
 - Remaining risk is a supporting pane; proposals use secondary emphasis.
 - Evidence uses one disclosure, tonal containers, semantic tables, and the
@@ -135,6 +166,9 @@ Wide audit tables scroll only inside `.table-wrap`.
 - No OpenDesign, Astryx, Google Blue `#1a73e8`, React, script, import map, CDN
   stylesheet, external font, or runtime network dependency remains.
 - All color, type, shape, elevation, motion, and state token groups exist.
+- Filled and elevated card variants use their official surface and elevation
+  roles; report cards, supporting pane, and evidence surface have no outer
+  outline.
 - Breakpoint rules exist at 600, 840, 1200, and 1600px.
 - Status has text and icon; focus and state layers are mechanically present.
 - Outcome precedes deviations, proposals, validation, and evidence.
