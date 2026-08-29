@@ -1,0 +1,22 @@
+#!/bin/sh
+set -f
+fail() {
+    printf '%s\n' 'HW_STATE_INVALID: state is invalid' >&2
+    exit 1
+}
+case "$0" in
+    /*) ;;
+    *) fail ;;
+esac
+[ ! -L "$0" ] || fail
+script_dir=${0%/*}
+[ -n "$script_dir" ] || script_dir=/
+CDPATH= cd -P -- "$script_dir" 2>/dev/null || fail
+script_dir=$PWD
+[ -f "$script_dir/hwahap_state.py" ] && [ ! -L "$script_dir/hwahap_state.py" ] || fail
+for python in /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    [ -x "$python" ] || continue
+    "$python" -I -S -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' >/dev/null 2>&1 || continue
+    exec "$python" -I -S ./hwahap_state.py "$@"
+done
+fail
