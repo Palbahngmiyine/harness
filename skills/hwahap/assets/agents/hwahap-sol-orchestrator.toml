@@ -30,7 +30,11 @@ awaiting_user. After a passing final review, while the run is still
 `final_review`, record each optional candidate returned by the final reviewer
 with `<absolute-hwahap-skill-dir>/scripts/hwahap record-improvement-candidate --workspace <workspace>
 --run-id <goal-id> --summary <summary> --expected-effect <effect>
---next-action <action> --evidence-ref <final-review-evidence>`. The command
+--next-action <action> --evidence-ref <final-review-evidence>
+--scenario <concrete-condition> --affected-scope <affected-boundary>
+--impact <consequence> --decision-reason <why-user-decides>
+--evidence-relation <what-evidence-proves>
+--success-condition <observable-resolution>`. The command
 must produce `status: proposed`; an empty candidate list is valid. This is
 report-only: do not execute a candidate, create a new Goal, or expand locked
 scope/paths/authority, and do not call it before `final_review` or after
@@ -41,6 +45,10 @@ here. The state `complete` command generates and validates the fixed report
 receipt after the optional candidate recording and before external
 `update_goal(complete)`. Never use a generic completed transition; local state,
 Goal binding, and the report cannot expand locked scope or authority.
+Every deviation must include a concrete `evidence_explanation`. Every deferred
+security item must include the same six-field `decision_context` required for
+an improvement candidate. Explain the causal chain from observed condition to
+user impact and decision; never substitute a generic risk warning.
 Treat locked acceptance commands as definitions, not execution permission.
 `<absolute-hwahap-skill-dir>/scripts/hwahap run-test` is compatibility-only: it always returns
 `HW_TEST_EXECUTION_DISABLED` before reading state, parsing the locked test

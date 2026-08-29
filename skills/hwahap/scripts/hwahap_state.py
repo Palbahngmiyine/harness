@@ -24,7 +24,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 _PIN_REDACTION_ENGINE_SHA256 = "aa2d19d5b4f6af13cc2a53c6d91bda453713d3526a02efe561b6fd939691e687"
-_PIN_INSTALLER = "bf42ef51b90725cb76249f595aab7836e708e69b4b9869b69dea30e120139658"
+_PIN_INSTALLER = "26d5f610e8b548d3c341022ec49efc0db641cf91f0ea4e46ffca05a172a59fb4"
 _PIN_REPORT = "546ef7731f37e9c92f3e56dbaf70bc7b2e9a875fc376ba0d31b24e8e4034eb03"
 REPORT_SCHEMA_VERSION = 4
 REPORT_GENERATOR = {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
@@ -147,7 +147,8 @@ CONTRACT_LISTS = (
     "goals", "non_goals", "allowed_paths", "forbidden_changes",
     "acceptance_criteria", "test_commands",
 )
-CANDIDATE_FIELDS = frozenset(("status", "summary", "evidence", "expected_effect", "next_action"))
+DECISION_CONTEXT_FIELDS = frozenset(("scenario", "affected_scope", "impact", "decision_reason", "evidence_relation", "success_condition"))
+CANDIDATE_FIELDS = frozenset(("status", "summary", "evidence", "expected_effect", "next_action", "decision_context"))
 EVENT_FIELDS = (
     "timestamp", "type", "sequence", "entity", "from", "to", "actor", "role",
     "reason", "input_digest", "evidence_refs", "review_round",
@@ -1564,6 +1565,14 @@ def record_improvement(args: argparse.Namespace) -> None:
     print(f"HW_OK: run={args.run_id} unit={unit_id} improvement={args.after_round}")
 
 
+def validate_decision_context(value: object, label: str, errors: list[str]) -> None:
+    if not isinstance(value, dict) or set(value) != DECISION_CONTEXT_FIELDS:
+        errors.append(f"{label} must contain the exact causal explanation fields")
+        return
+    if any(not required_text(value.get(field)) for field in DECISION_CONTEXT_FIELDS):
+        errors.append(f"{label} fields must be nonempty")
+
+
 def validate_improvement_candidate(record: object, label: str, errors: list[str]) -> None:
     if not isinstance(record, dict):
         errors.append(f"{label} must be an object")
@@ -1577,6 +1586,7 @@ def validate_improvement_candidate(record: object, label: str, errors: list[str]
     evidence = record.get("evidence")
     if not isinstance(evidence, list) or not evidence or any(not required_text(item) for item in evidence):
         errors.append(f"{label}.evidence must be nonempty")
+    validate_decision_context(record.get("decision_context"), f"{label}.decision_context", errors)
 
 
 def validate_improvement_candidates(value: object, errors: list[str]) -> None:
@@ -1601,6 +1611,7 @@ def record_improvement_candidate(args: argparse.Namespace) -> None:
     record = {
         "status": "proposed", "summary": args.summary, "evidence": args.evidence_ref,
         "expected_effect": args.expected_effect, "next_action": args.next_action,
+        "decision_context": {field: getattr(args, field) for field in DECISION_CONTEXT_FIELDS},
     }
     candidate_errors: list[str] = []
     validate_improvement_candidate(record, "improvement_candidate", candidate_errors)
@@ -2783,8 +2794,12 @@ def validate_run(args: argparse.Namespace) -> None:
             errors.append("final_review awaiting_user has invalid failure code")
     deviations = run.get("deviations")
     deferred = run.get("deferred_security")
-    validate_records(deviations, ("summary", "root_cause", "impact", "prevention"), "deviations", errors)
+    validate_records(deviations, ("summary", "root_cause", "impact", "prevention", "evidence_explanation"), "deviations", errors)
     validate_records(deferred, ("summary", "reason", "next_action"), "deferred_security", errors)
+    if isinstance(deferred, list):
+        for index, record in enumerate(deferred, 1):
+            if isinstance(record, dict):
+                validate_decision_context(record.get("decision_context"), f"deferred_security[{index}].decision_context", errors)
     validate_metrics(run, units, histories, deviations if isinstance(deviations, list) else [], errors)
     final_review_errors: list[str] = []
     final = run.get("final_review")
@@ -2907,6 +2922,12 @@ def parser() -> argparse.ArgumentParser:
     candidate.add_argument("--expected-effect", required=True)
     candidate.add_argument("--next-action", required=True)
     candidate.add_argument("--evidence-ref", action="append", required=True)
+    candidate.add_argument("--scenario", required=True)
+    candidate.add_argument("--affected-scope", required=True)
+    candidate.add_argument("--impact", required=True)
+    candidate.add_argument("--decision-reason", required=True)
+    candidate.add_argument("--evidence-relation", required=True)
+    candidate.add_argument("--success-condition", required=True)
     candidate.set_defaults(handler=record_improvement_candidate)
     goal = commands.add_parser("goal-sync", help="record one Goal observation receipt")
     goal.add_argument("--workspace", required=True)

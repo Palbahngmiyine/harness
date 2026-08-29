@@ -47,8 +47,8 @@ REQUIRED_PROFILE_NAMES = frozenset(PROFILE_CONTRACT)
 PROFILE_SHA256 = {
     "hwahap-luna-implementer.toml": "f1781d1f33f923ce4f75b485444e3bd3c8779fdd1304c11b515777eb850586ae",
     "hwahap-luna-verifier.toml": "3f78b091ceccd232bd2206587a74259a139ea962d1736189d3ffd1d8b2a45df5",
-    "hwahap-sol-final-reviewer.toml": "afd521fb914f2e728f83a66cbee67c546bad06a8a7607fe7194c18d705f6b715",
-    "hwahap-sol-orchestrator.toml": "6026c4ba7f4fdd2a6a44e2aaa55eb45ba4f92507b8b7fb4a2eb83007ba7d07d7",
+    "hwahap-sol-final-reviewer.toml": "45b7f0d6961ccec665acc0c738f9506b6e2958b58ff5faff6248e91c6eb79f15",
+    "hwahap-sol-orchestrator.toml": "239d05fc08b48000309a899f36ddf7a3ae218ff04a00610fa8a050df2515f62b",
     "hwahap-terra-scope-reviewer.toml": "381b8ebccc833408bce908e47f686fd42c22f51982865d3d27804dc204d8fed0",
 }
 PUBLIC_ERROR_MESSAGES = {

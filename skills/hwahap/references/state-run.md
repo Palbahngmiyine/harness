@@ -41,13 +41,14 @@ It also records:
   to request Fast, but local state records `unknown` until a verifiable runtime
   receipt is exposed; never infer `enabled` or `disabled` from the profile.
 - `deviations`: records with `summary`, `root_cause`, `impact`, `prevention`,
-  and nonempty `evidence`.
+  `evidence_explanation`, and nonempty `evidence`. The explanation states why
+  that evidence supports the prevention instead of merely naming a test.
 - `deferred_security`: records with `summary`, `reason`, `next_action`, and
-  nonempty `evidence`.
+  nonempty `evidence`, plus the exact `decision_context` below.
 - `final_review`: `status` and append-only `attempts`.
 - `improvement_candidates`: an append-only list of report-only proposals. Each
   item has `status: proposed`, `summary`, nonempty `evidence`,
-  `expected_effect`, and `next_action`. The candidate command accepts records
+  `expected_effect`, `next_action`, and the exact `decision_context`. The candidate command accepts records
   only while the run is `final_review`; it does not append a transition event.
 - `goal_link`: current normalized Goal receipt and append-only history. An
   active bound receipt comes from `codex.get_goal`; a post-completion bound
@@ -98,6 +99,16 @@ hidden reasoning are never included.
 The renderer and validator use the same canonical payload ledger, so adding a
 field cannot silently omit it from the visible report: the complete ledger is
 validated as one exact payload-bound block.
+
+`decision_context` has exactly six nonempty strings: `scenario` describes the
+concrete condition in which the item matters; `affected_scope` names the
+affected person, artifact, workflow, or trust boundary; `impact` states the
+consequence if ignored; `decision_reason` explains why the user owns the
+tradeoff; `evidence_relation` explains what each bounded evidence reference
+actually proves; and `success_condition` defines the observable result that
+would resolve the risk or validate the candidate. Missing, extra, or empty
+fields are invalid. Generic shared warnings and title-only explanations are
+not valid substitutes.
 
 Report transactions first bind original and prospective bytes in the fixed
 `.report-recovery.json` journal and `run.json` `report_transaction` marker.

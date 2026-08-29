@@ -154,6 +154,10 @@ class ProjectAgentInstallerTests(unittest.TestCase):
             self.assertIn("`diff_digest`", text[name])
         for phrase in ("full six-field `diff_snapshot`", "same full valid final snapshot", "verified digest"):
             self.assertIn(phrase, text["hwahap-sol-final-reviewer.toml"])
+        for phrase in ("six concrete strings", "why the user owns the decision", "observable success condition"):
+            self.assertIn(phrase, text["hwahap-sol-final-reviewer.toml"])
+        for phrase in ("--decision-reason", "--evidence-relation", "generic risk warning"):
+            self.assertIn(phrase, text["hwahap-sol-orchestrator.toml"])
         for phrase in ("evidence and a diff digest",):
             self.assertNotIn(phrase, text["hwahap-luna-implementer.toml"])
         self.assertNotIn("contract and diff digest", text["hwahap-luna-verifier.toml"])

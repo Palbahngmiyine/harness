@@ -163,10 +163,9 @@ scope.
     attempt.
 13. When the final reviewer passes, Sol may return zero or more post-completion
     improvement candidates with the pass evidence. While the run is still in
-    `final_review`, record each one with:
-    `<absolute-hwahap-skill-dir>/scripts/hwahap record-improvement-candidate --workspace <workspace>
-    --run-id <goal-id> --summary <summary> --expected-effect <effect>
-    --next-action <action> --evidence-ref <final-review-evidence>`.
+    `final_review`, record each one with the exact
+    `record-improvement-candidate` command in
+    [state-contract.md](state-contract.md), including all six causal fields.
     The command stores `status: proposed` and is report-only. Do not run the
     proposed action, create a new Goal, or expand the locked scope; no candidate
     is also valid. A new-scope candidate stays report-only; after completion,

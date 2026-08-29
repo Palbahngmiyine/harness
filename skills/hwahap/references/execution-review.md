@@ -22,8 +22,9 @@ After installation, spawn roles by these exact custom-agent names:
 - `hwahap-sol-final-reviewer` (`gpt-5.6-sol`) is read-only; omit its configured
   reasoning effort so the explicit final invocation can attempt `ultra` once.
   Alongside its pass evidence, it may return zero or more post-completion
-  improvement candidates (`summary`, `expected_effect`, `next_action`, and
-  evidence). A candidate is only a proposal; it never changes the Goal or
+  improvement candidates (`summary`, `expected_effect`, `next_action`,
+  evidence, and the six-field causal `decision_context` defined in
+  [state-run.md](state-run.md)). A candidate is only a proposal; it never changes the Goal or
   locked scope and the reviewer never executes it.
 - The Sol profile requests Fast, but this platform exposes no verifiable Fast
   runtime receipt. Record local `fast_status: unknown`; never infer `enabled`

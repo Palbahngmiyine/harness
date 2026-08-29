@@ -376,7 +376,13 @@ class HwahapStateTests(unittest.TestCase):
     def candidate_args(self, **overrides: object) -> Namespace:
         values = {"workspace": str(self.workspace), "run_id": "test-goal",
                   "summary": "reduce repeated setup", "expected_effect": "fewer manual steps",
-                  "next_action": "review in a new Goal", "evidence_ref": ["final-review"]}
+                  "next_action": "review in a new Goal", "evidence_ref": ["final-review"],
+                  "scenario": "manual setup is repeated for each new Goal",
+                  "affected_scope": "future Hwahap setup work",
+                  "impact": "repeated setup consumes time and can omit a step",
+                  "decision_reason": "automation expands the completed Goal and needs user approval",
+                  "evidence_relation": "the final review identified repeated setup outside the passing scope",
+                  "success_condition": "a new Goal completes setup with no manual repeated step"}
         values.update(overrides)
         return Namespace(**values)
 
@@ -683,7 +689,8 @@ class HwahapStateTests(unittest.TestCase):
         run = json.loads(run_path.read_text())
         raw = "curl " + chr(92) + "\n  --user audit:linecase URL"
         run["deviations"] = [{"summary": raw, "root_cause": "cause", "impact": "impact",
-                               "prevention": "prevention", "evidence": ["evidence"]}]
+                               "prevention": "prevention", "evidence": ["evidence"],
+                               "evidence_explanation": "the regression checks the prevention against the cause"}]
         self.write_json(run_path, run)
         before = {path: path.read_bytes() for path in (run_path, events_path)}
         with self.assertRaises(hwahap_state.HwahapError) as raised:
@@ -709,6 +716,14 @@ class HwahapStateTests(unittest.TestCase):
             "status": "proposed", "summary": "reduce repeated setup",
             "evidence": ["final-review"], "expected_effect": "fewer manual steps",
             "next_action": "review in a new Goal",
+            "decision_context": {
+                "scenario": "manual setup is repeated for each new Goal",
+                "affected_scope": "future Hwahap setup work",
+                "impact": "repeated setup consumes time and can omit a step",
+                "decision_reason": "automation expands the completed Goal and needs user approval",
+                "evidence_relation": "the final review identified repeated setup outside the passing scope",
+                "success_condition": "a new Goal completes setup with no manual repeated step",
+            },
         }])
         self.assertEqual({path: path.read_bytes() for path in before}, before)
         self.validate()
@@ -803,6 +818,8 @@ class HwahapStateTests(unittest.TestCase):
             ("extra", lambda item: item.update({"command": "run candidate"})),
             ("path", lambda item: item.update({"path": "src"})),
             ("unit", lambda item: item.update({"unit_id": "unit-1"})),
+            ("context missing", lambda item: item["decision_context"].pop("impact")),
+            ("context extra", lambda item: item["decision_context"].update({"generic_warning": "not enough"})),
         ):
             with self.subTest(name=name):
                 current = copy.deepcopy(original)
@@ -1449,6 +1466,14 @@ class HwahapStateTests(unittest.TestCase):
             "evidence": [f"candidate-evidence-{index}"],
             "expected_effect": f"candidate-effect-{index}",
             "next_action": f"candidate-action-{index}",
+            "decision_context": {
+                "scenario": f"candidate-scenario-{index}",
+                "affected_scope": f"candidate-scope-{index}",
+                "impact": f"candidate-impact-{index}",
+                "decision_reason": f"candidate-decision-{index}",
+                "evidence_relation": f"candidate-relation-{index}",
+                "success_condition": f"candidate-success-{index}",
+            },
         } for index in range(1, 102)]
         run["improvement_candidates"] = candidates
         self.write_json(run_path, run)
@@ -3638,7 +3663,9 @@ class HwahapStateTests(unittest.TestCase):
             ("invalid attempts", "completed final review attempts"),
             ("metrics", "metrics.unit_count"),
             ("deviation", "deviations[1] is incomplete"),
+            ("deviation explanation", "deviations[1] is incomplete"),
             ("deferred security", "deferred_security[1] is incomplete"),
+            ("deferred context", "deferred_security[1].decision_context"),
         ):
             with self.subTest(case=name):
                 current_contract = copy.deepcopy(contract)
@@ -3658,8 +3685,14 @@ class HwahapStateTests(unittest.TestCase):
                     current_run["metrics"]["unit_count"] = 0
                 elif name == "deviation":
                     current_run["deviations"] = [{"summary": "incomplete"}]
-                else:
+                elif name == "deviation explanation":
+                    current_run["deviations"] = [{"summary": "item", "root_cause": "cause", "impact": "impact",
+                                                    "prevention": "fix", "evidence": ["test"]}]
+                elif name == "deferred security":
                     current_run["deferred_security"] = [{"summary": "incomplete"}]
+                else:
+                    current_run["deferred_security"] = [{"summary": "risk", "reason": "unverified",
+                                                           "next_action": "decide", "evidence": ["boundary"]}]
                 self.write_json(run_dir / "contract.json", current_contract)
                 self.write_json(run_dir / "run.json", current_run)
                 self.write_json(unit_path, current_unit)

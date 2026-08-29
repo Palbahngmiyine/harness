@@ -109,11 +109,10 @@ Only an aggregate final-review failure awaits the user: use
 `HW_FINAL_REVIEW_FAILED` when the final result fails, and
 `HW_MODEL_UNAVAILABLE` when the xhigh fallback is unavailable or unsupported.
 Do not retry after an aggregate failure.
-After a final pass, invoke
-`record-improvement-candidate --workspace <workspace> --run-id <goal-id>
---summary <summary> --expected-effect <effect> --next-action <action>
---evidence-ref <final-review-evidence>` once for each candidate returned by the
-final reviewer, while the run is still `final_review`. This is optional: an
+After a final pass, invoke the exact `record-improvement-candidate` command in
+[state-contract.md](state-contract.md), including its six causal explanation
+arguments, once for each candidate returned by the final reviewer while the run
+is still `final_review`. This is optional: an
 empty candidate list is valid. The command records `status: proposed` only;
 it must not execute the proposal or expand the Goal, contract, paths, or
 authority. Then invoke

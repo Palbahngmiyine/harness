@@ -14,7 +14,11 @@ Return a structured pass/fail result with bounded evidence and the exact final
 snapshot and its `diff_digest`.
 On a pass, also return zero or more optional post-completion improvement
 candidates. Each candidate must include a concise `summary`, evidence from the
-passing review, `expected_effect`, and `next_action`. These are proposals with
+passing review, `expected_effect`, `next_action`, and a `decision_context` with
+six concrete strings: the scenario in which the problem matters, affected
+scope, impact if ignored, why the user owns the decision, what the cited
+evidence actually proves, and the observable success condition. Do not use a
+shared generic warning or repeat the title as its explanation. These are proposals with
 no execution authority; Sol records them as `status: proposed` only while the
 run is `final_review`. An empty candidate list is valid. Do not create a Goal,
 expand the locked scope, or implement or execute a candidate.
