@@ -236,6 +236,49 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn('<caption>정본 report-data.json ledger', text)
         self.assertTrue(report.validate_report_bytes(text.encode(), digest, payload))
 
+    def test_decisions_and_completion_explain_evidence_with_5w3h(self) -> None:
+        contract, run, units, events, digests = self.fixture()
+        diff_digest = "sha256:" + "9" * 64
+        snapshot = {"diff_digest": diff_digest, "changed_paths": ["src"]}
+        units[0]["review_history"] = [{
+            "round": 1, "outcome": "pass", "diff_digest": diff_digest, "diff_snapshot": snapshot,
+            "verifier": {"model": "gpt-5.6-luna", "status": "pass", "diff_digest": diff_digest,
+                         "evidence": ["focused regression PASS"]},
+            "scope_reviewer": {"model": "gpt-5.6-terra", "status": "pass", "diff_digest": diff_digest,
+                               "evidence": ["same snapshot scope PASS"]},
+        }]
+        run["metrics"]["test_runs"] = 4
+        run["final_review"] = {"status": "pass", "attempts": [{
+            "model": "gpt-5.6-sol", "status": "pass", "diff_digest": diff_digest,
+            "diff_snapshot": snapshot, "evidence": ["0 blocking findings"],
+        }]}
+        run["deviations"] = [{"summary": "보고서 누락", "impact": "값을 읽을 수 없음",
+                              "root_cause": "수동 목록", "prevention": "ledger 자동 출력",
+                              "evidence": ["payload-ledger binding tests"]}]
+        run["deferred_security"] = [{"summary": "전원 중단 내구성", "reason": "process kill 미검증",
+                                      "next_action": "별도 실험 승인", "evidence": ["transaction fault injection only"]}]
+        run["improvement_candidates"] = [{"status": "proposed", "summary": "후속 후보",
+                                            "expected_effect": "오용 방지", "next_action": "사용자 승인",
+                                            "evidence": ["final Ultra report"]}]
+        payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
+        digest = report.canonical_payload_digest(payload)
+        text = report.render_report(payload, digest).decode()
+
+        for label in ("누가 (Who)", "언제 (When)", "어디서 (Where)", "무엇을 (What)",
+                      "왜 (Why)", "어떻게 (How)", "얼마나 (How much)", "얼마 동안 (How long)"):
+            self.assertIn(label, text)
+        for evidence in ("payload-ledger binding tests", "transaction fault injection only",
+                         "final Ultra report", "focused regression PASS", "same snapshot scope PASS"):
+            self.assertIn(evidence, text)
+        self.assertIn("실행 기록상 완료 판정은 일관됩니다", text)
+        self.assertIn("메트릭에는 테스트 실행 4회가 기록됐지만 상세 실행 receipt는 0건", text)
+        self.assertIn("수치만으로 완료를 뜻하지 않습니다", text)
+        self.assertIn("항목에 직접 연결된 구조화 receipt 필드는 없음", text)
+        self.assertIn("위험의 발생 확률·영향도·해소 여부를 측정한 결과가 아님", text)
+        self.assertIn("기대 효과가 실제로 발생한다고 입증할 수 없고", text)
+        self.assertIn("이 보고서는 결정을 제안할 뿐 승인으로 간주하거나 후속 작업을 자동 실행하지 않음", text)
+        self.assertTrue(report.validate_report_bytes(text.encode(), digest, payload))
+
     def test_provenance_values_are_visible_in_payload_and_html(self) -> None:
         contract, run, units, events, digests = self.fixture()
         spec = {"source": "spec-source-sentinel", "sha256": "spec-sha-sentinel", "confirmed_at": "spec-confirmed-sentinel"}
@@ -859,7 +902,7 @@ class HwahapReportTests(unittest.TestCase):
         for value in ("codex.exec_command", "verifier", "luna-receipt", "sha256:" + "c" * 64, "sha256:" + "d" * 64,
                       "sha256:" + "a" * 64, "sha256:" + "b" * 64, "start", "end", "exit code"):
             self.assertIn(value, data)
-        self.assertIn("검증된 테스트 영수증 수", data)
+        self.assertIn("기록된 테스트 실행 수", data)
         self.assertIn("overflow-wrap:anywhere", data)
         self.assertIn("receipt-list", data)
         self.assertNotIn("subprocess-stdout-canary", data)

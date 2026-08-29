@@ -94,7 +94,7 @@ REPORT_TEXT_BOUNDARIES = frozenset(("a", "article", "aside", "body", "br", "capt
 DIFF_SNAPSHOT_FIELDS = ("base_commit", "target_commit", "base_tree", "target_tree", "diff_digest", "changed_paths")
 IMPROVEMENT_CANDIDATE_FIELDS = ("status", "summary", "evidence", "expected_effect", "next_action")
 CONTRACT_LABELS = {"goals": "목표", "non_goals": "제외 범위", "allowed_paths": "허용 경로", "forbidden_changes": "금지 변경", "acceptance_criteria": "완료 기준", "test_commands": "테스트 명령"}
-METRIC_LABELS = {"unit_count": "작업 단위", "agent_runs": "에이전트 실행", "review_rounds": "검수 회차", "recoveries": "복구", "replans": "재계획", "scope_deviations": "범위 편차", "test_runs": "검증된 테스트 영수증 수", "elapsed_seconds": "완료 시간(초)", "availability": "확인 가능 여부", "reason": "사유", "source": "출처", "total": "총 토큰"}
+METRIC_LABELS = {"unit_count": "작업 단위", "agent_runs": "에이전트 실행", "review_rounds": "검수 회차", "recoveries": "복구", "replans": "재계획", "scope_deviations": "범위 편차", "test_runs": "기록된 테스트 실행 수", "elapsed_seconds": "기록된 소요 시간(초)", "availability": "확인 가능 여부", "reason": "사유", "source": "출처", "total": "총 토큰"}
 AVAILABILITY_LABELS = {"available": "확인됨", "unavailable": "확인할 수 없음"}
 SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 ABS_PATH = re.compile(r"(?<![A-Za-z0-9_])/(?:[^\s<>\"']+/)+[^\s<>\"']+")
@@ -104,7 +104,8 @@ STYLE_BLOCK = """<style>
 @media (prefers-contrast:more){:root{--md-sys-color-primary:#003d66;--md-sys-color-on-primary:#fff;--md-sys-color-surface:#fff;--md-sys-color-surface-container-lowest:#fff;--md-sys-color-surface-container-low:#f7fcff;--md-sys-color-surface-container:#f1faff;--md-sys-color-surface-container-high:#e5f5ff;--md-sys-color-surface-container-highest:#ccebff;--md-sys-color-on-surface:#001524;--md-sys-color-on-surface-variant:#003d66;--md-sys-color-outline:#003d66;--md-sys-color-outline-variant:#005c99}}
 @media (prefers-contrast:more) and (prefers-color-scheme:dark){:root{--md-sys-color-primary:#e5f5ff;--md-sys-color-on-primary:#001524;--md-sys-color-surface:#000;--md-sys-color-surface-container-lowest:#000;--md-sys-color-surface-container-low:#001524;--md-sys-color-surface-container:#001f33;--md-sys-color-surface-container-high:#003d66;--md-sys-color-surface-container-highest:#005c99;--md-sys-color-on-surface:#fff;--md-sys-color-on-surface-variant:#e5f5ff;--md-sys-color-outline:#e5f5ff;--md-sys-color-outline-variant:#99d6ff}}
 *,*::before,*::after{box-sizing:border-box}html{overflow-x:hidden;background:var(--md-sys-color-surface);scroll-behavior:smooth}body{margin:0;min-width:0;min-height:100vh;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface);font:var(--md-sys-typescale-body-large);letter-spacing:.03125rem;-webkit-font-smoothing:antialiased;overflow-wrap:anywhere}a{color:var(--md-sys-color-primary);text-underline-offset:.2em;text-decoration-thickness:.08em}a:focus-visible,summary:focus-visible{outline:3px solid var(--md-sys-color-primary);outline-offset:2px}.skip-link{position:fixed;z-index:20;inset-block-start:var(--space-2);inset-inline-start:var(--space-2);display:inline-flex;align-items:center;min-block-size:48px;padding-inline:var(--space-4);border-radius:var(--md-sys-shape-corner-full);background:var(--md-sys-color-primary);color:var(--md-sys-color-on-primary);transform:translateY(-160%)}.skip-link:focus{transform:translateY(0)}.top-app-bar{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);min-block-size:64px;padding-block:var(--space-2);padding-inline:max(var(--layout-margin),calc((100vw - var(--layout-max))/2 + var(--layout-margin)));background:var(--md-sys-color-surface-container);border-block-end:1px solid var(--md-sys-color-outline-variant)}.app-title{font:var(--md-sys-typescale-title-large)}.app-kicker,.eyebrow{color:var(--md-sys-color-primary);font:var(--md-sys-typescale-label-medium);letter-spacing:.0625rem}.section-nav{max-width:var(--layout-max);margin:0 auto;padding:var(--space-3) var(--layout-margin);display:flex;gap:var(--space-2);overflow-x:auto;scrollbar-width:thin;scroll-padding-inline:var(--layout-margin)}.nav-chip{--state-layer-color:var(--md-sys-color-on-secondary-container);position:relative;isolation:isolate;overflow:hidden;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;min-block-size:48px;padding-inline:var(--space-4);white-space:nowrap;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-full);background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface);font:var(--md-sys-typescale-label-large);text-decoration:none}.nav-chip::after,details>summary::after{content:"";position:absolute;z-index:-1;inset:0;background:var(--state-layer-color,currentColor);opacity:0;pointer-events:none;transition:opacity var(--md-sys-motion-standard-effects)}.nav-chip:hover::after,details>summary:hover::after{opacity:var(--md-sys-state-hover-opacity)}.nav-chip:focus-visible::after,details>summary:focus-visible::after{opacity:var(--md-sys-state-focus-opacity)}.nav-chip:active::after,details>summary:active::after{opacity:var(--md-sys-state-pressed-opacity)}main{max-width:var(--layout-max);margin-inline:auto;padding:0 var(--layout-margin) 80px}main>section,main>.decision-layout,main>.evidence-vault{margin-block:var(--section-space)}section{scroll-margin-block-start:80px}h1,h2,h3,p{margin-block-start:0}h1,h2,h3{font-family:var(--md-ref-typeface-brand);letter-spacing:0}h1{margin-block-end:var(--space-4);font:var(--md-sys-typescale-display-small)}h2{margin-block-end:var(--space-4);font:var(--md-sys-typescale-headline-medium)}h3{margin-block-end:var(--space-3);font:var(--md-sys-typescale-title-large)}p{max-width:60ch}.section-intro{max-width:60ch;color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-body-large)}.hero{display:grid;gap:var(--space-8);align-items:center;padding-block:var(--space-8)}.hero-copy-block{max-width:60ch}.stack>*+*{margin-block-start:var(--space-4)}.hero-copy{max-width:60ch;color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-title-large)}.panel{min-width:0;overflow:hidden}.md-card{min-width:0;border-radius:var(--md-sys-shape-corner-medium);overflow:hidden}.md-card-filled{background:var(--md-sys-color-surface-container-highest);box-shadow:var(--md-sys-elevation-level0)}.md-card-elevated{background:var(--md-sys-color-surface-container-low);box-shadow:var(--md-sys-elevation-level1)}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:var(--space-4);padding:var(--space-5);background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);border-block-end:1px solid var(--md-sys-color-outline-variant)}.panel-head .eyebrow{color:var(--md-sys-color-on-primary-container)}.panel-head h3{margin:0}.status-chip,.label-chip{display:inline-flex;align-items:center;gap:var(--space-2);min-block-size:32px;padding-inline:var(--space-3);border-radius:var(--md-sys-shape-corner-full);font:var(--md-sys-typescale-label-medium);letter-spacing:.03125rem}.status-chip::before{display:grid;place-items:center;inline-size:18px;block-size:18px;border:1px solid currentColor;border-radius:var(--md-sys-shape-corner-full);font-weight:700}.status-success{background:var(--hwahap-color-success-container);color:var(--hwahap-color-on-success-container)}.status-success::before{content:"✓"}.status-warning{background:var(--hwahap-color-warning-container);color:var(--hwahap-color-on-warning-container)}.status-warning::before{content:"!"}.status-error{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}.status-error::before{content:"×"}.summary-grid{display:grid;background:var(--md-sys-color-surface-container-lowest)}.metric{min-width:0;padding:var(--space-5);border-block-end:1px solid var(--md-sys-color-outline-variant)}.metric:last-child{border-block-end:0}.metric-label,.field-label{display:block;margin-block-end:var(--space-1);color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-label-medium)}.metric-value{display:block;font:var(--md-sys-typescale-title-large)}.cards,.metrics-grid,.proposal-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:var(--space-4);margin-block-start:var(--space-6)}.change-grid{display:grid;gap:var(--space-6);margin-block-start:var(--space-6)}.card,.receipt,.proposal-card,.risk-card{min-width:0;padding:var(--space-5)}.change-card-header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-4);padding:var(--space-5);border-block-end:1px solid var(--md-sys-color-outline-variant)}.change-card-header h3{margin:0}.change-card-body{display:grid;padding-inline:var(--space-5)}.change-field{min-width:0;padding-block:var(--space-5)}.change-field+.change-field{border-block-start:1px solid var(--md-sys-color-outline-variant)}.expected-change{margin:0 var(--space-5) var(--space-5);padding:var(--space-4);border-radius:var(--md-sys-shape-corner-medium);background:var(--hwahap-color-success-container);color:var(--hwahap-color-on-success-container)}.notice{color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-body-medium)}details{border-radius:var(--md-sys-shape-corner-large)}details>summary{--state-layer-color:var(--md-sys-color-primary);position:relative;isolation:isolate;overflow:hidden;cursor:pointer;list-style:none;display:flex;align-items:center;gap:var(--space-2);min-block-size:48px;padding:var(--space-3) var(--space-4);border:1px solid transparent;border-radius:var(--md-sys-shape-corner-full);color:var(--md-sys-color-primary);font:var(--md-sys-typescale-label-large)}details>summary::-webkit-details-marker{display:none}details>summary::before{content:"›";display:inline-grid;place-items:center;inline-size:24px;block-size:24px;font-size:1.5rem;transition:transform var(--md-sys-motion-standard-spatial)}details[open]>summary{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);border-color:var(--md-sys-color-outline)}details[open]>summary::before{transform:rotate(90deg)}.evidence-vault{border-radius:var(--md-sys-shape-corner-extra-large);background:var(--md-sys-color-surface-container-low)}.evidence-vault>summary{padding:var(--space-5);border-radius:var(--md-sys-shape-corner-extra-large);font:var(--md-sys-typescale-title-large)}.evidence-content{padding:0 var(--space-5) var(--space-5)}.evidence-content>section{margin-block:var(--space-12)}.empty{color:var(--md-sys-color-on-surface-variant);font-style:italic}ul,ol{padding-inline-start:1.4rem}.timeline{display:grid;gap:var(--space-3)}.timeline li{padding:var(--space-4);border-radius:var(--md-sys-shape-corner-medium);background:var(--md-sys-color-surface-container-highest)}dl{margin:0}dt{margin-block-start:var(--space-3);color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-label-medium)}dd{margin-inline-start:0;min-width:0}.table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--md-sys-color-outline);border-radius:var(--md-sys-shape-corner-medium)}table{border-collapse:collapse;width:100%;min-width:700px;background:var(--md-sys-color-surface-container-lowest)}caption{padding:var(--space-3);text-align:start;color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-title-medium)}td,th{padding:var(--space-3);text-align:start;vertical-align:top;overflow-wrap:anywhere;border-block-end:1px solid var(--md-sys-color-outline-variant)}th{background:var(--md-sys-color-surface-container);font:var(--md-sys-typescale-label-medium)}tbody tr:last-child td{border-block-end:0}.receipt-list{display:grid;gap:var(--space-4)}.receipt dl{display:grid;grid-template-columns:minmax(8rem,auto) 1fr;gap:var(--space-1) var(--space-3)}.snapshot{font-family:var(--md-ref-typeface-mono);font-size:.75rem}.supporting-pane>section{padding:var(--space-5);border-radius:var(--md-sys-shape-corner-large-increased);background:var(--md-sys-color-surface-container)}.report-footer{margin-block-start:var(--section-space);padding-block-start:var(--space-6);border-block-start:1px solid var(--md-sys-color-outline-variant);color:var(--md-sys-color-on-surface-variant);font:var(--md-sys-typescale-body-medium)}
-@media (max-width:599px){.top-app-bar{min-block-size:56px}.change-card-header{align-items:flex-start;flex-direction:column}.evidence-content{padding-inline:var(--space-3)}.receipt dl{grid-template-columns:1fr}}
+.evidence-brief{margin:0 var(--space-4) var(--space-4);padding:var(--space-5);border-radius:var(--md-sys-shape-corner-medium);background:var(--md-sys-color-surface-container-low);color:var(--md-sys-color-on-surface)}.evidence-conclusion{font:var(--md-sys-typescale-title-medium)}.fivew3h-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:var(--space-3);margin-block:var(--space-5)}.fivew3h-grid>div{min-width:0;padding:var(--space-4);border-radius:var(--md-sys-shape-corner-small);background:var(--md-sys-color-surface-container-lowest)}.fivew3h-grid dt{margin-block-start:0;color:var(--md-sys-color-primary)}.evidence-source{padding-block-start:var(--space-4);border-block-start:1px solid var(--md-sys-color-outline-variant)}.evidence-limit{margin-block:var(--space-4) 0;padding:var(--space-4);border-radius:var(--md-sys-shape-corner-small);background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}.completion-judgment{padding:var(--space-5);border-radius:var(--md-sys-shape-corner-medium);background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);font:var(--md-sys-typescale-title-medium)}.decision-list{display:grid;gap:var(--space-4);margin-block-start:var(--space-6)}.decision-item{padding:var(--space-5);border-radius:var(--md-sys-shape-corner-medium);background:var(--md-sys-color-surface-container-highest)}
+@media (max-width:599px){.top-app-bar{min-block-size:56px}.change-card-header{align-items:flex-start;flex-direction:column}.evidence-content{padding-inline:var(--space-3)}.receipt dl{grid-template-columns:1fr}.evidence-brief{margin-inline:0;padding:var(--space-4)}}
 @media (min-width:600px) and (max-width:839px){:root{--layout-margin:24px;--section-space:64px}.summary-grid{grid-template-columns:1fr 1fr}.metric:nth-child(odd){border-inline-end:1px solid var(--md-sys-color-outline-variant)}.metric:nth-last-child(-n+2){border-block-end:0}}
 @media (min-width:840px){:root{--layout-margin:24px;--section-space:72px}.hero{grid-template-columns:minmax(0,1fr) minmax(300px,420px);gap:var(--space-10);padding-block:var(--space-12)}.summary-grid{grid-template-columns:1fr 1fr}.metric:nth-child(odd){border-inline-end:1px solid var(--md-sys-color-outline-variant)}.metric:nth-last-child(-n+2){border-block-end:0}.decision-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr);gap:var(--space-6);align-items:start}.supporting-pane{position:sticky;inset-block-start:var(--space-4)}}
 @media (min-width:1200px){:root{--layout-margin:32px;--section-space:80px}.decision-layout{grid-template-columns:minmax(0,2fr) minmax(320px,1fr);gap:var(--space-8)}.change-card-body{grid-template-columns:repeat(3,minmax(0,1fr));padding:var(--space-5)}.change-field{padding:0 var(--space-5)}.change-field:first-child{padding-inline-start:0}.change-field:last-child{padding-inline-end:0}.change-field+.change-field{border-block-start:0;border-inline-start:1px solid var(--md-sys-color-outline-variant)}.proposal-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -401,10 +402,46 @@ def render_report(payload: dict, source_digest: str) -> bytes:
         return "기록 없음" if value is None or value == "" else esc(value)
     def card(label: str, value: Any) -> str:
         return f'<article class="card md-card md-card-filled"><h3>{esc(label)}</h3><p>{esc(value)}</p></article>'
+    def unique_texts(values: Any) -> list[str]:
+        result: list[str] = []
+        for value in values if isinstance(values, list) else []:
+            text = _text(value)
+            if text and text not in result:
+                result.append(text)
+        return result
+    def duration_text(value: Any) -> str:
+        if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+            return "기록 없음"
+        seconds = int(value)
+        days, seconds = divmod(seconds, 86400)
+        hours, seconds = divmod(seconds, 3600)
+        minutes, seconds = divmod(seconds, 60)
+        parts = ([f"{days}일"] if days else []) + ([f"{hours}시간"] if hours else [])
+        parts += ([f"{minutes}분"] if minutes else []) + ([f"{seconds}초"] if seconds or not parts else [])
+        return " ".join(parts)
+    def fivew3h_details(summary_label: str, claim: str, rows: tuple[tuple[str, str], ...],
+                         evidence: Any, limitation: str) -> str:
+        facts = "".join(f'<div><dt>{esc(label)}</dt><dd>{esc(value)}</dd></div>' for label, value in rows)
+        return (f'<details class="evidence-explanation"><summary>{esc(summary_label)}</summary>'
+                f'<div class="evidence-brief"><p class="evidence-conclusion"><strong>이 근거가 뒷받침하는 판단</strong><br>{esc(claim)}</p>'
+                f'<dl class="fivew3h-grid">{facts}</dl><div class="evidence-source"><strong>근거 원문</strong>{items(evidence)}</div>'
+                f'<p class="evidence-limit"><strong>이 근거로는 알 수 없는 것</strong><br>{esc(limitation)}</p></div></details>')
     summary = payload.get("summary", {})
     contract = payload.get("contract", {})
     agents = payload.get("agents", {})
     units = payload.get("units", [])
+    timeline = payload.get("timeline", []) if isinstance(payload.get("timeline"), list) else []
+    first_event = timeline[0] if timeline and isinstance(timeline[0], dict) else {}
+    last_event = timeline[-1] if timeline and isinstance(timeline[-1], dict) else {}
+    report_actor = _text(last_event.get("actor")) or "항목별 기록 주체 미기록"
+    first_timestamp = _text(first_event.get("timestamp"))
+    last_timestamp = _text(last_event.get("timestamp"))
+    if first_timestamp and last_timestamp and first_timestamp != last_timestamp:
+        report_when = f"상태 이벤트 기준 {first_timestamp}부터 {last_timestamp}까지"
+    elif last_timestamp:
+        report_when = f"상태 이벤트에는 {last_timestamp}만 기록됨; 항목별 확인 시각은 미기록"
+    else:
+        report_when = "항목별 확인 시각 미기록"
     contract_meta = (("schema_version", contract.get("schema_version")), ("goal_id", contract.get("goal_id")),
                      ("goal", contract.get("goal")), ("locked", contract.get("locked")),
                      ("lock_sha256", contract.get("lock_sha256")))
@@ -479,6 +516,25 @@ def render_report(payload: dict, source_digest: str) -> bytes:
                     fields += f'<dt>diff snapshot</dt><dd>{snapshot_html(receipt.get("diff_snapshot"))}</dd>'
                     cards.append(f'<article class="receipt md-card md-card-filled"><h3>{esc(item.get("unit_id"))}/{esc(receipt.get("test_id"))}</h3><dl>{fields}</dl></article>')
         return '<div class="receipt-list">' + "".join(cards) + '</div>' if cards else '<p class="empty">기록 없음</p>'
+    receipt_groups = payload.get("tests-metrics", {}).get("test_receipts", [])
+    receipt_count = sum(len(item.get("receipts", [])) for item in receipt_groups if isinstance(item, dict) and isinstance(item.get("receipts"), list))
+    final_paths = unique_texts([path for attempt in final_attempts if isinstance(attempt, dict)
+                                for path in (attempt.get("diff_snapshot", {}).get("changed_paths", [])
+                                             if isinstance(attempt.get("diff_snapshot"), dict) else [])])
+    overall_where = (f"최종 검토 snapshot의 변경 경로 {len(final_paths)}개. 전체 경로는 원본 증거의 최종 검토에 있음"
+                     if final_paths else "이 항목과 연결된 변경 경로가 정본 payload에 없음")
+    def contextual_evidence(label: str, claim: str, why: str, method: str, evidence: Any,
+                            limitation: str) -> str:
+        evidence_values = evidence if isinstance(evidence, list) else []
+        rows = (("누가 (Who)", f"항목별 작성자는 미기록. 완료 상태 기록자는 {report_actor}"),
+                ("언제 (When)", report_when),
+                ("어디서 (Where)", overall_where),
+                ("무엇을 (What)", claim),
+                ("왜 (Why)", why),
+                ("어떻게 (How)", method),
+                ("얼마나 (How much)", f"근거 문구 {len(evidence_values)}개; 항목에 직접 연결된 구조화 receipt 필드는 없음"),
+                ("얼마 동안 (How long)", "항목별 조사·검증 시간 미기록"))
+        return fivew3h_details(label, claim, rows, evidence_values, limitation)
     def improvement_text(record: dict[str, Any]) -> str:
         def shown(value: Any) -> str:
             if value is None or value == "":
@@ -492,12 +548,19 @@ def render_report(payload: dict, source_digest: str) -> bytes:
         f'<h3>{esc(candidate.get("summary"))}</h3>'
         f'<span class="field-label">기대 효과</span><p>{esc(candidate.get("expected_effect"))}</p>'
         f'<span class="field-label">다음 결정</span><p>{esc(candidate.get("next_action"))}</p>'
-        f'<details><summary>제안 근거 보기</summary>{items(candidate.get("evidence"))}</details>'
+        f'{contextual_evidence("제안 근거와 한계 보기", _text(candidate.get("summary")), "완료 결과에 후속 후보로 기록됐지만 현재 목표 범위를 넓히므로 사용자 승인이 필요함", "proposed 상태, 기대 효과, 다음 조치와 근거 원문을 함께 대조함", candidate.get("evidence"), "근거 원문만으로 기대 효과가 실제로 발생한다고 입증할 수 없고, 항목별 작성자·실행 receipt·소요 시간도 기록되지 않음")}'
         f'<p class="notice">보고 전용 · 사용자 승인 전에는 실행하지 않음</p></article>'
         for candidate in payload.get("improvement-candidates", []) if isinstance(candidate, dict)
     ) or '<p class="empty">추가 개선 제안 없음</p>'
     failure_items = [item for item in payload.get("failures-recovery", []) if item.get("failure") or item.get("recovery") or item.get("improvement_history")]
-    failure_html = "".join(f'<article class="card md-card md-card-filled"><h3>{esc(item.get("unit_id"))}</h3><p>{esc(item.get("failure", {}).get("code", "실패 없음"))}: {esc(item.get("failure", {}).get("reason", ""))}</p><p>실패 증거</p>{items(item.get("failure", {}).get("evidence"))}<p>failure.recovery: {shown(item.get("failure", {}).get("recovery"))}</p><p>recovery.reason: {shown(item.get("recovery", {}).get("reason"))}</p><p>recovery.action: {shown(item.get("recovery", {}).get("action"))}</p><p>복구 증거</p>{items(item.get("recovery", {}).get("evidence"))}{items([improvement_text(record) for record in item.get("improvement_history", [])])}</article>' for item in failure_items) or '<p class="empty">기록 없음</p>'
+    failure_html = "".join(
+        f'<article class="card md-card md-card-filled"><h3>{esc(item.get("unit_id"))}</h3>'
+        f'<p>{esc(item.get("failure", {}).get("code", "실패 없음"))}: {esc(item.get("failure", {}).get("reason", ""))}</p>'
+        f'{contextual_evidence("실패 판단 근거와 한계 보기", _text(item.get("failure", {}).get("reason")) or "실패 기록", "해당 작업 단위가 실패 상태가 된 이유를 확인하기 위함", "failure code·reason과 연결된 근거 원문을 대조함", item.get("failure", {}).get("evidence"), "원문에 연결된 실행 receipt가 없으면 이 보고서만으로 실패를 재현할 수 없음")}'
+        f'<p>failure.recovery: {shown(item.get("failure", {}).get("recovery"))}</p><p>recovery.reason: {shown(item.get("recovery", {}).get("reason"))}</p><p>recovery.action: {shown(item.get("recovery", {}).get("action"))}</p>'
+        f'{contextual_evidence("복구 판단 근거와 한계 보기", _text(item.get("recovery", {}).get("action")) or "복구 기록", "실패 뒤 어떤 조치로 원래 계획에 복귀했는지 확인하기 위함", "recovery reason·action과 개선 이력을 근거 원문과 대조함", item.get("recovery", {}).get("evidence"), "복구 후 결과가 지속된 기간과 운영 환경의 효과는 기록되지 않음")}'
+        f'{items([improvement_text(record) for record in item.get("improvement_history", [])])}</article>'
+        for item in failure_items) or '<p class="empty">기록 없음</p>'
     deviation_html = "".join(
         f'<article class="change-card panel md-card md-card-filled"><header class="change-card-header">'
         f'<div><span class="eyebrow">Resolved finding</span><h3>{esc(item.get("summary"))}</h3></div>'
@@ -509,14 +572,14 @@ def render_report(payload: dict, source_digest: str) -> bytes:
         '위의 “이전 문제”가 다시 발생하기 전에 “적용한 개선”에 적힌 검사로 '
         '같은 유형의 누락이나 오판을 발견하거나 차단할 것으로 기대합니다. '
         '표시된 검증 근거 범위의 기대이며 실제 운영 효과를 보장한다는 뜻은 아닙니다.</p>'
-        f'<details><summary>검증 근거 보기</summary>{items(item.get("evidence"))}</details></article>'
+        f'{contextual_evidence("검증 근거와 한계 보기", _text(item.get("prevention")), "기록된 원인에 대응하는 예방 조치가 적용됐다는 판단을 확인하기 위함", "이전 영향·원인·예방 조치와 근거 원문을 한 항목으로 대조함", item.get("evidence"), "근거 원문이 실행 receipt인지 단순 검토 문구인지 구분되어 있지 않아 실제 운영 효과까지 보장하지 않음")}</article>'
         for item in payload.get("deviations", {}).get("items", [])
     ) or '<p class="empty">기록된 문제와 개선 없음</p>'
     deferred_html = "".join(
         f'<article class="risk-card tile md-card md-card-filled"><span class="status-chip status-error">아직 확인되지 않음</span>'
         f'<h3>{esc(item.get("summary"))}</h3><span class="field-label">남은 이유</span><p>{esc(item.get("reason"))}</p>'
         f'<span class="field-label">다음 결정</span><p>{esc(item.get("next_action"))}</p>'
-        f'<details><summary>현재 근거 보기</summary>{items(item.get("evidence"))}</details></article>'
+        f'{contextual_evidence("남은 위험의 근거와 한계 보기", _text(item.get("summary")), _text(item.get("reason")) or "직접 검증 범위가 부족함", "검증하지 않은 경계와 다음 조치를 근거 원문에 맞춰 확인함", item.get("evidence"), "이 문구는 검증 범위의 한계를 기록한 것이며 위험의 발생 확률·영향도·해소 여부를 측정한 결과가 아님")}</article>'
         for item in payload.get("deviations", {}).get("deferred_security", [])
     ) or '<p class="empty">별도로 보류된 위험 없음</p>'
     provenance = payload.get("provenance", {})
@@ -539,15 +602,114 @@ def render_report(payload: dict, source_digest: str) -> bytes:
     status_label = "완료" if status == "completed" else "실패 또는 중단" if status in {"failed", "blocked", "cancelled"} else "진행 상태 확인 필요"
     passed_units = sum(1 for unit in units if isinstance(unit, dict) and unit.get("status") == "passed")
     total_units = len(units) if isinstance(units, list) else 0
+    latest_reviews = [unit.get("review_history", [])[-1] for unit in units if isinstance(unit, dict)
+                      and isinstance(unit.get("review_history"), list) and unit.get("review_history")]
+    def review_chain_passes(review: Any) -> bool:
+        if not isinstance(review, dict) or review.get("outcome") != "pass":
+            return False
+        verifier = review.get("verifier", {})
+        scope_reviewer = review.get("scope_reviewer", {})
+        digests = [review.get("diff_digest"), verifier.get("diff_digest"), scope_reviewer.get("diff_digest")]
+        snapshot = review.get("diff_snapshot", {})
+        if isinstance(snapshot, dict):
+            digests.append(snapshot.get("diff_digest"))
+        present = [value for value in digests if isinstance(value, str) and value]
+        return (isinstance(verifier, dict) and verifier.get("status") == "pass"
+                and isinstance(scope_reviewer, dict) and scope_reviewer.get("status") == "pass"
+                and bool(present) and len(set(present)) == 1)
+    reviewed_units = sum(1 for review in latest_reviews if review_chain_passes(review))
+    final_passes = [attempt for attempt in final_attempts if isinstance(attempt, dict) and attempt.get("status") == "pass"]
+    final_review_passed = reviews.get("final_review", {}).get("status") == "pass" and bool(final_passes)
+    completion_consistent = (status == "completed" and total_units > 0 and passed_units == total_units
+                             and reviewed_units == total_units and final_review_passed)
+    completion_evidence = unique_texts([
+        evidence for review in latest_reviews if isinstance(review, dict)
+        for reviewer in (review.get("verifier", {}), review.get("scope_reviewer", {}))
+        if isinstance(reviewer, dict) for evidence in reviewer.get("evidence", [])
+    ] + [evidence for attempt in final_attempts if isinstance(attempt, dict) for evidence in attempt.get("evidence", [])])
+    writers = unique_texts([unit.get("writer") for unit in units if isinstance(unit, dict)])
+    verifier_models = unique_texts([review.get("verifier", {}).get("model") for review in latest_reviews if isinstance(review, dict)])
+    scope_models = unique_texts([review.get("scope_reviewer", {}).get("model") for review in latest_reviews if isinstance(review, dict)])
+    final_models = unique_texts([attempt.get("model") for attempt in final_attempts if isinstance(attempt, dict)])
+    who_text = (f"구현 {', '.join(writers) or '미기록'}; Luna 검증 {', '.join(verifier_models) or '미기록'}; "
+                f"Terra 범위 검수 {', '.join(scope_models) or '미기록'}; Sol 최종 검토 {', '.join(final_models) or '미기록'}")
+    recorded_tests = metrics.get("test_runs")
+    receipt_gap = (isinstance(recorded_tests, int) and recorded_tests != receipt_count)
+    if completion_consistent:
+        completion_conclusion = (f"실행 기록상 완료 판정은 일관됩니다. 작업 단위 {passed_units}개가 모두 통과했고, "
+                                 f"각 단위의 최신 Luna 검증과 Terra 범위 검수 {reviewed_units}개가 같은 diff에서 통과했으며, "
+                                 "Sol 최종 검토도 통과한 뒤 상태가 completed로 기록됐습니다.")
+    else:
+        completion_conclusion = (f"상태는 {status_label}로 기록됐지만 완료 판정에 필요한 기록이 모두 맞물리지 않습니다. "
+                                 f"작업 단위 {passed_units}/{total_units}, 단위 검토 {reviewed_units}/{total_units}, "
+                                 f"Sol 최종 검토 {'통과' if final_review_passed else '미통과'}입니다.")
+    receipt_explanation = (f"메트릭에는 테스트 실행 {display(recorded_tests)}회가 기록됐지만 상세 실행 receipt는 {receipt_count}건입니다. "
+                           "두 수치는 같은 증거가 아니므로 상세 receipt가 없는 실행은 이 HTML만으로 명령과 출력을 재현할 수 없습니다."
+                           if receipt_gap else f"기록된 테스트 실행은 {display(recorded_tests)}회이고 상세 실행 receipt는 {receipt_count}건입니다.")
     deviation_count = len(payload.get("deviations", {}).get("items", []))
+    completion_rows = (
+        ("누가 (Who)", who_text),
+        ("언제 (When)", report_when),
+        ("어디서 (Where)", overall_where),
+        ("무엇을 (What)", f"목표 ‘{_text(summary.get('goal'))}’의 상태를 {status_label}로 판단"),
+        ("왜 (Why)", f"상태 {status}; 작업 단위 {passed_units}/{total_units}; 동일 diff 단위 검토 {reviewed_units}/{total_units}; Sol 최종 검토 {'pass' if final_review_passed else '미통과'}"),
+        ("어떻게 (How)", "작업 단위 상태 → Luna 기능 검증 → Terra 계획·범위 검수 → Sol 최종 snapshot 검토 → completed 상태 순서로 기록을 대조"),
+        ("얼마나 (How much)", f"검수 회차 {display(metrics.get('review_rounds'))}회; 기록된 테스트 실행 {display(recorded_tests)}회; 상세 receipt {receipt_count}건; 개선 {deviation_count}건"),
+        ("얼마 동안 (How long)", f"소요 시간 메트릭 {duration_text(metrics.get('elapsed_seconds'))}; 개별 단계 시간은 미기록"),
+    )
     risk_count = len(payload.get("deviations", {}).get("deferred_security", []))
     candidate_count = len(payload.get("improvement-candidates", []))
+    def decision_record(action: Any) -> str:
+        action_text = _text(action)
+        relevant_section = "이 보고서"
+        decision_evidence: list[str] = []
+        why = "정본 payload가 후속 조치로 기록했기 때문"
+        method = "관련 기록과 원문 근거를 확인한 뒤 승인·보류·추가 검증 중 하나를 사용자가 선택"
+        count_text = "관련 항목 수를 자동으로 연결할 수 없음"
+        if action_text.startswith("범위 편차"):
+            records = payload.get("deviations", {}).get("items", [])
+            relevant_section, count_text = "문제와 개선 섹션", f"개선 기록 {len(records)}건"
+            why = "이미 적용한 prevention이 같은 유형의 문제를 막는지 사용자가 수용해야 하기 때문"
+            decision_evidence = unique_texts([value for item in records if isinstance(item, dict)
+                                              for value in [item.get("summary"), *item.get("evidence", [])]])
+        elif action_text.startswith("보류된 보안"):
+            records = payload.get("deviations", {}).get("deferred_security", [])
+            relevant_section, count_text = "아직 남은 위험 섹션", f"보류된 위험 {len(records)}건"
+            why = "현재 목표 범위에서 직접 검증하지 않은 보안 경계는 새 승인 없이는 구현할 수 없기 때문"
+            decision_evidence = unique_texts([value for item in records if isinstance(item, dict)
+                                              for value in [item.get("summary"), item.get("reason"), *item.get("evidence", [])]])
+        elif "반복 실패" in action_text:
+            histories = [record for unit in units if isinstance(unit, dict)
+                         for record in unit.get("improvement_history", []) if isinstance(record, dict)]
+            relevant_section, count_text = "실패·복구 원본 기록", f"개선 이력 {len(histories)}건"
+            why = "두 번 실패한 작업은 같은 전략을 반복하지 않고 Sol 재계획 여부를 결정해야 하기 때문"
+            decision_evidence = unique_texts([value for record in histories for value in record.get("evidence", [])])
+        elif "token" in action_text:
+            relevant_section, count_text = "원본 수치의 token 사용량", "token aggregate 1항목"
+            why = "플랫폼이 정확한 합계를 제공하지 않은 상태에서 추정치를 사실처럼 쓰지 않기 위함"
+            decision_evidence = unique_texts([token.get("availability"), token.get("reason"), token.get("source")])
+        elif "Fast 상태" in action_text:
+            relevant_section, count_text = "출처와 digest의 fast_status", "Fast 상태 1항목"
+            why = "실제 Fast 활성 여부를 관찰한 receipt가 없어 모델 실행 조건을 확정할 수 없기 때문"
+            decision_evidence = [f"fast_status={_text(provenance.get('fast_status')) or '기록 없음'}"]
+        rows = (("누가 (Who)", "사용자가 최종 결정. Hwahap는 정본 payload 조건을 근거로 이 조치만 제시"),
+                ("언제 (When)", "이 보고서를 검토한 뒤; 결정 기한은 미기록"),
+                ("어디서 (Where)", relevant_section),
+                ("무엇을 (What)", action_text),
+                ("왜 (Why)", why),
+                ("어떻게 (How)", method),
+                ("얼마나 (How much)", count_text),
+                ("얼마 동안 (How long)", "결정·후속 작업 소요 시간 미기록"))
+        details = fivew3h_details("이 결정이 필요한 근거와 한계 보기", action_text, rows, decision_evidence,
+                                  "이 보고서는 결정을 제안할 뿐 승인으로 간주하거나 후속 작업을 자동 실행하지 않음")
+        return f'<article class="decision-item"><h3>{esc(action_text)}</h3><p><strong>판단 이유</strong><br>{esc(why)}</p>{details}</article>'
+    decision_html = '<div class="decision-list">' + "".join(decision_record(action) for action in payload.get("next-actions", [])) + '</div>'
     summary_metrics = (
         f'<article class="outcome-panel panel md-card md-card-elevated"><div class="panel-head"><div><span class="eyebrow">Verified outcome</span><h3>완료 근거 요약</h3></div>'
         f'<span class="status-chip {status_class}">{esc(status_label)}</span></div>'
-        f'<div class="summary-grid"><div class="metric"><span class="metric-label">최종 판정</span><span class="metric-value">{esc(status_label)} · Sol {esc(reviews.get("final_review", {}).get("status"))}</span></div>'
+        f'<div class="summary-grid"><div class="metric"><span class="metric-label">최종 판정</span><span class="metric-value">실행 기록상 {esc(status_label)} · Sol {esc(reviews.get("final_review", {}).get("status"))}</span></div>'
         f'<div class="metric"><span class="metric-label">통과한 작업 단위</span><span class="metric-value">{passed_units} / {total_units}</span></div>'
-        f'<div class="metric"><span class="metric-label">검증 기록</span><span class="metric-value">{display(metrics.get("test_runs"))}개 receipt</span></div>'
+        f'<div class="metric"><span class="metric-label">검증 기록</span><span class="metric-value">실행 {display(recorded_tests)}회 · 상세 receipt {receipt_count}건</span></div>'
         f'<div class="metric"><span class="metric-label">발견·개선한 문제</span><span class="metric-value">{deviation_count}건</span></div></div></article>'
     )
     human_sections = (
@@ -564,10 +726,12 @@ def render_report(payload: dict, source_digest: str) -> bytes:
         f'<section id="improvement-candidates"><span class="eyebrow">Report only</span><h2>다음에 개선할 수 있는 것</h2>'
         f'<p class="section-intro">현재 기능을 실패로 바꾸지 않는 후속 후보 {candidate_count}건입니다. 기대 효과와 다음 결정을 확인한 뒤 사용자가 승인해야 실행합니다.</p>'
         f'<div class="proposal-grid">{candidate_html}</div></section>'
-        f'<section id="next-actions"><span class="eyebrow">Decision</span><h2>지금 사용자가 판단할 것</h2>{items(payload.get("next-actions"))}</section>'
+        f'<section id="next-actions"><span class="eyebrow">Decision</span><h2>지금 사용자가 판단할 것</h2>{decision_html}</section>'
         f'<section id="tests-metrics"><span class="eyebrow">Verification</span><h2>어떤 근거로 완료라고 판단했나</h2>'
-        f'<div class="metrics-grid"><article class="card tile md-card md-card-filled"><h3>검증 수치</h3><dl>{metrics_html}</dl><p>{token_html}</p></article>'
-        f'<article class="card tile md-card md-card-filled"><h3>최종 리뷰</h3>{final_review_html}</article></div>'
+        f'<p class="completion-judgment">{esc(completion_conclusion)}</p><p class="section-intro">{esc(receipt_explanation)}</p>'
+        f'{fivew3h_details("완료 판단의 5W3H와 근거 원문 보기", completion_conclusion, completion_rows, completion_evidence, receipt_explanation)}'
+        f'<div class="metrics-grid"><article class="card tile md-card md-card-filled"><h3>원본 수치</h3><p class="notice">수치는 판정 문장을 뒷받침하는 기록이며, 수치만으로 완료를 뜻하지 않습니다.</p><dl>{metrics_html}</dl><p>{token_html}</p></article>'
+        f'<article class="card tile md-card md-card-filled"><h3>Sol 최종 리뷰 원문</h3>{final_review_html}</article></div>'
         f'<details><summary>테스트 명령과 receipt 전체 보기</summary><h3>Acceptance commands</h3>{command_html}'
         f'<h3>Test receipts</h3>{receipt_items(payload.get("tests-metrics", {}).get("test_receipts", []))}</details></section>'
     )
