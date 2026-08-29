@@ -56,8 +56,8 @@ It also records:
   bound receipt, no-active/unavailable downgrade is invalid; every later bound
   receipt and completion sync retains that receipt's thread/objective pair.
 - `report`: a v4 receipt with the exact fields `schema_version`, `status`,
-  `generator` (`name: hwahap-report`, `version: 4`,
-  `design_system: material-design-3`, and pinned `theme_source`),
+  `generator` (`name: hwahap-report`, `version: 5`,
+  `design_system: material-design-3`, and pinned Icy Blue `theme_source`),
   `source_payload_sha256`, `data`, `html`, `generated_at`, and
   `redaction_policy: hwahap-report-v4`. Pending init uses null source,
   file digests, and generated values; its data/html path entries are present

@@ -34,6 +34,7 @@ Implementation supplements:
 - https://m3.material.io/components/bottom-sheets/specs
 - https://m3.material.io/components/lists/guidelines
 - https://m3.material.io/foundations/layout/canonical-examples/supporting-pane
+- https://coolors.co/tailwind/c2e7ff
 - https://www.w3.org/TR/WCAG22/
 
 Watch and XR pages were reviewed but their round-screen and spatial layout
@@ -69,9 +70,15 @@ colors, spacing, radii, font stacks, or shadows.
 - Success and warning are explicit Hwahap add-on roles with paired on-colors,
   literal Korean status text, and an icon. Color is never the only cue.
 
-The light theme uses the official static baseline family: primary `#6750a4`,
-surface `#fffbfe`, on-surface `#1d1b20`, and outline `#79747e`. The dark theme
-uses the paired Material roles rather than independent hand-picked colors.
+The role model remains Material 3; the custom hue source is Coolors' Icy Blue
+scale generated from seed `#C2E7FF`. Coolors reports: 50 `#E5F5FF`, 100
+`#CCEBFF`, 200 `#99D6FF`, 300 `#66C2FF`, 400 `#33ADFF`, 500 `#0099FF`, 600
+`#007ACC`, 700 `#005C99`, 800 `#003D66`, 900 `#001F33`, 950 `#001524`.
+
+Light mode uses 600–800 for actions, 50–100 for containers, and blue-tinted
+near-white surfaces. Dark mode uses 950–800 surfaces and 300–100 emphasis.
+Error, success, and warning retain distinct semantic hues instead of becoming
+blue. Every custom role must keep its paired on-color across themes.
 
 Every body-size text pair must meet 4.5:1. Large text and meaningful graphical
 boundaries must meet 3:1. Decorative outline-variant dividers are exempt from

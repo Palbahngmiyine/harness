@@ -25,10 +25,10 @@ from pathlib import Path
 
 _PIN_REDACTION_ENGINE_SHA256 = "aa2d19d5b4f6af13cc2a53c6d91bda453713d3526a02efe561b6fd939691e687"
 _PIN_INSTALLER = "bf42ef51b90725cb76249f595aab7836e708e69b4b9869b69dea30e120139658"
-_PIN_REPORT = "696425f380fb0e04b5ec231eecdda3aa97f5fada730e7e5a1c8fdca4d9f3ea5e"
+_PIN_REPORT = "8802c732c44a570162adf2011247f70be7670f1d9c61115336475d207c1f7f58"
 REPORT_SCHEMA_VERSION = 4
 REPORT_GENERATOR = {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
-                    "theme_source": "m3-foundations@2026-08-29"}
+                    "theme_source": "m3-foundations+coolors-c2e7ff@2026-08-29"}
 REPORT_REDACTION_POLICY = "hwahap-report-v4"
 _dependency_modules = None
 

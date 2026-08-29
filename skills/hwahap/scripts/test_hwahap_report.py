@@ -80,10 +80,13 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn('<h1>Hwahap 실행 결과</h1>', text)
         self.assertIn('<meta name="material-design-system" content="Material Design 3">', text)
         self.assertIn('<meta name="material-theme-source" content="Material Design 3 official guidance">', text)
+        self.assertIn('<meta name="color-theme-name" content="Icy Blue">', text)
+        self.assertIn('<meta name="color-theme-seed" content="#C2E7FF">', text)
+        self.assertIn('<meta name="color-theme-source" content="https://coolors.co/tailwind/c2e7ff">', text)
         self.assertIn('<meta name="material-foundations-pages" content="68">', text)
-        self.assertIn('--md-sys-color-primary:#6750a4', text)
-        self.assertIn('--md-sys-color-surface:#fffbfe', text)
-        self.assertIn('--md-sys-color-surface-container-low:#f7f2fa', text)
+        self.assertIn('--md-sys-color-primary:#007acc', text)
+        self.assertIn('--md-sys-color-surface:#fbfdff', text)
+        self.assertIn('--md-sys-color-surface-container-low:#f7fcff', text)
         self.assertIn('--md-sys-color-primary', text)
         self.assertIn('--md-sys-typescale-display-large', text)
         self.assertIn('--md-sys-shape-corner-large', text)
@@ -157,21 +160,25 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn('class="change-card panel md-card md-card-filled"', text)
         self.assertIn('class="card md-card md-card-filled"', text)
 
-    def test_official_material3_roles_scales_and_accessible_color_pairs(self) -> None:
+    def test_icy_blue_material_roles_scales_and_accessible_color_pairs(self) -> None:
         style = report.STYLE_BLOCK
         color_roles = (
-            "--md-sys-color-primary:#6750a4", "--md-sys-color-on-primary:#fff",
-            "--md-sys-color-primary-container:#eaddff", "--md-sys-color-on-primary-container:#21005d",
-            "--md-sys-color-secondary:#625b71", "--md-sys-color-tertiary:#7d5260",
+            "--md-sys-color-primary:#007acc", "--md-sys-color-on-primary:#fff",
+            "--md-sys-color-primary-container:#ccebff", "--md-sys-color-on-primary-container:#001f33",
+            "--md-sys-color-secondary:#005c99", "--md-sys-color-tertiary:#003d66",
             "--md-sys-color-error:#b3261e", "--md-sys-color-error-container:#f9dedc",
-            "--md-sys-color-surface:#fffbfe", "--md-sys-color-surface-container-lowest:#fff",
-            "--md-sys-color-surface-container-low:#f7f2fa", "--md-sys-color-surface-container:#f3edf7",
-            "--md-sys-color-surface-container-high:#ece6f0", "--md-sys-color-surface-container-highest:#e6e0e9",
-            "--md-sys-color-on-surface:#1d1b20", "--md-sys-color-on-surface-variant:#49454f",
-            "--md-sys-color-outline:#79747e", "--md-sys-color-outline-variant:#cac4d0",
+            "--md-sys-color-surface:#fbfdff", "--md-sys-color-surface-container-lowest:#fff",
+            "--md-sys-color-surface-container-low:#f7fcff", "--md-sys-color-surface-container:#f1faff",
+            "--md-sys-color-surface-container-high:#ebf8ff", "--md-sys-color-surface-container-highest:#e5f5ff",
+            "--md-sys-color-on-surface:#001f33", "--md-sys-color-on-surface-variant:#003d66",
+            "--md-sys-color-outline:#005c99", "--md-sys-color-outline-variant:#99d6ff",
+            "--md-sys-color-primary:#66c2ff", "--md-sys-color-surface:#001524",
+            "--md-sys-color-surface-container-highest:#003d66", "--md-sys-color-on-surface:#e5f5ff",
         )
         for token in color_roles:
             self.assertIn(token, style)
+        for obsolete in ("#6750a4", "#eaddff", "#fffbfe", "#f7f2fa"):
+            self.assertNotIn(obsolete, style)
         for role in ("display", "headline", "title", "body", "label"):
             for size in ("large", "medium", "small"):
                 self.assertIn(f"--md-sys-typescale-{role}-{size}:", style)
@@ -183,13 +190,15 @@ class HwahapReportTests(unittest.TestCase):
                            "--md-sys-state-focus-opacity:.10", "--md-sys-state-pressed-opacity:.10"):
             self.assertIn(foundation, style)
         light_pairs = (
-            ("#1d1b20", "#fffbfe"), ("#49454f", "#fffbfe"), ("#ffffff", "#6750a4"),
-            ("#21005d", "#eaddff"), ("#1d192b", "#e8def8"), ("#410e0b", "#f9dedc"),
+            ("#001f33", "#fbfdff"), ("#003d66", "#fbfdff"), ("#ffffff", "#007acc"),
+            ("#001f33", "#ccebff"), ("#001f33", "#e5f5ff"), ("#001524", "#99d6ff"),
+            ("#410e0b", "#f9dedc"),
             ("#0a3818", "#b8f2c5"), ("#2a2000", "#ffe16f"),
         )
         dark_pairs = (
-            ("#e6e0e9", "#141218"), ("#cac4d0", "#141218"), ("#381e72", "#d0bcff"),
-            ("#eaddff", "#4f378b"), ("#f9dedc", "#8c1d18"),
+            ("#e5f5ff", "#001524"), ("#ccebff", "#001524"), ("#001f33", "#66c2ff"),
+            ("#e5f5ff", "#005c99"), ("#001524", "#99d6ff"), ("#ccebff", "#003d66"),
+            ("#001f33", "#33adff"), ("#ffffff", "#007acc"), ("#f9dedc", "#8c1d18"),
             ("#b8f2c5", "#0a3818"), ("#ffe16f", "#4c3d00"),
         )
         for foreground, background in (*light_pairs, *dark_pairs):
