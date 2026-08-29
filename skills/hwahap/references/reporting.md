@@ -64,7 +64,7 @@ authority. Then invoke
 --reason <reason> --input-digest <digest> --evidence-ref <reference>`. The
 complete command's `--input-digest` must exactly equal the verified digest in
 the sole passing final-review snapshot. It atomically generates and validates fixed
-`report-data.json` and `report.html`, records the exact OpenDesign-sourced Material theme v4
+`report-data.json` and `report.html`, records the exact official-guidance Material 3
 receipt with source, data, and HTML digests, and appends the completed event
 and metrics.
 Run `validate` again; do not use a generic transition to `completed`. Only

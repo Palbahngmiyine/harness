@@ -1,39 +1,41 @@
-# Material report theme contract
+# Material 3 report contract
 
 Use this reference whenever Hwahap renders or reviews `report.html`.
 
-## Source boundary
+## Evidence boundary
 
-Primary visual reference:
+The visual and interaction contract comes from Google's current official
+Material 3 documentation. The snapshot date is 2026-08-29.
 
-- https://github.com/nexu-io/open-design/tree/a554d017c8fa12d8913354ba6cf792d26d0c3b54/design-systems/material
-- Snapshot: `a554d017c8fa12d8913354ba6cf792d26d0c3b54`
-- License: Apache-2.0
-- Material directory last changed at `f1a0b60c6cd1c9f5c735ae5645e47244b468e71c`
+Primary index:
 
-Read `USAGE.md`, `DESIGN.md`, `tokens.css`,
-`components.manifest.json`, `components.html`, and the three `preview/`
-pages before changing the renderer.
+- https://m3.material.io/foundations
+- https://m3.material.io/sitemap.xml
 
-The package explicitly says it is a curated fixture “inspired by Material”; it
-is not fresh evidence of Google's official Material 3 implementation. Describe
-the result as a Hwahap Material 3 theme informed by this fixture, not as an
-official Google component library.
+The sitemap contained 68 Foundations URLs. They were all opened and inspected:
 
-Official Material references remain the semantic and accessibility baseline:
+- Root 1; overview 2; building-for-all 2; content-design 8
+- customization 1; design-tokens 2; designing 5; glossary 1
+- interaction 6; layout 21; usability 2; watches 4
+- writing 3; XR 10
 
-- https://m3.material.io/styles/color/system/overview
-- https://m3.material.io/styles/typography/overview
-- https://m3.material.io/styles/shape/overview
+Implementation supplements:
+
+- https://m3.material.io/styles/color/roles
+- https://m3.material.io/styles/color/static/baseline
+- https://m3.material.io/styles/typography/type-scale-tokens
+- https://m3.material.io/styles/shape/corner-radius-scale
 - https://m3.material.io/styles/elevation/overview
-- https://m3.material.io/foundations/interaction/states/overview
-- https://m3.material.io/foundations/layout/understanding-layout/overview
-- https://m3.material.io/styles/motion/overview
+- https://m3.material.io/styles/motion/overview/how-it-works
 - https://www.w3.org/TR/WCAG22/
+
+Watch and XR pages were reviewed but their round-screen and spatial layout
+rules do not apply to a flat local web report. General accessibility, content,
+token, interaction, and layout rules still apply.
 
 ## Human reading order
 
-The page must answer these questions before exposing the ledger:
+Before exposing the ledger, answer:
 
 1. Did the goal complete?
 2. What was wrong?
@@ -41,86 +43,102 @@ The page must answer these questions before exposing the ledger:
 4. What changed and what improvement is expected?
 5. What remains unverified or needs a decision?
 
-Keep all canonical evidence in one collapsed native disclosure after this
-summary. Do not put raw rows between the title and the decision sections.
+Keep canonical evidence in one collapsed native disclosure after the summary.
+Do not place raw rows between the title and decision sections.
 
-## Fixture token contract
+## Token and color roles
 
-Copy the fixture's visual language, with semantic aliases where Hwahap needs
-Material roles:
+Use named `--md-sys-*` tokens. Component rules must not contain scattered raw
+colors, spacing, radii, font stacks, or shadows.
 
-- Background: `--bg: #f8fafd`
-- Surface: `--surface: #ffffff`
-- Warm/selected surface: `--surface-warm: #e8f0fe`
-- Text: `--fg: #202124`, `--fg-2: #3c4043`, `--muted: #5f6368`
-- Action: `--accent: #1a73e8`, white on-accent, hover and active mixtures
-- Boundaries: `--border: #dadce0`, `--border-soft: #edf0f2`
-- State: `--success: #188038`, `--warn: #f9ab00`, `--danger: #d93025`
-- Display/body/mono: Google Sans, Roboto, Roboto Mono with local fallbacks
-- Type sizes: 12, 14, 16, 18, 24, 32, 48, 64px
-- Spacing: 4, 8, 12, 16, 20, 24, 32, 48px
-- Section spacing: 96px desktop, 68px tablet, 48px phone
-- Shape: 4px, 12px, 24px, pill
-- Elevation: flat, one-pixel ring, 3px/8px raised shadow
-- Focus: four-pixel translucent blue ring
-- Motion: 150ms and 250ms with `cubic-bezier(.2,0,0,1)`
-- Container: 1200px with 36/24/16px responsive gutters
+- Primary is reserved for the strongest action and emphasis.
+- Secondary is used for less prominent controls and proposal emphasis.
+- Error and error-container communicate errors and unverified risk.
+- Surface is the page background. The five surface-container roles establish
+  hierarchy and remain mapped to the same regions at every breakpoint.
+- On-colors are used only on their paired container.
+- Outline marks interactive boundaries; outline-variant is decorative.
+- Success and warning are explicit Hwahap add-on roles with paired on-colors,
+  literal Korean status text, and an icon. Color is never the only cue.
 
-Do not scatter raw colors, radii, spacing, font stacks, or shadows outside the
-token declarations.
+The light theme uses the official static baseline family: primary `#6750a4`,
+surface `#fffbfe`, on-surface `#1d1b20`, and outline `#79747e`. The dark theme
+uses the paired Material roles rather than independent hand-picked colors.
+
+Every body-size text pair must meet 4.5:1. Large text and meaningful graphical
+boundaries must meet 3:1. Decorative outline-variant dividers are exempt from
+the target-boundary requirement.
+
+## Type, shape, elevation, and spacing
+
+- Declare all 15 baseline type-scale roles. Use only the subset needed for a
+  clear title, section heading, title, body, and label hierarchy.
+- Use `rem` for text. Korean needs sufficient line height and must survive a
+  200% text increase without clipping, overlap, or hidden information.
+- Keep critical prose at no more than 60 characters per line.
+- Declare the ten-step shape scale: 0, 4, 8, 12, 16, 20, 28, 32, 48, and full.
+- Avoid very round shapes on information-dense cards. Use full corners for
+  chips and compact targets only.
+- Prefer tonal surface hierarchy over shadows. Keep elevation levels few.
+- Use 4px-based spacing. Group related facts by proximity and separate major
+  decisions with negative space.
+
+## Adaptive scaffold
+
+Use the official web breakpoints:
+
+- Compact: under 600px, one pane, 16px margin.
+- Medium: 600–839px, one high-density pane, 24px margin.
+- Expanded: 840–1199px, primary and supporting panes, 24px margin.
+- Large: 1200–1599px, two panes with more spacing, 32px margin.
+- Extra-large: 1600px and above, two panes with 48px margin.
+
+The report has no third independent task, so extra-large remains two panes.
+The primary pane explains the outcome and changes; the supporting `aside`
+contains remaining risk. Do not stretch the same card layout wider.
+
+Use logical properties such as `inline`, `block`, `start`, and `end` so layout
+structure remains bidirectional. Page-level horizontal overflow is forbidden.
+Wide audit tables scroll only inside `.table-wrap`.
+
+## Interaction and accessibility
+
+- Use one `h1`, sequential headings, `header`, labeled `nav`, `main`, supporting
+  `aside`, and `footer` landmarks.
+- Native links and disclosures remain keyboard-operable.
+- Interactive targets use at least 48px block size.
+- Hover uses an 8% content-colored state layer; focus and press use 10%.
+  Only one pseudo-element layer represents the current state.
+- Focus also uses a visible 3px primary outline, so color fill is not the only
+  indicator.
+- Honor `prefers-reduced-motion`, `prefers-contrast`, dark mode, and print.
+- Wrap long text. Do not use ellipsis, fixed text height, or silent truncation.
+- Preserve vertical reflow at 200% zoom; tables are the only horizontal scroll
+  region.
 
 ## Required composition
 
-- Page: light gray background with one restrained blue ambient gradient.
-- App bar: white surface, thin bottom boundary, brand and explicit status.
-- Navigation: secondary button/chip treatment with border and blue focus ring.
-- Hero: 1.1fr explanation and 0.9fr raised outcome panel on desktop.
-- Outcome panel: panel header, status, and a divided metric grid.
-- Change record: raised or ringed panel with three warm mini-cards for problem,
-  cause, and applied improvement.
-- Remaining risk and proposal: neutral tiles with a state-colored edge or label,
-  not full saturated cards.
-- Evidence vault: one raised panel; inner cards stay flat or ringed.
-- Table: white surface, soft row boundaries, internal horizontal scrolling.
-- Footer: muted metadata and exact source disclosure.
-
-Use blue for interaction and one focal element. Use whitespace and surface
-layers before borders or shadows. Do not tint every section, use multiple
-unrelated accent colors, or make all headings the same size.
-
-## Interaction and state
-
-- Native links and disclosures have enabled, hover, focus-visible, and pressed
-  states where applicable.
-- Focus uses both the blue ring and a boundary/color change.
-- Every success, warning, and error color has literal Korean state text.
-- Targets are at least 44px high; Hwahap navigation and disclosures use 48px.
-- Honor `prefers-reduced-motion: reduce`.
-- Preserve keyboard order and semantic landmarks.
-
-## Dark, contrast, and adaptive behavior
-
-The dark extension follows `system/kit.dark.html`: `#0f1115` background,
-`#171a21` surface, `#f8fafc` text, `#a7adba` muted text, and `#2a2f3a`
-boundaries. Adjust the blue interaction color only as needed for contrast.
-
-- Phone below 640px: one column and 16px gutter.
-- Tablet below 1024px: one column where panels would become cramped, 24px gutter.
-- Desktop: 1200px container and 36px gutter.
-- Page-level horizontal overflow is forbidden.
-- Wide tables scroll only inside `.table-wrap`.
-- Increased-contrast and print modes remain usable.
+- Full-width tonal top app bar with brand and explicit status.
+- Scrollable pill navigation with enabled, hover, focus, and pressed states.
+- Hero with a restrained headline and a primary-container outcome panel.
+- Outcome metrics on surface-container-lowest.
+- Problem, cause, and fix grouped in one card with dividers, not nested cards.
+- Expected change uses the paired success container and states its limitation.
+- Remaining risk is a supporting pane; proposals use secondary emphasis.
+- Evidence uses one disclosure, tonal containers, semantic tables, and the
+  complete canonical ledger.
 
 ## Mechanical acceptance
 
-- OpenDesign source metadata and commit are present exactly once.
-- All fixture token groups are declared; key semantic roles are used through aliases.
-- Hero, panel, panel-head, metric-grid, mini-card/tile, status, and state
-  selectors exist.
-- Light, dark, increased-contrast, reduced-motion, phone, tablet, desktop, and
-  print rules exist.
-- Outcome content precedes deviations, proposals, validation, and evidence.
-- Evidence is collapsed initially and the exact canonical ledger appears once.
-- No Astryx, React, script, import map, CDN stylesheet, or external font load.
-- Major text/surface pairs meet WCAG 2.2 contrast.
+- Metadata identifies official Material guidance, the 68-page Foundations
+  audit, source URL, and snapshot date exactly once.
+- No OpenDesign, Astryx, Google Blue `#1a73e8`, React, script, import map, CDN
+  stylesheet, external font, or runtime network dependency remains.
+- All color, type, shape, elevation, motion, and state token groups exist.
+- Breakpoint rules exist at 600, 840, 1200, and 1600px.
+- Status has text and icon; focus and state layers are mechanically present.
+- Outcome precedes deviations, proposals, validation, and evidence.
+- Evidence starts collapsed; the canonical ledger appears exactly once.
+- Long sanitized text and all records remain available without a count cap.
+- Major light and dark text/container pairs pass contrast tests.
 - The complete HTML validates against the canonical payload.

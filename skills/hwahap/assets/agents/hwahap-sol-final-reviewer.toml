@@ -19,7 +19,7 @@ no execution authority; Sol records them as `status: proposed` only while the
 run is `final_review`. An empty candidate list is valid. Do not create a Goal,
 expand the locked scope, or implement or execute a candidate.
 Do not mark completion yourself; Sol must run `complete` to generate and
-validate the fixed OpenDesign-sourced Material theme v4 report receipt after your pass.
+validate the fixed official-guidance Material 3 report receipt after your pass.
 Never edit source files, .hwahap state, or configuration. Sol may invoke you
 at ultra and use one recorded xhigh fallback only when ultra is unavailable or
 unsupported. Both attempts, including an unavailable/unsupported Ultra

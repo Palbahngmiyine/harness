@@ -178,7 +178,7 @@ scope.
     values. `--input-digest` must exactly equal the verified digest in the sole
     passing final-review snapshot. It computes completed metrics, appends the final transition,
     generates and validates canonical `report-data.json` and fixed
-    `report.html`, and records the OpenDesign-sourced Material theme v4 receipt and separate file digests
+    `report.html`, and records the official-guidance Material 3 receipt and separate file digests
     atomically. A generic transition to `completed` is forbidden. Run
     `validate` after completion, then and only then call external
     `update_goal(complete)` when a Goal is bound. A local Goal or report never

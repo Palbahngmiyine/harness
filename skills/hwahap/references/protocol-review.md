@@ -73,7 +73,7 @@ record-count cap or slicing, and the derived `scope_audit` is report-only with
 previous problem, cause, applied improvement, expected change, remaining risk,
 and next user decision. It retains all allowlisted histories and long sanitized
 text without silent truncation in a collapsed evidence disclosure. The offline
-static document implements the fixed OpenDesign-sourced Material theme contract in
+static document implements the official-guidance Material 3 theme contract in
 `material3-report.md` and must not contain
 raw logs, secrets, or hidden reasoning.
 
@@ -83,8 +83,8 @@ on narrow screens; the page itself must not overflow horizontally.
 The renderer and validator share the exact canonical ledger, which prevents a
 new allowlisted field from being omitted from visible output.
 
-The v4 receipt is exact: `schema_version`, `status`, `generator` (Hwahap
-report version 4, `design_system: material-design-3`, and pinned
+The v4 schema receipt is exact: `schema_version`, `status`, `generator` (Hwahap
+report generator version 5, `design_system: material-design-3`, and pinned
 `theme_source`),
 `source_payload_sha256`, `data`, `html`,
 `generated_at`, and `redaction_policy`. Pending runs have null source, file
