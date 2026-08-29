@@ -78,12 +78,12 @@ class HwahapReportTests(unittest.TestCase):
         self.assertTrue(report.validate_report_bytes(data, digest, payload))
         text = data.decode()
         self.assertIn('<h1>Hwahap 실행 결과</h1>', text)
-        self.assertIn('<meta name="material-design-system" content="Material Design 3 theme">', text)
-        self.assertIn('<meta name="material-theme-source" content="OpenDesign material fixture">', text)
-        self.assertIn('a554d017c8fa12d8913354ba6cf792d26d0c3b54', text)
-        self.assertIn('--bg:#f8fafd', text)
-        self.assertIn('--surface:#fff', text)
-        self.assertIn('--accent:#1a73e8', text)
+        self.assertIn('<meta name="material-design-system" content="Material Design 3">', text)
+        self.assertIn('<meta name="material-theme-source" content="Material Design 3 official guidance">', text)
+        self.assertIn('<meta name="material-foundations-pages" content="68">', text)
+        self.assertIn('--md-sys-color-primary:#6750a4', text)
+        self.assertIn('--md-sys-color-surface:#fffbfe', text)
+        self.assertIn('--md-sys-color-surface-container-low:#f7f2fa', text)
         self.assertIn('--md-sys-color-primary', text)
         self.assertIn('--md-sys-typescale-display-large', text)
         self.assertIn('--md-sys-shape-corner-large', text)
@@ -93,6 +93,8 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn('prefers-contrast:more', text)
         self.assertIn('prefers-reduced-motion:reduce', text)
         self.assertNotIn('Astryx', text)
+        self.assertNotIn('OpenDesign', text)
+        self.assertNotIn('#1a73e8', text)
         self.assertNotIn('<script', text)
         self.assertNotIn('<link', text)
         self.assertIn('id="agents"', text)
@@ -113,7 +115,7 @@ class HwahapReportTests(unittest.TestCase):
         self.assertNotIn('<pre>', text)
         for semantic in ('summary-grid', '<nav class="section-nav"', '<details id="evidence-vault"',
                          'class="outcome-panel panel"',
-                         '<ol class="timeline">', '<caption>', '<table>', '<dl>'):
+                         '<aside class="supporting-pane"', '<ol class="timeline">', '<caption>', '<table>', '<dl>'):
             self.assertIn(semantic, text)
 
     def test_report_css_wraps_long_tokens_and_preserves_table_scroll_contract(self) -> None:
@@ -121,49 +123,53 @@ class HwahapReportTests(unittest.TestCase):
         payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
         digest = report.canonical_payload_digest(payload)
         text = report.render_report(payload, digest).decode()
-        self.assertIn("background:radial-gradient(circle at 88% 8%", text)
-        self.assertIn("color:var(--fg);font:var(--md-sys-typescale-body-large)", text)
+        self.assertIn("background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface)", text)
+        self.assertIn("body{margin:0;min-width:0", text)
+        self.assertIn("p{max-width:60ch}", text)
         self.assertIn(".table-wrap{max-width:100%;overflow-x:auto", text)
-        self.assertIn("table{border-collapse:collapse;width:100%;min-width:700px;background:var(--surface)", text)
+        self.assertIn("table{border-collapse:collapse;width:100%;min-width:700px", text)
         self.assertIn("td,th{padding:var(--space-3);text-align:start;vertical-align:top;overflow-wrap:anywhere", text)
-        self.assertIn("@media (max-width:639px)", text)
-        self.assertIn("@media (min-width:640px) and (max-width:1023px)", text)
-        self.assertIn("@media (min-width:1024px)", text)
+        self.assertIn("@media (max-width:599px)", text)
+        self.assertIn("@media (min-width:600px) and (max-width:839px)", text)
+        self.assertIn("@media (min-width:840px)", text)
+        self.assertIn("@media (min-width:1200px)", text)
+        self.assertIn("@media (min-width:1600px)", text)
         self.assertTrue(report.validate_report_bytes(text.encode(), digest, payload))
 
-    def test_opendesign_material_tokens_cover_foundations_and_accessible_color_pairs(self) -> None:
+    def test_official_material3_roles_scales_and_accessible_color_pairs(self) -> None:
         style = report.STYLE_BLOCK
-        fixture_tokens = (
-            "--bg:#f8fafd", "--surface:#fff", "--surface-warm:#e8f0fe", "--fg:#202124",
-            "--fg-2:#3c4043", "--muted:#5f6368", "--meta:#1a73e8", "--border:#dadce0",
-            "--border-soft:#edf0f2", "--accent:#1a73e8", "--accent-on:#fff",
-            "--success:#188038", "--warn:#f9ab00", "--danger:#d93025",
-            "--font-display:", "--font-body:", "--font-mono:", "--text-xs:12px",
-            "--text-4xl:64px", "--space-1:4px", "--space-12:48px", "--radius-sm:4px",
-            "--radius-md:12px", "--radius-lg:24px", "--radius-pill:9999px",
-            "--elev-ring:", "--elev-raised:", "--focus-ring:", "--motion-fast:150ms",
-            "--motion-base:250ms", "--container-max:1200px",
+        color_roles = (
+            "--md-sys-color-primary:#6750a4", "--md-sys-color-on-primary:#fff",
+            "--md-sys-color-primary-container:#eaddff", "--md-sys-color-on-primary-container:#21005d",
+            "--md-sys-color-secondary:#625b71", "--md-sys-color-tertiary:#7d5260",
+            "--md-sys-color-error:#b3261e", "--md-sys-color-error-container:#f9dedc",
+            "--md-sys-color-surface:#fffbfe", "--md-sys-color-surface-container-lowest:#fff",
+            "--md-sys-color-surface-container-low:#f7f2fa", "--md-sys-color-surface-container:#f3edf7",
+            "--md-sys-color-surface-container-high:#ece6f0", "--md-sys-color-surface-container-highest:#e6e0e9",
+            "--md-sys-color-on-surface:#1d1b20", "--md-sys-color-on-surface-variant:#49454f",
+            "--md-sys-color-outline:#79747e", "--md-sys-color-outline-variant:#cac4d0",
         )
-        for token in fixture_tokens:
+        for token in color_roles:
             self.assertIn(token, style)
         for role in ("display", "headline", "title", "body", "label"):
             for size in ("large", "medium", "small"):
                 self.assertIn(f"--md-sys-typescale-{role}-{size}:", style)
-        for shape in ("extra-small", "medium", "large", "full"):
+        for shape in ("none", "extra-small", "small", "medium", "large", "large-increased",
+                      "extra-large", "extra-large-increased", "extra-extra-large", "full"):
             self.assertIn(f"--md-sys-shape-corner-{shape}:", style)
-        for foundation in ("--md-sys-color-primary", "--md-sys-elevation-level1",
-                           "--md-sys-motion-standard-effects"):
+        for foundation in ("--md-sys-elevation-level0", "--md-sys-elevation-level1",
+                           "--md-sys-motion-standard-effects", "--md-sys-state-hover-opacity:.08",
+                           "--md-sys-state-focus-opacity:.10", "--md-sys-state-pressed-opacity:.10"):
             self.assertIn(foundation, style)
         light_pairs = (
-            ("#202124", "#f8fafd"), ("#202124", "#ffffff"), ("#5f6368", "#ffffff"),
-            ("#ffffff", "#1a73e8"), ("#0d652d", "#e6f4ea"),
-            ("#5f4500", "#fef7e0"), ("#a50e0e", "#fce8e6"),
+            ("#1d1b20", "#fffbfe"), ("#49454f", "#fffbfe"), ("#ffffff", "#6750a4"),
+            ("#21005d", "#eaddff"), ("#1d192b", "#e8def8"), ("#410e0b", "#f9dedc"),
+            ("#0a3818", "#b8f2c5"), ("#2a2000", "#ffe16f"),
         )
         dark_pairs = (
-            ("#f8fafc", "#0f1115"), ("#a7adba", "#171a21"),
-            ("#8ab4f8", "#171a21"), ("#062e6f", "#8ab4f8"),
-            ("#b7f5c8", "#173b24"), ("#fff1b8", "#453600"),
-            ("#ffd7d3", "#4a1d1a"),
+            ("#e6e0e9", "#141218"), ("#cac4d0", "#141218"), ("#381e72", "#d0bcff"),
+            ("#eaddff", "#4f378b"), ("#f9dedc", "#8c1d18"),
+            ("#b8f2c5", "#0a3818"), ("#ffe16f", "#4c3d00"),
         )
         for foreground, background in (*light_pairs, *dark_pairs):
             with self.subTest(foreground=foreground, background=background):
@@ -195,7 +201,8 @@ class HwahapReportTests(unittest.TestCase):
             self.assertIn(phrase, text)
         self.assertIn("이전 문제”가 다시 발생하기 전에 “적용한 개선", text)
         self.assertIn("min-block-size:48px", text)
-        self.assertIn("box-shadow:var(--focus-ring)", text)
+        self.assertIn("outline:3px solid var(--md-sys-color-primary)", text)
+        self.assertIn("details>summary:focus-visible::after{opacity:var(--md-sys-state-focus-opacity)}", text)
         self.assertIn('<caption>정본 report-data.json ledger', text)
         self.assertTrue(report.validate_report_bytes(text.encode(), digest, payload))
 

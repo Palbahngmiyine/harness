@@ -283,8 +283,8 @@ class HwahapStateTests(unittest.TestCase):
         data = hwahap_report.canonical_payload_bytes(payload)
         html = hwahap_report.render_report(payload, source_digest)
         run["report"] = {"schema_version": 4, "status": "completed",
-                          "generator": {"name": "hwahap-report", "version": 4, "design_system": "material-design-3",
-                                        "theme_source": "opendesign-material@a554d017c8fa12d8913354ba6cf792d26d0c3b54"},
+                          "generator": {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
+                                        "theme_source": "m3-foundations@2026-08-29"},
                           "source_payload_sha256": source_digest,
                           "data": {"path": "report-data.json", "file_sha256": "sha256:" + hashlib.sha256(data).hexdigest()},
                           "html": {"path": "report.html", "file_sha256": "sha256:" + hashlib.sha256(html).hexdigest()},
@@ -459,8 +459,8 @@ class HwahapStateTests(unittest.TestCase):
         run_dir = self.init_run()
         receipt = json.loads((run_dir / "run.json").read_text())["report"]
         self.assertEqual(receipt, {"schema_version": 4, "status": "pending",
-            "generator": {"name": "hwahap-report", "version": 4, "design_system": "material-design-3",
-                          "theme_source": "opendesign-material@a554d017c8fa12d8913354ba6cf792d26d0c3b54"},
+                          "generator": {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
+                          "theme_source": "m3-foundations@2026-08-29"},
             "source_payload_sha256": None, "data": {"path": "report-data.json", "file_sha256": None},
             "html": {"path": "report.html", "file_sha256": None}, "generated_at": None,
             "redaction_policy": "hwahap-report-v4"})
