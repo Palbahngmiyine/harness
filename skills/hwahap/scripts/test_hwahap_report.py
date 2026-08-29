@@ -142,7 +142,8 @@ class HwahapReportTests(unittest.TestCase):
     def test_cards_use_explicit_material_variants_without_blanket_outlines(self) -> None:
         contract, run, units, events, digests = self.fixture()
         run["deviations"] = [{"summary": "finding", "root_cause": "cause", "impact": "impact",
-                              "prevention": "fix", "evidence": ["receipt"]}]
+                              "prevention": "fix", "evidence": ["receipt"],
+                              "evidence_explanation": "matrix가 중첩 입력 거부를 검증함"}]
         payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
         text = report.render_report(payload, report.canonical_payload_digest(payload)).decode()
         style = report.STYLE_BLOCK
@@ -159,6 +160,12 @@ class HwahapReportTests(unittest.TestCase):
         self.assertIn('class="outcome-panel panel md-card md-card-elevated"', text)
         self.assertIn('class="change-card panel md-card md-card-filled"', text)
         self.assertIn('class="card md-card md-card-filled"', text)
+        self.assertIn('.evidence-rationale{margin:0 var(--space-5) var(--space-5)', style)
+        self.assertIn('background:var(--md-sys-color-secondary-container)', style)
+        self.assertNotIn('.evidence-rationale{border', style)
+        self.assertIn('<div class="evidence-rationale"><span class="field-label">왜 이 검사로 개선됐다고 판단했나</span>', text)
+        self.assertIn('<p>matrix가 중첩 입력 거부를 검증함</p></div>', text)
+        self.assertNotIn('class="notice"><strong>이 근거가 개선 판단과 연결되는 이유', text)
 
     def test_icy_blue_material_roles_scales_and_accessible_color_pairs(self) -> None:
         style = report.STYLE_BLOCK

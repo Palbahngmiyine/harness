@@ -25,7 +25,7 @@ from pathlib import Path
 
 _PIN_REDACTION_ENGINE_SHA256 = "aa2d19d5b4f6af13cc2a53c6d91bda453713d3526a02efe561b6fd939691e687"
 _PIN_INSTALLER = "26d5f610e8b548d3c341022ec49efc0db641cf91f0ea4e46ffca05a172a59fb4"
-_PIN_REPORT = "546ef7731f37e9c92f3e56dbaf70bc7b2e9a875fc376ba0d31b24e8e4034eb03"
+_PIN_REPORT = "6e6e4e3435c3eb3d9b6a73b9655d48cc0e1dc325e44d359fb62fd79137bf327d"
 REPORT_SCHEMA_VERSION = 4
 REPORT_GENERATOR = {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
                     "theme_source": "m3-foundations+coolors-c2e7ff@2026-08-29"}
