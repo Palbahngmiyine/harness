@@ -54,12 +54,19 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             attempt = lambda effort, status, thread: {
                 "model": "gpt-5.6-sol", "effort": effort, "status": status, "thread_id": thread,
                 "evidence": ["review"], "diff_snapshot": copy.deepcopy(self.snapshot), "diff_digest": digest}
-            run.update({"status": "awaiting_user", "failure": {
-                "code": "HW_MODEL_UNAVAILABLE", "reason": "fallback unavailable", "evidence": ["review"], "recovery": "ask user"},
-                "final_review": {"status": "fail", "attempts": [attempt("ultra", "unsupported", "u"), attempt("xhigh", "unavailable", "x")]}})
+            run["final_review"] = {
+                "status": "fail", "attempts": [
+                    attempt("ultra", "unsupported", "u"),
+                    attempt("xhigh", "unavailable", "x")]}
             self.write_json(run_path, run)
             self.write_events(run_dir, self.phase_events("passed") + [
-                ("run", "reviewing", "final_review"), ("run", "final_review", "awaiting_user")])
+                ("run", "reviewing", "final_review")])
+            with redirect_stdout(io.StringIO()):
+                hwahap_state.transition(self.transition_args(
+                    "run", "awaiting_user",
+                    failure_code="HW_MODEL_UNAVAILABLE",
+                    failure_reason="fallback unavailable",
+                    failure_evidence=["review"], failure_recovery="ask user"))
             self.validate()
 
         def test_run_failure_is_only_allowed_in_failure_states(self) -> None:

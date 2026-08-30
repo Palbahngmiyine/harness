@@ -33,6 +33,7 @@ class StateFixtureMixin06:
             for field in hwahap_state.CONTRACT_LISTS:
                 contract[field] = ["src" if field == "allowed_paths" else "test" if field == "test_commands" else "entry"]
             self.write_json(contract_path, contract)
+            self.bind_goal()
             with redirect_stdout(io.StringIO()):
                 hwahap_state.lock_contract(Namespace(
                     workspace=str(self.workspace), run_id="test-goal", actor="sol-1",

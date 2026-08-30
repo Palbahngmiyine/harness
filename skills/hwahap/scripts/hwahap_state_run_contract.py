@@ -34,10 +34,15 @@ def _validate_run_contract(args: argparse.Namespace, workspace: Path, contract: 
     elif run.get("failure") is not None:
         errors.append("non-failure run must not contain failure")
     validate_goal_link(run.get("goal_link"), errors)
+    goal_link = run.get("goal_link")
+    current_goal = goal_link.get("current") if isinstance(goal_link, dict) else None
     validate_improvement_candidates(run.get("improvement_candidates"), errors)
     locked = contract.get("locked")
     if not isinstance(locked, bool):
         errors.append("locked must be a boolean")
+    if locked and (not isinstance(current_goal, dict)
+                   or current_goal.get("mode") != "bound"):
+        errors.append("locked contract requires a bound Goal")
     if locked and any(not isinstance(contract.get(field), list) or not contract[field]
                       for field in CONTRACT_LISTS):
         errors.append("locked contract fields must be nonempty")

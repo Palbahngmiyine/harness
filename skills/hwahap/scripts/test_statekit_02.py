@@ -5,6 +5,10 @@ except ImportError:
 
 class StateFixtureMixin02:
         def lock_contract(self, run_dir: Path) -> dict:
+            run_path = run_dir / "run.json"
+            run = json.loads(run_path.read_text())
+            run["goal_link"] = self.bound_goal_link()
+            self.write_json(run_path, run)
             path = run_dir / "contract.json"
             contract = json.loads(path.read_text())
             for field in hwahap_state.CONTRACT_LISTS:
@@ -13,6 +17,13 @@ class StateFixtureMixin02:
             contract["lock_sha256"] = hwahap_state.canonical_contract_digest(contract)
             self.write_json(path, contract)
             return contract
+
+        def bind_goal(self, run_id: str = "test-goal") -> None:
+            with redirect_stdout(io.StringIO()):
+                hwahap_state.goal_sync(self.goal_args(
+                    "bound", run_id=run_id, thread_id="goal-thread",
+                    objective_sha256="sha256:" + "a" * 64,
+                    receipt_sha256="sha256:" + "b" * 64))
 
         def transition_args(self, entity: str, target: str, **overrides: object) -> Namespace:
             values = {

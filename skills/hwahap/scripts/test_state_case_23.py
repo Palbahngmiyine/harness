@@ -16,6 +16,13 @@ except ImportError:
     from test_statekit_06 import *
 
 class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMixin03, StateFixtureMixin04, StateFixtureMixin05, StateFixtureMixin06, unittest.TestCase):
+        def test_prfaq_lock_requires_bound_goal(self) -> None:
+            run_dir = self.init_run()
+            self._fill_request_contract(run_dir)
+            with self.assertRaises(hwahap_state.HwahapError) as raised:
+                hwahap_state.lock_contract(self.request_lock_args("test-goal"))
+            self.assertEqual(raised.exception.code, "HW_GOAL_REQUIRED")
+
         def test_request_lock_requires_bound_goal_without_mutating_bytes(self) -> None:
             run_dir = self.init_request_run()
             self._fill_request_contract(run_dir)

@@ -5,6 +5,16 @@ except ImportError:
 
 
 class VerifiedGraphTests(DependencyIntegrityTests):
+    def test_state_runtime_links_only_referenced_cross_module_names(self) -> None:
+        loaded = self._load("narrow_state_runtime", ROOT / "hwahap_state.py")
+        loaded._ensure_dependencies()
+        api = loaded._boot._api
+        complete_space = api._owners["complete_run"]
+        self.assertIn("publish_terminal_report", complete_space)
+        self.assertNotIn("goal_sync", complete_space)
+        module_count = len(api._runtime._records)
+        self.assertLess(max(map(len, api._runtime._consumers.values())), module_count)
+
     def test_state_manifest_and_internal_module_tamper_are_rejected(self) -> None:
         for target in ("hwahap_state_manifest.json", "hwahap_state_metrics.py"):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:

@@ -52,6 +52,13 @@ def validate_final_review_lifecycle(run: dict, units: list[dict], contract: dict
         failure = run.get("failure")
         if valid_errors or expected is None or not isinstance(failure, dict) or failure.get("code") != expected:
             errors.append("awaiting_user final_review failure evidence is invalid")
+    elif status == "cancelled" and entries:
+        if len(exits) != 1 or exits[0][1].get("to") != "cancelled":
+            errors.append("cancelled final_review requires one cancellation exit")
+        valid_errors = []
+        validate_final_review(final, False, valid_errors, workspace)
+        if valid_errors:
+            errors.append("cancelled final_review aggregate is invalid")
     elif entries or exits:
         errors.append("final_review events do not match the current run status")
     if entries or exits or status in {"final_review", "completed"}:

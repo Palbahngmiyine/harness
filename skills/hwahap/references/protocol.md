@@ -37,7 +37,7 @@ scope.
    record its code and bounded evidence, then stop unless a defined recovery is
    safe and in scope.
 3. Record the normalized bound Goal receipt with `goal-sync --mode bound`.
-   Direct-request mode cannot lock before this succeeds. Spawn the read-only Sol
+   Neither input mode can lock before this succeeds. Spawn the read-only Sol
    planner, collect its six-list contract and atomic-unit proposal, and end the
    planner before any Luna writer starts. The Sol orchestrator fills every
    required list while it remains unlocked. Run
@@ -155,7 +155,8 @@ scope.
     continue correction on the same unit within locked scope; without one or
     when scope/authority must expand, use `awaiting_user`. This general rule
     does not define recursive final-review behavior.
-    Run terminal states include `awaiting_user`. After any terminal run state,
+    Run terminal states include `awaiting_user`. `cancelled` is reachable from
+    every nonterminal run state. After any terminal run state,
     unit creation, unit mutation, test-receipt recording, and improvement
     recording are forbidden. The event validator also rejects every unit
     successor event after a terminal run. A run transition to `blocked`,

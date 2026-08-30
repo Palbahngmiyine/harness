@@ -9,11 +9,11 @@ UNIT_TERMINAL_STATES = {"passed", "blocked", "failed", "awaiting_user"}
 RUN_TRANSITIONS = {
     "initialized": {"contract_locked", "blocked", "failed", "awaiting_user", "cancelled"},
     "contract_locked": {"implementing", "blocked", "failed", "awaiting_user", "cancelled"},
-    "implementing": {"reviewing", "recovering", "replanning", "blocked", "failed", "awaiting_user"},
-    "reviewing": {"implementing", "recovering", "final_review", "replanning", "blocked", "failed", "awaiting_user"},
-    "recovering": {"implementing", "reviewing", "replanning", "blocked", "failed", "awaiting_user"},
-    "replanning": {"implementing", "blocked", "failed", "awaiting_user"},
-    "final_review": {"completed", "awaiting_user"},
+    "implementing": {"reviewing", "recovering", "replanning", "blocked", "failed", "awaiting_user", "cancelled"},
+    "reviewing": {"implementing", "recovering", "final_review", "replanning", "blocked", "failed", "awaiting_user", "cancelled"},
+    "recovering": {"implementing", "reviewing", "replanning", "blocked", "failed", "awaiting_user", "cancelled"},
+    "replanning": {"implementing", "blocked", "failed", "awaiting_user", "cancelled"},
+    "final_review": {"completed", "awaiting_user", "cancelled"},
 }
 UNIT_TRANSITIONS = {
     "planned": {"implementing", "blocked", "failed", "awaiting_user"},

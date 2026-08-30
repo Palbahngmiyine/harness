@@ -16,8 +16,9 @@ except ImportError:
     from test_statekit_06 import *
 
 class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMixin03, StateFixtureMixin04, StateFixtureMixin05, StateFixtureMixin06, unittest.TestCase):
-        def test_completed_run_requires_observed_goal_but_allows_bound_pending(self) -> None:
+        def test_completed_run_requires_bound_goal(self) -> None:
             run_dir = self.init_run()
+            unobserved = json.loads((run_dir / "run.json").read_text())["goal_link"]
             contract = self.lock_contract(run_dir)
             unit = self.passed_unit()
             run_path = run_dir / "run.json"
@@ -26,6 +27,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
                 "status": "final_review", "completed_at": None,
                 "metrics": {**run["metrics"], "unit_count": 1, "review_rounds": 1},
             })
+            run["goal_link"] = unobserved
             self.write_json(run_dir / "contract.json", contract)
             self.write_json(run_path, run)
             self.write_json(run_dir / "units" / "unit-1.json", unit)
@@ -41,17 +43,13 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             self.write_json(run_path, run)
             self.write_events(run_dir, transitions + [("run", "final_review", "completed")])
             self.bind_last_event_digest(run_dir)
-            self.assert_invalid("observed Goal")
+            self.assert_invalid("bound Goal")
             run["status"] = "final_review"
             run["completed_at"] = None
             run["final_review"] = {"status": "pending", "attempts": []}
+            run["goal_link"] = self.bound_goal_link()
             self.write_json(run_path, run)
             self.write_events(run_dir, transitions)
-            with redirect_stdout(io.StringIO()):
-                hwahap_state.goal_sync(self.goal_args(
-                    "bound", thread_id="goal-thread", objective_sha256="sha256:" + "a" * 64,
-                    receipt_sha256="sha256:" + "b" * 64,
-                ))
             run = json.loads(run_path.read_text())
             run["status"] = "completed"
             run["completed_at"] = "2026-08-27T00:00:00Z"

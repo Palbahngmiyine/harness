@@ -36,8 +36,8 @@ def _validate_completed_run(run: dict, units: list, locked: object, events_path:
         errors.append("completed run requires a locked contract and all units passed")
     goal_link = run.get("goal_link")
     current = goal_link.get("current") if isinstance(goal_link, dict) else None
-    if isinstance(current, dict) and current.get("mode") == "unobserved":
-        errors.append("completed run requires an observed Goal link")
+    if not isinstance(current, dict) or current.get("mode") != "bound":
+        errors.append("completed run requires a bound Goal link")
     final = run.get("final_review")
     if not required_text(run.get("completed_at")) or not isinstance(final, dict) \
             or final.get("status") != "pass":

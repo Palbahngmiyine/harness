@@ -25,7 +25,8 @@ def _terminal_metrics(run: dict, units: list[dict], timestamp: str) -> dict:
 
 
 def publish_terminal_report(workspace: Path, run_dir: Path, contract_path: Path,
-                            run_path: Path, run: dict, event: dict) -> None:
+                            run_path: Path, run: dict, event: dict,
+                            operation: str = "terminal") -> None:
     events_path = run_dir / "events.jsonl"
     data_path, report_path = run_dir / "report-data.json", run_dir / "report.html"
     if run.get("status") not in RUN_TERMINAL_STATES:
@@ -64,7 +65,7 @@ def publish_terminal_report(workspace: Path, run_dir: Path, contract_path: Path,
         target = {"run.json": _json_bytes(working),
                   "report-data.json": artifacts["data_bytes"],
                   "report.html": artifacts["html_bytes"], "events.jsonl": event_bytes}
-        journal, marker_run = _recovery_setup("terminal", originals, target)
+        journal, marker_run = _recovery_setup(operation, originals, target)
         _write_report_recovery_journal(run_dir, journal)
         _atomic_replace_bytes(run_path, marker_run)
         _atomic_replace_bytes(data_path, target["report-data.json"])

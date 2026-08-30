@@ -16,7 +16,7 @@ except ImportError:
     from test_statekit_06 import *
 
 class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMixin03, StateFixtureMixin04, StateFixtureMixin05, StateFixtureMixin06, unittest.TestCase):
-        def test_terminal_run_requires_failure_evidence(self) -> None:
+        def test_terminal_run_requires_failure_evidence_and_report(self) -> None:
             run_dir = self.init_run()
             run_path = run_dir / "run.json"
             run = json.loads(run_path.read_text())
@@ -31,12 +31,13 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
                 "recovery": "restore the dependency",
             }
             self.write_json(run_path, run)
-            self.validate()
+            self.assert_invalid("pending report is invalid for terminal run")
 
         def test_credential_bearing_commands_are_rejected_at_boundaries(self) -> None:
             run_dir = self.init_run()
             contract_path = run_dir / "contract.json"
             contract = json.loads(contract_path.read_text())
+            self.bind_goal()
             rejected = (
                 "TOKEN=secret pytest", "AWS_SECRET_ACCESS_KEY=secret test",
                 "AWS_ACCESS_KEY_ID=secret test", "AWS_SESSION_TOKEN=secret test",

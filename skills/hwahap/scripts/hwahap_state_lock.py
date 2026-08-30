@@ -19,10 +19,9 @@ def lock_contract(args: argparse.Namespace) -> None:
     events_path = run_dir / "events.jsonl"
     if contract.get("locked") or run.get("status") != "initialized" or events_path.read_text(encoding="utf-8").strip():
         raise HwahapError("HW_STATE_INVALID", "contract lock requires a fresh initialized run")
-    spec_status = contract.get("spec", {}).get("status", "prfaq") if isinstance(contract.get("spec"), dict) else "prfaq"
     current_goal = run.get("goal_link", {}).get("current", {}) if isinstance(run.get("goal_link"), dict) else {}
-    if spec_status == "request" and (not isinstance(current_goal, dict) or current_goal.get("mode") != "bound"):
-        raise HwahapError("HW_GOAL_REQUIRED", "request runs require a bound Goal before locking")
+    if not isinstance(current_goal, dict) or current_goal.get("mode") != "bound":
+        raise HwahapError("HW_GOAL_REQUIRED", "runs require a bound Goal before locking")
     if any(not isinstance(contract.get(field), list) or not contract[field] for field in CONTRACT_LISTS):
         raise HwahapError("HW_STATE_INVALID", "fill every contract list before locking")
     if any(not safe_test_command(command) for command in contract["test_commands"]):

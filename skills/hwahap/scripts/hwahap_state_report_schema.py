@@ -19,11 +19,13 @@ def validate_report_schema(run: dict, run_dir: Path, contract: dict, units: list
         return
     data_path, report_path = run_dir / "report-data.json", run_dir / "report.html"
     if report.get("status") == "pending":
-        if (run.get("status") == "completed" or report.get("source_payload_sha256") is not None
+        status = run.get("status")
+        if ((isinstance(status, str) and status in RUN_TERMINAL_STATES)
+                or report.get("source_payload_sha256") is not None
                 or report.get("generated_at") is not None
                 or (data_meta and data_meta.get("file_sha256") is not None)
                 or (html_meta and html_meta.get("file_sha256") is not None)):
-            errors.append("pending report is invalid for completed run")
+            errors.append("pending report is invalid for terminal run")
         if any(path.exists() or path.is_symlink() for path in (data_path, report_path)):
             errors.append("pending report must not have report artifacts")
         return

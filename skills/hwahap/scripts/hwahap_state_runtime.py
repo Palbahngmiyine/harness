@@ -22,6 +22,7 @@ from typing import Any
 
 _records = []
 _owners = {}
+_consumers = {}
 
 
 def register(space: dict) -> None:
@@ -29,8 +30,29 @@ def register(space: dict) -> None:
     _records.append((space, frozenset(space)))
 
 
+def _code_references(code: types.CodeType) -> set[str]:
+    names = set(code.co_names)
+    for item in code.co_consts:
+        if isinstance(item, types.CodeType):
+            names.update(_code_references(item))
+    return names
+
+
+def _references(value: object) -> set[str]:
+    names = set()
+    code = getattr(value, "__code__", None)
+    if code is None:
+        code = getattr(getattr(value, "__func__", None), "__code__", None)
+    if isinstance(code, types.CodeType):
+        names.update(_code_references(code))
+    if isinstance(value, type):
+        for item in vars(value).values():
+            names.update(_references(item))
+    return names
+
+
 def compose() -> tuple[dict, dict]:
-    """Link unique responsibility exports after every whole module is imported."""
+    """Link only the cross-module names referenced by each responsibility."""
     exports = {}
     for space, initial in _records:
         for name in space.keys() - initial:
@@ -40,15 +62,22 @@ def compose() -> tuple[dict, dict]:
                 raise ImportError("duplicate state export")
             exports[name] = space[name]
             _owners[name] = space
-    for space, _ in _records:
-        space.update(exports)
+    for space, initial in _records:
+        references = set()
+        for name in space.keys() - initial:
+            references.update(_references(space[name]))
+        for name in references & exports.keys():
+            if name in space:
+                continue
+            space[name] = exports[name]
+            _consumers.setdefault(name, []).append(space)
     return exports, _owners
 
 
 def publish(name: str, value: object) -> None:
-    """Update one linked runtime value in every responsibility module."""
+    """Update one owner and its narrow set of linked consumers."""
     if name not in _owners:
         raise AttributeError(name)
-    for space, _ in _records:
+    for space in _consumers.get(name, ()):
         space[name] = value
     _owners[name][name] = value
