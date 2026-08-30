@@ -40,7 +40,7 @@ Resolve `<skill-dir>` from the loaded Hwahap `SKILL.md`. The normal command
 sequence is:
 
 ```text
-python3 <skill-dir>/scripts/install_project_agents.py --workspace <workspace>
+<absolute-skill-dir>/scripts/install-project-agents --workspace <workspace>
 <absolute-hwahap-skill-dir>/scripts/hwahap init --workspace <workspace> --goal-id <goal-id> --spec <approved-prfaq>
 # Sol fills the six contract lists while locked is false.
 <absolute-hwahap-skill-dir>/scripts/hwahap lock --workspace <workspace> --run-id <goal-id> --actor <sol-thread> --reason <reason> --evidence-ref <reference>

@@ -4,10 +4,21 @@ except ImportError:
     from test_installerkit import *
 
 from pathlib import Path
+import subprocess
 from unittest.mock import patch
 
 
 class InstallerFailureTests(InstallerFixture, unittest.TestCase):
+    def test_launcher_selects_supported_isolated_python(self):
+        launcher = Path(installer.__file__).with_name("install-project-agents")
+        result = subprocess.run(
+            [str(launcher), "--workspace", str(self.root)],
+            cwd="/private/tmp", env={"PATH": "/usr/bin"},
+            capture_output=True, text=True, check=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("HW_OK: installed=6 skipped=0", result.stdout)
+        self.assertFalse((launcher.parent / "__pycache__").exists())
+
     def test_source_invalid_before_workspace_mutation(self):
         source = self.root / "source"
         source.mkdir()

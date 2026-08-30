@@ -1,0 +1,24 @@
+#!/bin/sh
+set -f
+fail() {
+    printf '%s\n' 'HW_AGENT_INSTALL_FAILED: profile installation failed' >&2
+    exit 1
+}
+case "$0" in
+    /*) ;;
+    *) fail ;;
+esac
+[ ! -L "$0" ] || fail
+script_dir=${0%/*}
+[ -n "$script_dir" ] || script_dir=/
+CDPATH= cd -P -- "$script_dir" 2>/dev/null || fail
+script_dir=$PWD
+[ -f "$script_dir/install_project_agents.py" ] || fail
+[ ! -L "$script_dir/install_project_agents.py" ] || fail
+for python in /usr/bin/python3 /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    [ -x "$python" ] || continue
+    "$python" -I -S -B -c 'import sys; raise SystemExit(sys.version_info < (3, 11))' \
+        >/dev/null 2>&1 || continue
+    exec "$python" -E -S -B ./install_project_agents.py "$@"
+done
+fail

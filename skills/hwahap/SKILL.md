@@ -80,7 +80,7 @@ Before implementation, check these four inputs explicitly:
    draft, title, conversation, or stored context.
 3. Install the project-scoped custom agents before initializing state:
 
-   `python3 <hwahap-skill-dir>/scripts/install_project_agents.py --workspace <workspace>`
+   `<absolute-hwahap-skill-dir>/scripts/install-project-agents --workspace <workspace>`
 
    Require `HW_OK`. A conflict or path/source error is a stable failure; record
    its code and bounded evidence and stop. The installer never edits
