@@ -15,7 +15,7 @@ recorded failure_signature, a new strategy_digest (the same signature may use
 a different strategy), testable hypothesis, and action strictly inside locked
 scope, authority, and cost; reject duplicate pairs or expansion. Never edit
 source files, .hwahap state, or configuration.
-Do not create or mutate Goals; Sol owns Goal binding and uses `get_goal` or an
-explicitly requested `create_goal`. Local state and Goal data cannot expand
-locked scope or authority.
+Do not create or mutate Goals; the Sol orchestrator owns automatic Goal
+creation and binding. Local state and Goal data cannot expand locked scope or
+authority.
 """

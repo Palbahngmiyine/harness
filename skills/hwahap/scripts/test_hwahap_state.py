@@ -1977,6 +1977,71 @@ class HwahapStateTests(unittest.TestCase):
         after = {name: (run_dir / name).read_bytes() for name in before}
         self.assertEqual(before, after)
 
+    def init_request_run(self, goal_id: str = "request-goal") -> Path:
+        request = self.workspace / f"{goal_id}.md"
+        request.write_text(
+            "---\ntitle: Direct request\nstatus: request\nconfirmed_at: 2026-08-30T00:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+        with redirect_stdout(io.StringIO()):
+            hwahap_state.init_run(Namespace(
+                workspace=str(self.workspace), goal_id=goal_id, request=str(request)))
+        return self.workspace / ".hwahap" / "runs" / goal_id
+
+    def request_lock_args(self, goal_id: str = "request-goal") -> Namespace:
+        return Namespace(workspace=str(self.workspace), run_id=goal_id, actor="sol-1",
+                         reason="lock request contract", evidence_ref=["test"])
+
+    def test_request_init_validate_and_reinit_are_idempotent(self) -> None:
+        run_dir = self.init_request_run()
+        self.validate_at(self.workspace, "request-goal")
+        before = {name: (run_dir / name).read_bytes() for name in ("contract.json", "run.json")}
+        request = self.workspace / "request-goal.md"
+        with redirect_stdout(io.StringIO()):
+            hwahap_state.init_run(Namespace(
+                workspace=str(self.workspace), goal_id="request-goal", request=str(request)))
+        self.assertEqual(before, {name: (run_dir / name).read_bytes() for name in before})
+        self.assertEqual(json.loads((run_dir / "contract.json").read_text())["spec"]["status"], "request")
+
+    def test_request_wrong_status_is_rejected_with_request_code(self) -> None:
+        request = self.workspace / "wrong-request.md"
+        request.write_text(
+            "---\ntitle: Direct request\nstatus: prfaq\nconfirmed_at: 2026-08-30T00:00:00Z\n---\n",
+            encoding="utf-8",
+        )
+        with self.assertRaises(hwahap_state.HwahapError) as raised:
+            hwahap_state.init_run(Namespace(
+                workspace=str(self.workspace), goal_id="wrong-request", request=str(request)))
+        self.assertEqual(raised.exception.code, "HW_REQUEST_UNCONFIRMED")
+        self.assertFalse((self.workspace / ".hwahap" / "runs" / "wrong-request").exists())
+
+    def _fill_request_contract(self, run_dir: Path) -> None:
+        path = run_dir / "contract.json"
+        contract = json.loads(path.read_text())
+        for field in hwahap_state.CONTRACT_LISTS:
+            contract[field] = ["src" if field == "allowed_paths" else "test" if field == "test_commands" else "entry"]
+        self.write_json(path, contract)
+
+    def test_request_lock_requires_bound_goal_without_mutating_bytes(self) -> None:
+        run_dir = self.init_request_run()
+        self._fill_request_contract(run_dir)
+        before = {name: (run_dir / name).read_bytes() for name in ("contract.json", "run.json", "events.jsonl")}
+        with self.assertRaises(hwahap_state.HwahapError) as raised:
+            hwahap_state.lock_contract(self.request_lock_args())
+        self.assertEqual(raised.exception.code, "HW_GOAL_REQUIRED")
+        self.assertEqual(before, {name: (run_dir / name).read_bytes() for name in before})
+
+    def test_request_bound_goal_then_lock_succeeds(self) -> None:
+        run_dir = self.init_request_run()
+        self._fill_request_contract(run_dir)
+        with redirect_stdout(io.StringIO()):
+            hwahap_state.goal_sync(self.goal_args(
+                "bound", thread_id="goal-thread", objective_sha256="sha256:" + "a" * 64,
+                receipt_sha256="sha256:" + "b" * 64, run_id="request-goal"))
+            hwahap_state.lock_contract(self.request_lock_args())
+        self.assertEqual(json.loads((run_dir / "contract.json").read_text())["locked"], True)
+        self.assertEqual(json.loads((run_dir / "run.json").read_text())["status"], "contract_locked")
+
     def test_unconfirmed_spec_is_rejected(self) -> None:
         self.spec.write_text("---\ntitle: Test goal\nstatus: draft\n---\n", encoding="utf-8")
         args = Namespace(workspace=str(self.workspace), goal_id="test-goal", spec=str(self.spec))

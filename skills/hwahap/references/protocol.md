@@ -1,9 +1,10 @@
 # Hwahap protocol
 
-This is the execution contract behind the entrypoint. Sol is the orchestrator,
-Luna is the implementation writer and independent verifier, and Terra is the
-scope reviewer. Only Sol writes `.hwahap` state; no reviewer or implementer
-writes state, and reviewers never edit source files.
+This is the execution contract behind the entrypoint. Sol supplies a read-only
+planner and the sole orchestrator, Luna supplies the job executor and
+independent reviewer, and Terra supplies the feature-scope reviewer. Only the
+Sol orchestrator writes `.hwahap` state; no other role writes state, and
+reviewers never edit source files.
 
 All state commands below use the `<absolute-hwahap-skill-dir>/scripts/hwahap` launcher. Direct execution of
 `hwahap_state.py` is outside the official security boundary; embedding callers
@@ -19,25 +20,33 @@ scope.
 
 ## Exact sequence
 
-1. Require the user-supplied PR/FAQ path. Read its frontmatter; continue only
-   when `status: prfaq` and `confirmed_at` are present. Otherwise return
-   `HW_SPEC_UNCONFIRMED` with reason, evidence, and next action.
-2. Install the project agent profiles, then run the `<absolute-hwahap-skill-dir>/scripts/hwahap init` launcher once. A
-   non-zero result is a stable failure:
+1. Select one authoritative input. An explicitly supplied approved PR/FAQ uses
+   `status: prfaq` and `init --spec`. A current user instruction that clearly
+   requests implementation uses an internal credential-free capsule with
+   `status: request`, `confirmed_at`, and a concise title under
+   `.hwahap/requests/`, then `init-request --request`. Ideas, grilling, and
+   planning-only text are not direct-request authority. Return
+   `HW_SPEC_UNCONFIRMED` or `HW_REQUEST_UNCONFIRMED` for invalid selected input.
+2. Install the exact six project profiles. Spawn only the Sol orchestrator. It
+   calls `get_goal`; if there is no active Goal, it calls `create_goal`
+   automatically with the current implementation objective and then calls
+   `get_goal` again. A conflicting active Goal returns
+   `HW_USER_DECISION_REQUIRED`; unavailable or failed Goal creation returns
+   `HW_GOAL_REQUIRED`. Then run the selected initializer once. A non-zero result
+   is a stable failure:
    record its code and bounded evidence, then stop unless a defined recovery is
    safe and in scope.
-3. Sol reads the state contract and fills every required list while it remains
-   unlocked. Run `<absolute-hwahap-skill-dir>/scripts/hwahap lock`; the command records the canonical
+3. Record the normalized bound Goal receipt with `goal-sync --mode bound`.
+   Direct-request mode cannot lock before this succeeds. Spawn the read-only Sol
+   planner, collect its six-list contract and atomic-unit proposal, and end the
+   planner before any Luna writer starts. The Sol orchestrator fills every
+   required list while it remains unlocked. Run
+   `<absolute-hwahap-skill-dir>/scripts/hwahap lock`; the command records the canonical
    contract digest and first state transition. The locked contract is the sole
    authority for goals, non-goals, paths, forbidden changes, acceptance
    criteria, and test commands.
-   If the user explicitly requests a Goal, Sol may call `create_goal`; never
-   create one automatically. After `init`, use `get_goal` to inspect an active
-   Goal and record its normalized receipt with `goal-sync --mode bound`. If no
-   active Goal is confirmed, record `--mode no_active_goal`; if unavailable,
-   record `--mode unavailable` and use the manual fallback. Link objective,
-   non-goals, proof, and checkpoint to this locked contract. Local state and
-   Goal binding cannot expand scope or authority. Once history contains a
+   Link objective, non-goals, proof, and checkpoint to this locked contract.
+   Local state and Goal binding cannot expand scope or authority. Once history contains a
    `bound` receipt, `goal-sync` cannot append `no_active_goal` or
    `unavailable`; subsequent bound receipts and `goal-complete-sync` retain
    the original Goal `thread_id` and `objective_sha256`.
@@ -96,9 +105,15 @@ scope.
    accepted, every nonempty snapshot path must match locked `allowed_paths`, the
    union of passed-unit `allowed_paths`, and no `forbidden_changes` rule; the
    user must correct the scope or approve a new Goal/contract after a failure.
-7. Spawn the separate Luna verifier (`gpt-5.6-luna`, `xhigh`) and Terra scope
-   reviewer (`gpt-5.6-terra`, `xhigh`) before waiting for either. Give both the
+7. After the Luna job executor has ended, spawn the separate Luna reviewer
+   (`gpt-5.6-luna`, `xhigh`) and Terra feature-scope reviewer
+   (`gpt-5.6-terra`, `xhigh`) before waiting for either. Give both the
    same locked contract and the same full snapshot; run them in parallel.
+   Installing six profiles does not authorize six live agents. With a four-slot
+   limit including the invoking root, keep root and orchestrator, then use at
+   most two child slots. Planner, job executor, and final reviewer run in
+   separate phases; only Luna/Terra unit review is concurrent. Never spawn a
+   replacement until the prior child is completed or explicitly interrupted.
 8. Wait for both envelopes. Advance only when both are `pass`, their thread IDs
    are distinct, their actual model/effort values match the role contract, and
    their `sha256:` digests match. Record them in the unit's append-only

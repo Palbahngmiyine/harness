@@ -32,6 +32,11 @@ PROFILE_CONTRACT = {
         "model_reasoning_effort": None, "sandbox_mode": "read-only",
         "service_tier": None, "fast_mode": None,
     },
+    "hwahap-sol-planner.toml": {
+        "name": "hwahap-sol-planner", "model": "gpt-5.6-sol",
+        "model_reasoning_effort": "xhigh", "sandbox_mode": "read-only",
+        "service_tier": None, "fast_mode": None,
+    },
     "hwahap-sol-orchestrator.toml": {
         "name": "hwahap-sol-orchestrator", "model": "gpt-5.6-sol",
         "model_reasoning_effort": "xhigh", "sandbox_mode": "workspace-write",
