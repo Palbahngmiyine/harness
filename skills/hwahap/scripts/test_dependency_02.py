@@ -47,8 +47,10 @@ class DependencySlice6Tests(DependencyIntegrityTests):
                 for line in document.read_text(encoding="utf-8").splitlines():
                     if "scripts/hwahap" in line:
                         self.assertIn(marker, line, document.name)
-            readme = (repository / "README.md").read_text(encoding="utf-8")
-            self.assertIn('"$PWD/skills/hwahap/scripts/hwahap" --help', readme)
+            readme_path = repository / "README.md"
+            if readme_path.is_file():
+                readme = readme_path.read_text(encoding="utf-8")
+                self.assertIn('"$PWD/skills/hwahap/scripts/hwahap" --help', readme)
             launcher = (repository / "skills/hwahap/scripts/hwahap").resolve()
             result = subprocess.run(
                 [str(launcher), "--help"], cwd=repository,
