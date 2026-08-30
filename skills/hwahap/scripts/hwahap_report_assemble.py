@@ -15,6 +15,9 @@ def assemble(contract, run, units, timeline, digests, candidates, scope_audit):
         "recovery": item.get("recovery", {}),
         "improvement_history": item.get("improvement_history", []),
     } for item in units]
+    if run.get("failure"):
+        failures.insert(0, {"unit_id": "run", "failure": run["failure"],
+                            "recovery": {}, "improvement_history": []})
     return {
         "schema_version": 2,
         "scope_audit": scope_audit,

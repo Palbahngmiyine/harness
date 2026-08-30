@@ -58,6 +58,8 @@ def _run_data(run: dict, root: str) -> dict:
         attempts.append(attempt)
     data["final_review"] = pick(final, ("status",), root) | {"attempts": attempts}
     data["goal_link"] = goal_link(run.get("goal_link"), root)
+    data["failure"] = pick(run.get("failure"),
+        ("code", "reason", "evidence", "recovery"), root)
     return data
 
 

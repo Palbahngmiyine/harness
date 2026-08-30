@@ -158,7 +158,10 @@ scope.
     Run terminal states include `awaiting_user`. After any terminal run state,
     unit creation, unit mutation, test-receipt recording, and improvement
     recording are forbidden. The event validator also rejects every unit
-    successor event after a terminal run.
+    successor event after a terminal run. A run transition to `blocked`,
+    `failed`, `awaiting_user`, or `cancelled` atomically generates the same
+    canonical report artifacts as successful completion. Artifact status does
+    not change the actual terminal outcome stored in `run.status`.
 11. Never implement scope drift. Set the run/unit to `awaiting_user` with
     `HW_SCOPE_DRIFT` or `HW_USER_DECISION_REQUIRED`, plain reason, evidence,
     and next action. A critical security fix may proceed only when it is

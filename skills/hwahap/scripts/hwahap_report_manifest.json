@@ -32,12 +32,12 @@
   {
     "name": "hwahap_report_assemble",
     "file": "hwahap_report_assemble.py",
-    "sha256": "12e72355625c3e027839fd5d872e55cc5d0d6306d6136d047c9346afcc3d1c9e"
+    "sha256": "a4ed05df5e276f4fb7db7ca367eb5e552db29f83eaaf1d92feecd77ffefb82a8"
   },
   {
     "name": "hwahap_report_payload",
     "file": "hwahap_report_payload.py",
-    "sha256": "f17217167f94ca4e9526bdb1ba956ad9a9d4637e41aa793d56ccccacf4873cbc"
+    "sha256": "74fb8164df2db4a0914a89030313fdddfeb51abfab3015f5bf96d175f363294f"
   },
   {
     "name": "hwahap_report_canonical",

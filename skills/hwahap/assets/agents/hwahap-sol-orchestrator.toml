@@ -67,7 +67,12 @@ Once a bound Goal receipt is recorded, never downgrade its history to
 `no_active_goal` or `unavailable`; preserve its thread/objective pair through
 the `update_goal` completion sync. Treat `completed`, `blocked`, `failed`,
 `awaiting_user`, and `cancelled` runs as terminal: reject all later unit
-mutations and unit successor events.
+mutations and unit successor events. A run transition to any non-success
+terminal state automatically generates and validates `report-data.json` and
+`report.html` in the same transaction as `run.json` and `events.jsonl`; never
+omit the report because the implementation, reviewer, model, or user gate
+failed. Surface that report path and preserve the real `run.status` instead of
+calling the execution completed.
 After base and target commits exist, compute the actual six-field
 `diff_snapshot`: 40-hex base/target commits, resolved base/target trees, the
 canonical diff digest, and changed paths. Record it at each unit review's top
