@@ -22,7 +22,8 @@ def _entries() -> dict:
         if not isinstance(item, list) or len(item) != 3:
             raise ValueError
         name, filename, digest = item
-        valid = (isinstance(name, str) and name.startswith("hwahap_report_")
+        valid = (isinstance(name, str)
+                 and name.startswith(("hwahap_report_", "hwahap_credential_"))
                  and isinstance(filename, str) and "/" not in filename
                  and filename.endswith(".py") and isinstance(digest, str)
                  and re.fullmatch(r"[0-9a-f]{64}", digest))

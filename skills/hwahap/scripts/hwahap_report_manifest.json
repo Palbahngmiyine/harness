@@ -1,28 +1,140 @@
 {
   "schema_version": 1,
   "modules": [
-    ["hwahap_report_api", "hwahap_report_api.py", "2bd6fd36cfce0eda0084fc624669d985c2160140cf8bb514340a20d8dcf51db2"],
-    ["hwahap_report_types", "hwahap_report_types.py", "7d4d1f72efd3b8ca04a55e7497841d66280b06e3a3e98ebc6ad79e7d7ccf60ce"],
-    ["hwahap_report_assets", "hwahap_report_assets.py", "a916ed7e320df34ccd0bfebc7bfd94dc4eabb1b20400eb91fc6ef3c82c2c9dbc"],
-    ["hwahap_report_security", "hwahap_report_security.py", "89c170a9d1fcf4154ea31f9197d27711d31e58c6dc0085129fcbe78a555bf75b"],
-    ["hwahap_report_clean", "hwahap_report_clean.py", "bcb3c2a0219614e54756130fc6fd1c3fae7cd3e11a4247405f9ca052b2fd29ca"],
-    ["hwahap_report_unit", "hwahap_report_unit.py", "b8f540dc19e5203f0cc8332dd5dc75e79bb25eee17998cedd652b76a11a56a32"],
-    ["hwahap_report_goal", "hwahap_report_goal.py", "1d3f8893034783cfd9b07d5eb09894585e84cd4f5ee76e8a1a2f1533003daf46"],
-    ["hwahap_report_assemble", "hwahap_report_assemble.py", "a4ed05df5e276f4fb7db7ca367eb5e552db29f83eaaf1d92feecd77ffefb82a8"],
-    ["hwahap_report_payload", "hwahap_report_payload.py", "74fb8164df2db4a0914a89030313fdddfeb51abfab3015f5bf96d175f363294f"],
-    ["hwahap_report_canonical", "hwahap_report_canonical.py", "03c9d78791558e9d0a9e0b1a0b72ddf06f3bcccf53517a49ad8858e5b7ea4801"],
-    ["hwahap_report_ledger", "hwahap_report_ledger.py", "441a464af0a653662cec36e257238bb22f6998b95ba7e1f0c2f721c9e0265e77"],
-    ["hwahap_report_view", "hwahap_report_view.py", "2cb7171766dfd60cfb60efd5394743f211b3830c9c3ef88b1298c3400c615d80"],
-    ["hwahap_report_core_sections", "hwahap_report_core_sections.py", "3681419ae1a5809fa41bd827551e6fc4db868bcb29e20f6d3856aa98a2d1d0d0"],
-    ["hwahap_report_review_sections", "hwahap_report_review_sections.py", "47b1170fabeb91179b60d2ea3152ebeb5243a663f581ded4cdca3291a48160d4"],
-    ["hwahap_report_metrics", "hwahap_report_metrics.py", "e130f84b0f5bfe18d1a8d8299c4d46330041f786886a5d19c90f0dfe6cce619e"],
-    ["hwahap_report_changes", "hwahap_report_changes.py", "81ce307689bb114248f1bd64134fa51fff184731ff63b70937e6506e96f8ebf6"],
-    ["hwahap_report_provenance", "hwahap_report_provenance.py", "19e5bd9a0ebc869f9a58cd1d8cd1eb7b0cfe8f57e4a361f72885022c27f22116"],
-    ["hwahap_report_human", "hwahap_report_human.py", "b2624c13ec19001130907abcab977cbd9cec7d67076073c2712349efb5d105c8"],
-    ["hwahap_report_evidence", "hwahap_report_evidence.py", "36b23805a9e47995d138bdc3f14852e94d2984af0d410e932d81b54d1e2bddb2"],
-    ["hwahap_report_render", "hwahap_report_render.py", "d80bfdb1c327ea0c6f70d0ff4815b4645a603f3d914ea10776f28772f864f4bf"],
-    ["hwahap_report_parser", "hwahap_report_parser.py", "ebb5c8a369c489055578f72d9bae67e8a7ab9a0e9c13d71c110712b35ac01d5b"],
-    ["hwahap_report_validate", "hwahap_report_validate.py", "4b4f958740c8c72c8931976f69eaab411470440e761ff0929ba858d9c2cc6aae"],
-    ["hwahap_report_credential_dependency", "hwahap_credentials.py", "8e439402951854de3a60ba24d16566d7146be2eeb4572d515ef2d35ce488b1ab"]
+    [
+      "hwahap_report_api",
+      "hwahap_report_api.py",
+      "2bd6fd36cfce0eda0084fc624669d985c2160140cf8bb514340a20d8dcf51db2"
+    ],
+    [
+      "hwahap_report_types",
+      "hwahap_report_types.py",
+      "7d4d1f72efd3b8ca04a55e7497841d66280b06e3a3e98ebc6ad79e7d7ccf60ce"
+    ],
+    [
+      "hwahap_report_assets",
+      "hwahap_report_assets.py",
+      "a916ed7e320df34ccd0bfebc7bfd94dc4eabb1b20400eb91fc6ef3c82c2c9dbc"
+    ],
+    [
+      "hwahap_report_security",
+      "hwahap_report_security.py",
+      "89c170a9d1fcf4154ea31f9197d27711d31e58c6dc0085129fcbe78a555bf75b"
+    ],
+    [
+      "hwahap_report_clean",
+      "hwahap_report_clean.py",
+      "bcb3c2a0219614e54756130fc6fd1c3fae7cd3e11a4247405f9ca052b2fd29ca"
+    ],
+    [
+      "hwahap_report_unit",
+      "hwahap_report_unit.py",
+      "b8f540dc19e5203f0cc8332dd5dc75e79bb25eee17998cedd652b76a11a56a32"
+    ],
+    [
+      "hwahap_report_goal",
+      "hwahap_report_goal.py",
+      "1d3f8893034783cfd9b07d5eb09894585e84cd4f5ee76e8a1a2f1533003daf46"
+    ],
+    [
+      "hwahap_report_assemble",
+      "hwahap_report_assemble.py",
+      "a4ed05df5e276f4fb7db7ca367eb5e552db29f83eaaf1d92feecd77ffefb82a8"
+    ],
+    [
+      "hwahap_report_payload",
+      "hwahap_report_payload.py",
+      "74fb8164df2db4a0914a89030313fdddfeb51abfab3015f5bf96d175f363294f"
+    ],
+    [
+      "hwahap_report_canonical",
+      "hwahap_report_canonical.py",
+      "03c9d78791558e9d0a9e0b1a0b72ddf06f3bcccf53517a49ad8858e5b7ea4801"
+    ],
+    [
+      "hwahap_report_ledger",
+      "hwahap_report_ledger.py",
+      "441a464af0a653662cec36e257238bb22f6998b95ba7e1f0c2f721c9e0265e77"
+    ],
+    [
+      "hwahap_report_view",
+      "hwahap_report_view.py",
+      "2cb7171766dfd60cfb60efd5394743f211b3830c9c3ef88b1298c3400c615d80"
+    ],
+    [
+      "hwahap_report_core_sections",
+      "hwahap_report_core_sections.py",
+      "3681419ae1a5809fa41bd827551e6fc4db868bcb29e20f6d3856aa98a2d1d0d0"
+    ],
+    [
+      "hwahap_report_review_sections",
+      "hwahap_report_review_sections.py",
+      "47b1170fabeb91179b60d2ea3152ebeb5243a663f581ded4cdca3291a48160d4"
+    ],
+    [
+      "hwahap_report_metrics",
+      "hwahap_report_metrics.py",
+      "e130f84b0f5bfe18d1a8d8299c4d46330041f786886a5d19c90f0dfe6cce619e"
+    ],
+    [
+      "hwahap_report_changes",
+      "hwahap_report_changes.py",
+      "81ce307689bb114248f1bd64134fa51fff184731ff63b70937e6506e96f8ebf6"
+    ],
+    [
+      "hwahap_report_provenance",
+      "hwahap_report_provenance.py",
+      "19e5bd9a0ebc869f9a58cd1d8cd1eb7b0cfe8f57e4a361f72885022c27f22116"
+    ],
+    [
+      "hwahap_report_human",
+      "hwahap_report_human.py",
+      "b2624c13ec19001130907abcab977cbd9cec7d67076073c2712349efb5d105c8"
+    ],
+    [
+      "hwahap_report_evidence",
+      "hwahap_report_evidence.py",
+      "36b23805a9e47995d138bdc3f14852e94d2984af0d410e932d81b54d1e2bddb2"
+    ],
+    [
+      "hwahap_report_render",
+      "hwahap_report_render.py",
+      "d80bfdb1c327ea0c6f70d0ff4815b4645a603f3d914ea10776f28772f864f4bf"
+    ],
+    [
+      "hwahap_report_parser",
+      "hwahap_report_parser.py",
+      "ebb5c8a369c489055578f72d9bae67e8a7ab9a0e9c13d71c110712b35ac01d5b"
+    ],
+    [
+      "hwahap_report_validate",
+      "hwahap_report_validate.py",
+      "4b4f958740c8c72c8931976f69eaab411470440e761ff0929ba858d9c2cc6aae"
+    ],
+    [
+      "hwahap_report_credential_dependency",
+      "hwahap_credentials.py",
+      "ac177e6deed9852da363068c75241ddf1847e738abf45494a3ab1f6dc0599e2f"
+    ],
+    [
+      "hwahap_credential_types",
+      "hwahap_credential_types.py",
+      "7dd59626d7a887ecd57aa050b881845ac5c233cc6fc968a9b5d724fc1ff14d40"
+    ],
+    [
+      "hwahap_credential_patterns",
+      "hwahap_credential_patterns.py",
+      "91f51a1f0c04f2154097f300b7aaad0671646a52bf49dcf1ce561abf75249d1f"
+    ],
+    [
+      "hwahap_credential_normalize",
+      "hwahap_credential_normalize.py",
+      "e6564dbc7089ddb0b2862d9963a3bf81a3df3eaf0583e00a4fbc59ec6728afc0"
+    ],
+    [
+      "hwahap_credential_detect",
+      "hwahap_credential_detect.py",
+      "3414ae83c7bdafe78187c2336d08c06e2a466e9c1e86165e6610ca2f5a867bf3"
+    ]
   ]
 }

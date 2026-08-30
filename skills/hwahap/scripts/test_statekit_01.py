@@ -18,11 +18,15 @@ class StateFixtureMixin01:
             def git(*args: str) -> str:
                 return subprocess.run(["git", *args], cwd=self.workspace, check=True,
                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
-            git("init", "-q"); git("config", "user.email", "test@example.invalid"); git("config", "user.name", "Hwahap Test")
-            git("add", "-A"); git("commit", "-qm", "base")
+            git("init", "-q")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Hwahap Test")
+            git("add", "-A")
+            git("commit", "-qm", "base")
             self.base_commit = git("rev-parse", "HEAD")
             (self.workspace / "src").write_text("target\n", encoding="utf-8")
-            git("add", "src"); git("commit", "-qm", "target")
+            git("add", "src")
+            git("commit", "-qm", "target")
             self.target_commit = git("rev-parse", "HEAD")
             self.snapshot = hwahap_state.git_diff_snapshot(self.workspace, self.base_commit, self.target_commit)
 

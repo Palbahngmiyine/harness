@@ -20,6 +20,8 @@ class DependencyIntegrityTests(unittest.TestCase):
         return module
     def _copy_scripts(self, directory):
         sources = list(ROOT.glob("hwahap_state*.py"))
+        sources.extend(ROOT.glob("hwahap_agent_*.py"))
+        sources.extend(ROOT.glob("hwahap_credential_*.py"))
         sources.append(ROOT / "hwahap_state_manifest.json")
         sources.extend(ROOT / name for name in (
             "hwahap_report.py", "hwahap_credentials.py", "install_project_agents.py"))
@@ -32,6 +34,7 @@ class DependencyIntegrityTests(unittest.TestCase):
         scripts.mkdir(parents=True)
         assets.mkdir(parents=True)
         sources = list(ROOT.glob("hwahap_report*.py"))
+        sources.extend(ROOT.glob("hwahap_credential_*.py"))
         sources.extend((ROOT / "hwahap_report_manifest.json",
                         ROOT / "hwahap_credentials.py"))
         for source in sources:

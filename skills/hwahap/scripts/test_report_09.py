@@ -50,7 +50,8 @@ class ReportSlice21Tests(HwahapReportTests):
             text = data.decode()
             self.assertIn("/ledger-probe/a~1b", text)
             self.assertIn("/ledger-probe/~0key", text)
-            for literal in ('&quot;&quot;', "7", "true", "null", "[]", "{}"): self.assertIn(literal, text)
+            for literal in ('&quot;&quot;', "7", "true", "null", "[]", "{}"):
+                self.assertIn(literal, text)
             self.assertNotIn('application/json', text)
             self.assertNotIn('#report-data{display:none', text)
             self.assertNotIn('.evidence-content{display:none', text)

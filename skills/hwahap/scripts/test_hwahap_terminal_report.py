@@ -6,7 +6,10 @@ import unittest
 from contextlib import redirect_stdout
 from unittest import mock
 
-from skills.hwahap.scripts import test_hwahap_state as state_tests
+try:
+    from . import test_state_case_01 as state_tests
+except ImportError:
+    import test_state_case_01 as state_tests
 
 state = state_tests.hwahap_state
 

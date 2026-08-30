@@ -68,11 +68,16 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             def git(*args: str) -> str:
                 return subprocess.run(["git", *args], cwd=other, check=True,
                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True).stdout.strip()
-            git("init", "-q"); git("config", "user.email", "test@example.invalid"); git("config", "user.name", "Hwahap Test")
+            git("init", "-q")
+            git("config", "user.email", "test@example.invalid")
+            git("config", "user.name", "Hwahap Test")
             (other / "other").write_text("one\n", encoding="utf-8")
-            git("add", "other"); git("commit", "-qm", "one"); base = git("rev-parse", "HEAD")
+            git("add", "other")
+            git("commit", "-qm", "one")
+            base = git("rev-parse", "HEAD")
             (other / "other").write_text("two\n", encoding="utf-8")
-            git("commit", "-qam", "two"); target = git("rev-parse", "HEAD")
+            git("commit", "-qam", "two")
+            target = git("rev-parse", "HEAD")
             foreign = hwahap_state.git_diff_snapshot(other, base, target)
             run = copy.deepcopy(original)
             run["final_review"]["attempts"][0]["diff_snapshot"] = foreign

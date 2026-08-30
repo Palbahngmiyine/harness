@@ -26,9 +26,12 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             git("config", "user.email", "test@example.invalid")
             git("config", "user.name", "Hwahap Test")
             (repo / "src").write_text("one\n", encoding="utf-8")
-            git("add", "src"); git("commit", "-qm", "one"); base = git("rev-parse", "HEAD")
+            git("add", "src")
+            git("commit", "-qm", "one")
+            base = git("rev-parse", "HEAD")
             (repo / "src").write_text("two\n", encoding="utf-8")
-            git("commit", "-qam", "two"); target = git("rev-parse", "HEAD")
+            git("commit", "-qam", "two")
+            target = git("rev-parse", "HEAD")
             snapshot = hwahap_state.git_diff_snapshot(repo, base, target)
             for field, value in (("diff_digest", "sha256:" + "f" * 64), ("changed_paths", ["other"]),
                                  ("base_tree", "0" * 40), ("target_commit", "1" * 40)):
