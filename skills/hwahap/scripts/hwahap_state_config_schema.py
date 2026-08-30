@@ -2,6 +2,12 @@
 from __future__ import annotations
 from hwahap_state_runtime import *
 register(globals())
+
+
+def required_text(value: object) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 ROLE_MAP = {
     "planner": {"agent": "hwahap-sol-planner", "model": "gpt-5.6-sol", "effort": "xhigh"},
     "orchestrator": {"agent": "hwahap-sol-orchestrator", "model": "gpt-5.6-sol", "effort": "xhigh", "fast": "best_effort"},

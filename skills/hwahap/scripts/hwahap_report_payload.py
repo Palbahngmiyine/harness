@@ -10,24 +10,6 @@ from hwahap_report_types import CONTRACT_LISTS, EVENT_FIELDS, SHA256
 from hwahap_report_unit import command_receipts, roles, unit
 
 
-def _next_actions(run: dict, units: list[dict]) -> list[str]:
-    actions = []
-    if run.get("deviations"):
-        actions.append("범위 편차의 prevention을 확인하고 재발 방지를 기록하세요.")
-    if run.get("deferred_security"):
-        actions.append("보류된 보안 작업은 승인 전 구현하지 말고 다음 결정을 기록하세요.")
-    repeated = any(sum(item.get("outcome") == "fail"
-        for item in value.get("review_history", [])) >= 2 for value in units)
-    if repeated:
-        actions.append("반복 실패의 새 가설과 전략을 검토하세요. 개선 후보는 [보고 전용]입니다.")
-    token = run.get("metrics", {}).get("token_usage", {})
-    if token.get("availability") == "unavailable":
-        actions.append("정확한 token aggregate가 없어 추정하지 마세요.")
-    if run.get("fast_status") == "unknown":
-        actions.append("Fast 상태의 관찰 증거를 다음 보고에 남기세요.")
-    return actions or ["추가 조치 없음."]
-
-
 def _run_data(run: dict, root: str) -> dict:
     data = pick(run, ("schema_version", "goal_id", "status", "started_at",
                        "completed_at", "fast_status"), root)

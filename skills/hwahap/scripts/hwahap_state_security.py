@@ -2,10 +2,6 @@
 from __future__ import annotations
 from hwahap_state_runtime import *
 register(globals())
-def required_text(value: object) -> bool:
-    return isinstance(value, str) and bool(value.strip())
-
-
 def _credential_match_is_redacted(match: re.Match[str]) -> bool:
     _ensure_dependencies()
     return _dependency_modules[1].is_redacted(match)

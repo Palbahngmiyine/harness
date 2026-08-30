@@ -13,6 +13,7 @@ import hwahap_state_json_store
 import hwahap_state_atomic
 import hwahap_state_journal
 import hwahap_state_recovery
+import hwahap_state_command_paths
 import hwahap_state_agents
 import hwahap_state_init_data
 import hwahap_state_init_command
@@ -27,6 +28,7 @@ import hwahap_state_add_unit
 import hwahap_state_receipt
 import hwahap_state_transition
 import hwahap_state_improvement_command
+import hwahap_state_candidate_schema
 import hwahap_state_candidate
 import hwahap_state_goal_sync
 import hwahap_state_goal_complete

@@ -38,8 +38,10 @@ def validate_run(args: argparse.Namespace) -> None:
         args, workspace, contract, run, errors)
     units, histories = _validate_run_units(
         unit_files, contract, forbidden, errors, workspace)
-    if any(has_pending_improvement(unit) for unit in units) and status not in ({"reviewing"} | RUN_FAILURE_STATES):
-        errors.append("pending improvement requires run status reviewing or a terminal failure state")
+    if (any(has_pending_improvement(unit) for unit in units)
+            and status not in ({"reviewing", "cancelled"} | RUN_FAILURE_STATES)):
+        errors.append(
+            "pending improvement requires reviewing, cancelled, or terminal failure")
     events = validate_events(required[2], run, units, errors)
     validate_final_review_lifecycle(run, units, contract, events, errors, workspace)
     last_event = events[-1] if events else {}
