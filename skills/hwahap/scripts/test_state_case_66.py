@@ -49,3 +49,24 @@ class HwahapStateTests(StateFixtureMixin01, unittest.TestCase):
         with self.assertRaises(hwahap_state.HwahapError) as raised:
             self.validate()
         self.assertEqual(raised.exception.code, "HW_STATE_INVALID")
+
+    def test_record_rolls_back_run_after_post_write_validation_failure(self) -> None:
+        run_dir = self.init_run()
+        run_path = run_dir / "run.json"
+        original = run_path.read_bytes()
+        original_validate = hwahap_state.validate_run
+        calls = 0
+
+        def fail_after_write(args: Namespace) -> None:
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise hwahap_state.HwahapError("HW_STATE_INVALID", "forced validation failure")
+            original_validate(args)
+
+        with patch.object(hwahap_state, "validate_run", new=fail_after_write):
+            with self.assertRaises(hwahap_state.HwahapError):
+                hwahap_state.record_deviation(self._args())
+        self.assertEqual(calls, 2)
+        self.assertEqual(run_path.read_bytes(), original)
+        self.validate()

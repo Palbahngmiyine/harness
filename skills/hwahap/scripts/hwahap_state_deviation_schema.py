@@ -10,7 +10,7 @@ def validate_deviations(value: object, errors: list[str]) -> None:
     for index, item in enumerate(value, 1):
         label = f"deviations[{index}]"
         if not isinstance(item, dict) or set(item) != DEVIATION_FIELDS:
-            errors.append(f"{label} must be an exact v4 deviation")
+            errors.append(f"{label} is incomplete; must be an exact v4 deviation")
             continue
         if any(not required_text(item.get(field)) for field in DEVIATION_TEXT_FIELDS):
             errors.append(f"{label} has empty causal fields")
