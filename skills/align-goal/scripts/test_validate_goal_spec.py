@@ -635,6 +635,10 @@ class ValidatorTests(unittest.TestCase):
             lambda c: c["reviews"]["cold_consumer"].__setitem__("output", None),
             lambda c: c["confirmations"].__setitem__("alignment_summary", True),
             lambda c: c["reviews"]["cold_consumer"].__setitem__("generated_at", None),
+            lambda c: c["choices"][0].__setitem__("depends_on_choice_ids", [{}]),
+            lambda c: c["decision_surfaces"][0]["resolution"].__setitem__("choice_ids", [{}]),
+            lambda c: c["reviews"]["cold_consumer"]["output"].__setitem__("steps", [{}]),
+            lambda c: c["reviews"]["cold_consumer"]["output"].__setitem__("local_choices", [{}]),
         )
         for mutate in mutations:
             with self.subTest(mutate=mutate):
@@ -643,6 +647,23 @@ class ValidatorTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertNotIn("Traceback", result.stderr)
                 self.assertEqual(set(json.loads(result.stdout)), OUTPUT_KEYS)
+
+    def test_complete_is_never_returned_for_late_confirmation_or_local_choice_failure(self):
+        contract = base_contract()
+        contract["confirmations"]["handoff_document"]["confirmed_at"] = "2026-08-31T09:15:00+09:00"
+        output = self.assert_invalid(contract, require="handoff-ready")
+        self.assertNotEqual(output["next_action"], "complete")
+
+        contract = base_contract()
+        local = {"id": "LC1", "description": "private helper", "unit_id": "U1"}
+        for key in ("same_observable_behavior", "unchanged_named_surfaces", "no_system_impact",
+                    "private_unit_only", "reversible_without_spec_change"):
+            local[key] = {"satisfied": True, "evidence": "The proof is recorded for this private unit."}
+        local["private_unit_only"]["satisfied"] = False
+        contract["reviews"]["cold_consumer"]["output"]["local_choices"] = [local]
+        rebind(contract)
+        output = self.assert_invalid(contract, require="handoff-ready")
+        self.assertNotEqual(output["next_action"], "complete")
 
     def test_claimed_gate_states_and_decision_units(self):
         contract = exploring_contract(); self.assert_invalid_text(document(contract, alignment="aligned", handoff="not_requested", session="complete"), "unresolved choices remain")
