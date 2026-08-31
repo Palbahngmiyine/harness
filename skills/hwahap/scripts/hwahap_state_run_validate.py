@@ -15,6 +15,8 @@ def validate_run(args: argparse.Namespace) -> None:
     for label, path in ((".hwahap", hwahap), ("runs", hwahap / "runs"), ("run", run_dir), ("units", units_dir)):
         if path.is_symlink() or not path.is_dir():
             raise HwahapError("HW_STATE_INVALID", f"{label} must be a real directory")
+    validate_state_directory(run_dir, "run")
+    validate_state_directory(units_dir, "units")
     for path in required:
         if not _single_regular_file(path):
             raise HwahapError("HW_STATE_INVALID", f"{path.name} must be a real file")

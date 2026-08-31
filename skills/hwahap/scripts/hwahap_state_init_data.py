@@ -79,10 +79,8 @@ def _initial_state(goal_id: str, meta: dict, source: str, digest: str,
 def _write_initial_state(workspace: Path, run_dir: Path, contract: dict, run: dict) -> None:
     contract_path, run_path = run_dir / "contract.json", run_dir / "run.json"
     events_path, units_dir = run_dir / "events.jsonl", run_dir / "units"
-    parent_dirs = (workspace / ".hwahap", workspace / ".hwahap" / "runs")
-    parent_existed = {path: path.exists() for path in parent_dirs}
+    created_dirs = create_state_directories(workspace, run_dir)
     try:
-        units_dir.mkdir(parents=True)
         write_json(contract_path, contract)
         write_json(run_path, run)
         events_path.write_text("", encoding="utf-8")
@@ -90,7 +88,6 @@ def _write_initial_state(workspace: Path, run_dir: Path, contract: dict, run: di
     except Exception as exc:
         for path in (contract_path, run_path, events_path):
             remove_path_best_effort(path)
-        for path in (units_dir, run_dir, *reversed(parent_dirs)):
-            if not parent_existed.get(path, False):
-                remove_path_best_effort(path)
+        for path in reversed(created_dirs):
+            remove_path_best_effort(path)
         raise HwahapError("HW_STATE_INVALID", "could not initialize run state") from exc

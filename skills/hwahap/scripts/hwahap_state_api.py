@@ -12,6 +12,7 @@ import hwahap_state_config_schema
 import hwahap_state_config_machine
 import hwahap_state_errors_git
 import hwahap_state_json_store
+import hwahap_state_directories
 import hwahap_state_atomic
 import hwahap_state_journal
 import hwahap_state_recovery

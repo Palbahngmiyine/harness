@@ -4,7 +4,7 @@
     [
       "hwahap_state_api",
       "hwahap_state_api.py",
-      "fa4d158c305edd7bb782928d579744a72c4790222d98083ac66c0ba1c1b0e610"
+      "38c3de242f49413a08068b9c0de736eeab976e528da890731814efaf76d641da"
     ],
     [
       "hwahap_state_runtime",
@@ -52,6 +52,11 @@
       "83bb05d7a53f61628b79772a52fbea00e7574d28766ce6fe97e378b0b5c3d3d3"
     ],
     [
+      "hwahap_state_directories",
+      "hwahap_state_directories.py",
+      "1c9dad2d9fb11da3bb4c0fafd0096b290c96b16ab5cc2881ee0756edc8ccbcc6"
+    ],
+    [
       "hwahap_state_atomic",
       "hwahap_state_atomic.py",
       "4153c3206c388fb2d95ef103963a94db8f505722d14b2e26d180f5b239f3e53c"
@@ -84,7 +89,7 @@
     [
       "hwahap_state_init_data",
       "hwahap_state_init_data.py",
-      "a9352492989c650a463cb7db15f32fb98131a94e713b11e8b2b3d69427edab74"
+      "484b418d13fcf20c182c323eb45c865de45de898a72f7342d81f32057583691d"
     ],
     [
       "hwahap_state_report_gateway",
@@ -239,7 +244,7 @@
     [
       "hwahap_state_run_validate",
       "hwahap_state_run_validate.py",
-      "5f1c610c85fd34f5aa3c4d31908e2f0fbd53f24461137a7e8a9d0db7f7c3099c"
+      "8b21c0b0b4352f16c891f5e35b40138f924180ff89a37403bbeccd87861f2c1a"
     ],
     [
       "hwahap_state_parser_setup",
