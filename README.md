@@ -11,7 +11,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
-| [grill-prfaq](skills/grill-prfaq/) | Pressure-test an idea before writing a Working Backwards PR/FAQ | KO |
+| [align-goal](skills/align-goal/) | Resolve every implementation-direction choice into a traceable goal specification | KO/EN |
 | [hwahap](skills/hwahap/) | Execute an approved PR/FAQ with Sol planning, atomic Luna implementation, and independent Luna/Terra review | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
@@ -27,9 +27,9 @@ cp -r skills/prompt-engineering-patterns ~/.claude/skills/
 # Claude Code: install all skills at once
 cp -r skills/* ~/.claude/skills/
 
-# Codex: install grill-prfaq at user level
+# Codex: install align-goal at user level
 mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/grill-prfaq "${CODEX_HOME:-$HOME/.codex}/skills/"
+cp -R skills/align-goal "${CODEX_HOME:-$HOME/.codex}/skills/"
 
 # Codex: install the Hwahap implementation orchestrator
 cp -R skills/hwahap "${CODEX_HOME:-$HOME/.codex}/skills/"
@@ -90,19 +90,21 @@ Automate PR creation from a forked repo to upstream:
 - Auto-generated PR body with summary, changes, and test plan
 - Build verification before PR creation
 
-### grill-prfaq
+### align-goal
 
-Pressure-test an idea through short rounds before writing a Working Backwards PR/FAQ:
-- Builds a decision tree from customer, problem, core benefit, evidence, and experience
-- Records facts, user decisions, assumptions, and parked questions in one file
-- Requires a rubric gate, explicit user confirmation, and validator success before writing the PR
-- Includes Codex display metadata, reference material, and a deterministic validator
+Resolve every implementation-direction choice with the user before implementation planning:
+- Inspects repository and runtime evidence before mapping the complete decision surface
+- Records facts, exact user-confirmed choices, specification clauses, acceptance checks, units, and open items with stable IDs
+- Rejects delegated or vague answers and recursively returns new ambiguity findings to explicit choices
+- Requires digest-bound ambiguity and cold-consumer reviews before `aligned` or `handoff-ready`
+- Includes deterministic gate tests and target/oracle-separated forward-evaluation cases
 
 Validate the skill from the repository root:
 
 ```bash
-python3 skills/grill-prfaq/scripts/test_validate_prfaq.py
-python3 skills/grill-prfaq/scripts/validate_prfaq.py --help
+python3 skills/align-goal/scripts/test_validate_goal_spec.py
+python3 skills/align-goal/scripts/test_validate_behavioral_evals.py
+python3 skills/align-goal/scripts/validate_goal_spec.py --help
 ```
 
 ### hwahap
