@@ -29,6 +29,11 @@ def _parser_workflow(commands) -> None:
              + [required(name) for name in ("scenario", "affected-scope", "impact",
                                              "decision-reason", "evidence-relation",
                                              "success-condition")])
+    _command(commands, "record-deviation", "record one complete causal v4 deviation",
+             record_deviation, common + [required(name) for name in (
+                 "summary", "root-cause", "impact", "prevention",
+                 "evidence-explanation")] + [(("--evidence",),
+                 {"action": "append", "required": True})])
 
 
 def _parser_goal(commands) -> None:

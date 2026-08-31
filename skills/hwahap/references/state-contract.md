@@ -59,6 +59,7 @@ before lock.
 <absolute-hwahap-skill-dir>/scripts/hwahap transition --workspace <workspace> --run-id <goal-id> --entity <run-or-unit-id> --to <state> --actor <thread-id> --role <role> --reason <reason> --input-digest <digest> --evidence-ref <reference>
 <absolute-hwahap-skill-dir>/scripts/hwahap record-improvement --workspace <workspace> --run-id <goal-id> --unit-id <unit-id> --actor <sol-thread> --after-round <n> --kind <kind> --failure-signature <sha256:...> --root-cause <reason> --hypothesis <testable-hypothesis> --action <bounded-action> --strategy-digest <sha256:...> --scope-status within_contract --evidence-ref <reference>
 <absolute-hwahap-skill-dir>/scripts/hwahap record-improvement-candidate --workspace <workspace> --run-id <goal-id> --summary <summary> --expected-effect <effect> --next-action <action> --evidence-ref <final-review-evidence> --scenario <concrete-condition> --affected-scope <affected-boundary> --impact <consequence> --decision-reason <why-user-decides> --evidence-relation <what-evidence-proves> --success-condition <observable-resolution> # final_review only; report-only
+<absolute-hwahap-skill-dir>/scripts/hwahap record-deviation --workspace <workspace> --run-id <goal-id> --summary <summary> --root-cause <root-cause> --impact <impact> --prevention <prevention> --evidence-explanation <explanation> --evidence <reference>
 <absolute-hwahap-skill-dir>/scripts/hwahap goal-sync --workspace <workspace> --run-id <goal-id> --mode <bound|no_active_goal|unavailable> --reason <reason> --evidence-ref <reference> [--thread-id <id> --objective-sha256 <sha256:...> --receipt-sha256 <sha256:...> --token-total <nonnegative-int>]
 <absolute-hwahap-skill-dir>/scripts/hwahap goal-complete-sync --workspace <workspace> --run-id <goal-id> --sync-result <completed|already_completed|failed> --receipt-sha256 <sha256:...> --reason <reason> --evidence-ref <reference> [--token-total <nonnegative-int>]
 <absolute-hwahap-skill-dir>/scripts/hwahap complete --workspace <workspace> --run-id <goal-id> --actor <sol-thread> --reason <reason> --input-digest <digest> --evidence-ref <reference>
@@ -75,6 +76,10 @@ validation fails where restoration is possible. Non-Hwahap write failures are
 reported as generic `HW_STATE_INVALID` without path or value details.
 Rollback is best-effort and non-durable: a persistent filesystem failure may
 leave incomplete state and requires operator inspection.
+
+`record-deviation` is the only deviation creation API. It requires the exact
+v4 fields and atomically updates `run.json`; stale or credential-bearing input
+is rejected without silent migration.
 
 Every terminal run outcome—`completed`, `blocked`, `failed`, `awaiting_user`,
 or `cancelled`—automatically publishes both `report-data.json` and

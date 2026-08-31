@@ -22,7 +22,8 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             run = json.loads(run_path.read_text())
             raw = "curl " + chr(92) + "\n  --user audit:linecase URL"
             run["deviations"] = [{"summary": raw, "root_cause": "cause", "impact": "impact",
-                                   "prevention": "prevention", "evidence": ["evidence"]}]
+                                   "prevention": "prevention", "evidence_explanation": "evidence links to prevention",
+                                   "evidence": ["evidence"]}]
             self.write_json(run_path, run)
             before = {path: path.read_bytes() for path in (run_path, events_path)}
             with self.assertRaises(hwahap_state.HwahapError) as raised:

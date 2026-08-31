@@ -41,8 +41,8 @@ It also records:
 - `fast_status`: always `unknown` on this platform. The Sol profile continues
   to request Fast, but local state records `unknown` until a verifiable runtime
   receipt is exposed; never infer `enabled` or `disabled` from the profile.
-- `deviations`: records with `summary`, `root_cause`, `impact`, `prevention`,
-  `evidence_explanation`, and nonempty `evidence`. The explanation states why
+- `deviations`: exact v4 records with only `summary`, `root_cause`, `impact`,
+  `prevention`, `evidence_explanation`, and nonempty `evidence`. The explanation states why
   that evidence supports the prevention instead of merely naming a test.
 - `deferred_security`: records with `summary`, `reason`, `next_action`, and
   nonempty `evidence`, plus the exact `decision_context` below.
@@ -100,6 +100,10 @@ hidden reasoning are never included.
 The renderer and validator use the same canonical payload ledger, so adding a
 field cannot silently omit it from the visible report: the complete ledger is
 validated as one exact payload-bound block.
+
+Use `record-deviation` to append causal records atomically. It rejects stale
+pre-v4 records and preserves `metrics.scope_deviations == len(deviations)`;
+there is no silent migration of existing state.
 
 `decision_context` has exactly six nonempty strings: `scenario` describes the
 concrete condition in which the item matters; `affected_scope` names the

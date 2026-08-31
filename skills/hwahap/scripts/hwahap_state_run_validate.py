@@ -53,7 +53,7 @@ def validate_run(args: argparse.Namespace) -> None:
             errors.append("final_review awaiting_user has invalid failure code")
     deviations = run.get("deviations")
     deferred = run.get("deferred_security")
-    validate_records(deviations, ("summary", "root_cause", "impact", "prevention"), "deviations", errors)
+    validate_deviations(deviations, errors)
     validate_records(deferred, ("summary", "reason", "next_action"), "deferred_security", errors)
     validate_metrics(run, units, histories, deviations if isinstance(deviations, list) else [], errors)
     final_review_errors: list[str] = []

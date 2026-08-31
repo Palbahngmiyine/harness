@@ -26,6 +26,8 @@ import hwahap_state_complete
 import hwahap_state_lock
 import hwahap_state_final_units
 import hwahap_state_scope_drift
+import hwahap_state_deviation_schema
+import hwahap_state_deviation
 import hwahap_state_add_unit
 import hwahap_state_receipt
 import hwahap_state_transition

@@ -22,6 +22,8 @@ CONTRACT_LISTS = (
 )
 CANDIDATE_FIELDS = frozenset(("status", "summary", "evidence", "expected_effect", "next_action", "decision_context"))
 DECISION_CONTEXT_FIELDS = frozenset(("scenario", "affected_scope", "impact", "decision_reason", "evidence_relation", "success_condition"))
+DEVIATION_FIELDS = frozenset(("summary", "root_cause", "impact", "prevention", "evidence_explanation", "evidence"))
+DEVIATION_TEXT_FIELDS = DEVIATION_FIELDS - {"evidence"}
 EVENT_FIELDS = (
     "timestamp", "type", "sequence", "entity", "from", "to", "actor", "role",
     "reason", "input_digest", "evidence_refs", "review_round",
