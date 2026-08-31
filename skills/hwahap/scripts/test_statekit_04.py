@@ -22,12 +22,13 @@ class StateFixtureMixin04:
             source_digest = hwahap_report.canonical_payload_digest(payload)
             data = hwahap_report.canonical_payload_bytes(payload)
             html = hwahap_report.render_report(payload, source_digest)
-            run["report"] = {"schema_version": 3, "status": "completed",
-                              "generator": {"name": "hwahap-report", "version": 3, "design_system": "material-design-3"},
+            run["report"] = {"schema_version": 4, "status": "completed",
+                              "generator": {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
+                                            "theme_source": "m3-foundations+coolors-c2e7ff@2026-08-29"},
                               "source_payload_sha256": source_digest,
                               "data": {"path": "report-data.json", "file_sha256": "sha256:" + hashlib.sha256(data).hexdigest()},
                               "html": {"path": "report.html", "file_sha256": "sha256:" + hashlib.sha256(html).hexdigest()},
-                              "generated_at": generated_at, "redaction_policy": "hwahap-report-v3"}
+                              "generated_at": generated_at, "redaction_policy": "hwahap-report-v4"}
             (run_dir / "report-data.json").write_bytes(data)
             (run_dir / "report.html").write_bytes(html)
             (run_dir / "report-data.json").chmod(0o600)

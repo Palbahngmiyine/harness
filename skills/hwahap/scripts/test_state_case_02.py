@@ -45,12 +45,13 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             run_dir = self.init_run()
             run_path = run_dir / "run.json"
             run = json.loads(run_path.read_text())
-            run["report"] = {"schema_version": 2, "status": "pending",
-                              "generator": {"name": "hwahap-report", "version": 2, "astryx_version": "0.5.0"},
+            run["report"] = {"schema_version": 3, "status": "pending",
+                              "generator": {"name": "hwahap-report", "version": 3,
+                                            "design_system": "material-design-3"},
                               "source_payload_sha256": None,
                               "data": {"path": "report-data.json", "file_sha256": None},
                               "html": {"path": "report.html", "file_sha256": None},
-                              "generated_at": None, "redaction_policy": "hwahap-report-v2"}
+                              "generated_at": None, "redaction_policy": "hwahap-report-v3"}
             self.write_json(run_path, run)
             self.assert_invalid("report receipt")
 

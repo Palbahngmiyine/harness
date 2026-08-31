@@ -2,9 +2,10 @@
 from __future__ import annotations
 from hwahap_state_runtime import *
 register(globals())
-REPORT_SCHEMA_VERSION = 3
-REPORT_GENERATOR = {"name": "hwahap-report", "version": 3, "design_system": "material-design-3"}
-REPORT_REDACTION_POLICY = "hwahap-report-v3"
+REPORT_SCHEMA_VERSION = 4
+REPORT_GENERATOR = {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
+                    "theme_source": "m3-foundations+coolors-c2e7ff@2026-08-29"}
+REPORT_REDACTION_POLICY = "hwahap-report-v4"
 SLUG = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 RUN_STATES = {
     "initialized", "contract_locked", "implementing", "reviewing", "recovering",

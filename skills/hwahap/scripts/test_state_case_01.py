@@ -90,10 +90,11 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
         def test_report_v4_pending_has_no_physical_artifacts(self) -> None:
             run_dir = self.init_run()
             receipt = json.loads((run_dir / "run.json").read_text())["report"]
-            self.assertEqual(receipt, {"schema_version": 3, "status": "pending",
-                "generator": {"name": "hwahap-report", "version": 3, "design_system": "material-design-3"},
+            self.assertEqual(receipt, {"schema_version": 4, "status": "pending",
+                "generator": {"name": "hwahap-report", "version": 5, "design_system": "material-design-3",
+                               "theme_source": "m3-foundations+coolors-c2e7ff@2026-08-29"},
                 "source_payload_sha256": None, "data": {"path": "report-data.json", "file_sha256": None},
                 "html": {"path": "report.html", "file_sha256": None}, "generated_at": None,
-                "redaction_policy": "hwahap-report-v3"})
+                "redaction_policy": "hwahap-report-v4"})
             self.assertFalse((run_dir / "report-data.json").exists())
             self.assertFalse((run_dir / "report.html").exists())
