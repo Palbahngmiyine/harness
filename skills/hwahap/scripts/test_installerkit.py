@@ -40,5 +40,16 @@ class InstallerFixture:
             installer.install(str(root or self.root))
         return output.getvalue()
 
+    def profiles(self):
+        return installer.source_profiles()
+
+    def agents(self, root=None):
+        return (root or self.root) / ".codex" / "agents"
+
+    def assert_code(self, code, root=None):
+        with self.assertRaises(installer.InstallError) as raised:
+            self.run_install(root)
+        self.assertEqual(raised.exception.code, code)
+
 
 __all__ = [name for name in globals() if not name.startswith("__")]

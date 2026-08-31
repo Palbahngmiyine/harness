@@ -7,7 +7,7 @@ PROFILE_DIR = Path(__file__).resolve().parents[1] / "assets" / "agents"
 REQUIRED_FIELDS = ("name", "description", "developer_instructions")
 PROFILE_CONTRACT = {
     "hwahap-luna-implementer.toml": (
-        "hwahap-luna-implementer", "gpt-5.6-luna", "high", None, None, None),
+        "hwahap-luna-implementer", "gpt-5.6-luna", "high", "workspace-write", None, None),
     "hwahap-luna-verifier.toml": (
         "hwahap-luna-verifier", "gpt-5.6-luna", "xhigh", "read-only", None, None),
     "hwahap-sol-final-reviewer.toml": (
@@ -15,12 +15,20 @@ PROFILE_CONTRACT = {
     "hwahap-sol-planner.toml": (
         "hwahap-sol-planner", "gpt-5.6-sol", "xhigh", "read-only", None, None),
     "hwahap-sol-orchestrator.toml": (
-        "hwahap-sol-orchestrator", "gpt-5.6-sol", "xhigh", None, "fast", True),
+        "hwahap-sol-orchestrator", "gpt-5.6-sol", "xhigh", "workspace-write", "fast", True),
     "hwahap-terra-scope-reviewer.toml": (
         "hwahap-terra-scope-reviewer", "gpt-5.6-terra", "xhigh",
         "read-only", None, None),
 }
 REQUIRED_PROFILE_NAMES = frozenset(PROFILE_CONTRACT)
+PROFILE_SHA256 = {
+    "hwahap-luna-implementer.toml": "f1781d1f33f923ce4f75b485444e3bd3c8779fdd1304c11b515777eb850586ae",
+    "hwahap-luna-verifier.toml": "3f78b091ceccd232bd2206587a74259a139ea962d1736189d3ffd1d8b2a45df5",
+    "hwahap-sol-final-reviewer.toml": "45b7f0d6961ccec665acc0c738f9506b6e2958b58ff5faff6248e91c6eb79f15",
+    "hwahap-sol-orchestrator.toml": "dff6aa039c5926b02d4cd9d40b932efcce207a58d164d3dfd90d2ee1c4e7e051",
+    "hwahap-sol-planner.toml": "1e3f0ff57ccc650b5ae363bd0f65f43d12c6ce19aeaabd95abafcb4d60dbed62",
+    "hwahap-terra-scope-reviewer.toml": "4dfd7e5d360eed061097821e3b651236e737966c9b6011ea8e23572cd0eeeff1",
+}
 PUBLIC_ERROR_MESSAGES = {
     "HW_AGENT_ARGUMENT_INVALID": "invalid installer arguments",
     "HW_AGENT_SOURCE_INVALID": "Hwahap source profiles are invalid",
