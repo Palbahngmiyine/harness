@@ -249,22 +249,27 @@
     [
       "hwahap_state_agent_dependency",
       "install_project_agents.py",
-      "74768bc78d6fd2b80cfee762994075153bdf9b26a4d2408554b57e74f82746c4"
+      "f2d728d99b60028ac3edba069943dfd7c560368d70230ed5cb07389615006a10"
     ],
     [
       "hwahap_agent_contract",
       "hwahap_agent_contract.py",
-      "d0feddcbbde1b887171f5c2ed28f7ecd87e9b0b8ee556a7c31401327eb2de75e"
+      "7af8fe31c3dc09ba1f8f0221e023abbbb20cd1d09a742a6cec45f988aff69598"
     ],
     [
       "hwahap_agent_profiles",
       "hwahap_agent_profiles.py",
-      "e197c697ffa0718c9f84b3c07b517507acaa98bcefe578b4f96ca0e6391dbfb8"
+      "57ecab051ea10eb6b2d7a71471f3bc36d343711d805169813808ebe6811fc49c"
+    ],
+    [
+      "hwahap_agent_io",
+      "hwahap_agent_io.py",
+      "ce6583e5caa811d0b2aedc39d2cea89765e13da9b9192c71946066c7bedf7dcf"
     ],
     [
       "hwahap_agent_install",
       "hwahap_agent_install.py",
-      "f574adf8bfb4591df23039b99a76d85f1f26c16cc691f83cbd3873ad5e1c04d5"
+      "b3512cf0fba8da9f1d7ae39743b37ac4c3dd628c96dbbb14b5251be1ed5c95a0"
     ],
     [
       "hwahap_state_credential_dependency",

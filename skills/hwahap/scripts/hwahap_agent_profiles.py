@@ -1,10 +1,12 @@
 """Read and validate the exact Hwahap agent profile set."""
 
+import hashlib
+import hmac
 import tomllib
 from pathlib import Path
 
 from hwahap_agent_contract import (
-    InstallError, PROFILE_CONTRACT, REQUIRED_FIELDS, REQUIRED_PROFILE_NAMES,
+    InstallError, PROFILE_CONTRACT, PROFILE_SHA256, REQUIRED_FIELDS, REQUIRED_PROFILE_NAMES,
     is_hwahap_profile_name,
 )
 
@@ -48,6 +50,7 @@ def source_profiles(directory: Path) -> list[tuple[Path, bytes]]:
                            for field in REQUIRED_FIELDS)
         if (not isinstance(value, dict) or not fields_valid
                 or value["name"] != path.stem
+                or not hmac.compare_digest(hashlib.sha256(raw).hexdigest(), PROFILE_SHA256[name])
                 or not _metadata(value, PROFILE_CONTRACT[name])):
             raise InstallError(
                 "HW_AGENT_SOURCE_INVALID", "Hwahap profile metadata is invalid")

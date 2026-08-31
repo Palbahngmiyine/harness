@@ -1,75 +1,74 @@
-"""Install validated agent profiles with rollback on partial writes."""
+"""Install validated profiles with descriptor-bound, race-safe rollback."""
 
+import hashlib
+import os
+import stat
 from pathlib import Path
 
-from hwahap_agent_contract import (
-    InstallError, REQUIRED_PROFILE_NAMES, is_hwahap_profile_name,
-)
+from hwahap_agent_contract import InstallError
+from hwahap_agent_io import (PF, assert_bound, cleanup, file_id, open_dir,
+                             read_profile, reject_extras)
 from hwahap_agent_profiles import lexical_path_has_symlink
 
 
-def _rollback(paths: list[Path]) -> bool:
-    complete = True
-    for path in paths:
-        try:
-            path.unlink()
-        except OSError:
-            complete = False
-    return complete
-
-
-def _agent_directory(workspace_arg: str) -> Path:
-    workspace = Path(workspace_arg).expanduser()
-    if lexical_path_has_symlink(workspace) or not workspace.is_dir():
-        raise InstallError("HW_AGENT_PATH_INVALID", "workspace is invalid")
-    codex, agents = workspace / ".codex", workspace / ".codex" / "agents"
-    for target in (codex, agents):
-        if target.exists() and (target.is_symlink() or not target.is_dir()):
-            raise InstallError("HW_AGENT_PATH_INVALID", "agent directory is invalid")
+def install_profiles(workspace_arg, profiles):
+    path = Path(workspace_arg).expanduser()
+    if lexical_path_has_symlink(path):
+        raise InstallError("HW_AGENT_PATH_INVALID", "workspace must use real path components")
+    workspace = path.resolve()
+    if not workspace.is_dir():
+        raise InstallError("HW_AGENT_PATH_INVALID", "workspace must be a non-symlink directory")
+    wf = cf = af = -1
+    created, installed, skipped = [], [], []
     try:
-        agents.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        raise InstallError(
-            "HW_AGENT_INSTALL_FAILED", "cannot create agent directory") from None
-    return agents
-
-
-def _plan(agents: Path, profiles: list[tuple[Path, bytes]]) -> tuple[list, int]:
-    names = {path.name for path in agents.iterdir()}
-    unexpected = any(is_hwahap_profile_name(name)
-                     and name not in REQUIRED_PROFILE_NAMES for name in names)
-    if unexpected:
-        raise InstallError("HW_AGENT_CONFLICT", "unexpected Hwahap profile")
-    pending, skipped = [], 0
-    for source, raw in profiles:
-        target = agents / source.name
-        if target.is_symlink() or target.exists() and not target.is_file():
-            raise InstallError("HW_AGENT_PATH_INVALID", "target must be a regular file")
-        if not target.exists():
-            pending.append((target, raw))
-        elif target.read_bytes() != raw:
+        wf = open_dir(None, workspace)
+        cf = open_dir(wf, ".codex", True)
+        af = open_dir(cf, "agents", True)
+        ci, ai = file_id(os.fstat(cf)), file_id(os.fstat(af))
+        reject_extras(af)
+        pending = []
+        for source, raw in profiles:
+            try: info = os.stat(source.name, dir_fd=af, follow_symlinks=False)
+            except FileNotFoundError: pending.append((source, raw)); continue
+            except OSError as exc: raise InstallError("HW_AGENT_PATH_INVALID", "target must be a regular file") from exc
+            if not stat.S_ISREG(info.st_mode): raise InstallError("HW_AGENT_PATH_INVALID", "target must be a regular file")
+            if read_profile(af, source.name) == raw: skipped.append(source.name); continue
             raise InstallError("HW_AGENT_CONFLICT", "different existing profile")
-        else:
-            skipped += 1
-    return pending, skipped
-
-
-def install_profiles(workspace_arg: str, profiles: list[tuple[Path, bytes]]) -> None:
-    agents = _agent_directory(workspace_arg)
-    pending, skipped = _plan(agents, profiles)
-    created = []
-    try:
-        for target, raw in pending:
-            with target.open("xb") as handle:
-                handle.write(raw)
-            created.append(target)
-    except FileExistsError as error:
-        _rollback(created)
-        raise InstallError(
-            "HW_AGENT_CONFLICT", "profile installation conflict") from error
-    except Exception as error:
-        complete = _rollback(created)
-        message = ("profile installation failed" if complete
-                   else "profile installation failed; rollback incomplete")
-        raise InstallError("HW_AGENT_INSTALL_FAILED", message) from error
-    print(f"HW_OK: installed={len(pending)} skipped={skipped} target={agents}")
+        for source, raw in pending:
+            assert_bound(wf, cf, ci, ai); reject_extras(af)
+            handle = os.open(source.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600, dir_fd=af)
+            record = [source.name, os.dup(handle), hashlib.sha256(raw).hexdigest()]
+            created.append(record)
+            try:
+                if not stat.S_ISREG(os.fstat(handle).st_mode): raise OSError("created profile is not regular")
+                with os.fdopen(handle, "wb") as output: output.write(raw)
+            except Exception:
+                # A failed open/write still owns this inode.  Let rollback
+                # remove it only while the descriptor identity remains bound.
+                record[2] = None
+                try: os.close(handle)
+                except OSError: pass
+                raise
+            installed.append(source.name)
+        assert_bound(wf, cf, ci, ai); reject_extras(af)
+    except FileExistsError as exc:
+        complete = not created or cleanup(af, created)
+        code = "HW_AGENT_CONFLICT" if complete else "HW_AGENT_INSTALL_FAILED"
+        msg = "profile installation conflict" if complete else "profile installation conflict; rollback incomplete"
+        raise InstallError(code, msg) from exc
+    except Exception as exc:
+        complete = not created or (af >= 0 and cleanup(af, created))
+        if isinstance(exc, InstallError) and complete: raise
+        msg = "profile installation failed" if complete else "profile installation failed; rollback incomplete"
+        if isinstance(exc, InstallError) and exc.code == "HW_AGENT_CONFLICT": msg = "profile installation conflict; rollback incomplete"
+        raise InstallError("HW_AGENT_INSTALL_FAILED", msg) from exc
+    finally:
+        for _, guard, _ in created:
+            if guard is not None:
+                try: os.close(guard)
+                except OSError: pass
+        for handle in (af, cf, wf):
+            if handle >= 0:
+                try: os.close(handle)
+                except OSError: pass
+    print(f"HW_OK: installed={len(installed)} skipped={len(skipped)} target={workspace / '.codex' / 'agents'}")

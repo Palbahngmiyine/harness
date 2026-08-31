@@ -1,29 +1,26 @@
 try:
-    from .test_installerkit import *
+    from .test_installerkit import InstallerFixture, installer
 except ImportError:
-    from test_installerkit import *
-
+    from test_installerkit import InstallerFixture, installer
 import tomllib
+import unittest
 
 
 class InstallerContractTests(InstallerFixture, unittest.TestCase):
     def test_source_contract_and_byte_identical_install(self):
-        profiles = installer.source_profiles()
+        profiles = self.profiles()
         self.assertEqual(len(profiles), 6)
         for path, raw in profiles:
             value = tomllib.loads(raw.decode())
             expected = installer.PROFILE_CONTRACT[path.name]
-            self.assertEqual(value["name"], expected[0])
-            self.assertEqual(value["model"], expected[1])
+            self.assertEqual((value["name"], value["model"]), expected[:2])
         self.run_install()
-        installed = {
-            path.name: path.read_bytes()
-            for path in (self.root / ".codex/agents").iterdir()
-        }
-        self.assertEqual(installed, {path.name: raw for path, raw in profiles})
+        installed = {p.name: p.read_bytes() for p in self.agents().glob("*.toml")}
+        self.assertEqual(installed, {p.name: raw for p, raw in profiles})
+        self.assertTrue(all(p.stat().st_mode & 0o777 == 0o600 for p in self.agents().glob("*.toml")))
 
     def test_idempotence_and_unrelated_config_preservation(self):
-        agents = self.root / ".codex/agents"
+        agents = self.agents()
         agents.mkdir(parents=True)
         unrelated = agents / "user-agent.toml"
         unrelated.write_bytes(b"user")
@@ -36,19 +33,13 @@ class InstallerContractTests(InstallerFixture, unittest.TestCase):
         self.assertEqual(unrelated.read_bytes(), b"user")
         self.assertEqual(config.read_bytes(), b"[keep]\n")
 
-    def test_conflict_and_unexpected_profile_write_nothing(self):
-        profiles = installer.source_profiles()
-        agents = self.root / ".codex/agents"
-        agents.mkdir(parents=True)
-        conflict = agents / profiles[0][0].name
-        conflict.write_bytes(b"different")
+    def test_metadata_tamper_is_rejected_before_workspace_mutation(self):
+        source = self.root / "source"
+        source.mkdir()
+        for path, raw in self.profiles():
+            source.joinpath(path.name).write_bytes(raw)
+        target = source / "hwahap-luna-verifier.toml"
+        target.write_bytes(target.read_bytes().replace(b"independent verifier", b"tampered verifier"))
         with self.assertRaises(installer.InstallError) as error:
-            installer.install(str(self.root))
-        self.assertEqual(error.exception.code, "HW_AGENT_CONFLICT")
-        self.assertEqual(conflict.read_bytes(), b"different")
-        extra = agents / "hwahap-extra.toml"
-        extra.write_bytes(b"extra")
-        with self.assertRaises(installer.InstallError) as error:
-            installer.install(str(self.root))
-        self.assertEqual(error.exception.code, "HW_AGENT_CONFLICT")
-        self.assertEqual(extra.read_bytes(), b"extra")
+            installer.source_profiles(source)
+        self.assertEqual(error.exception.code, "HW_AGENT_SOURCE_INVALID")
