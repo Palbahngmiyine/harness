@@ -16,9 +16,16 @@ ROLES = (
 
 
 class OrchestratorContractDocsTests(unittest.TestCase):
+    def _section(self, text, heading):
+        visible = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+        matches = list(re.finditer(rf"^## {re.escape(heading)}\s*$", visible, re.MULTILINE))
+        self.assertEqual(len(matches), 1)
+        return visible[matches[0].end():].split("\n## ", 1)[0]
+
     def _oracle(self, execution, state):
-        section = execution.split("## Roles and units", 1)[1].split("## ", 1)[0]
-        listed = tuple(re.findall(r"^\d+\. `(hwahap-[a-z-]+)`$", section, re.MULTILINE))
+        execution = self._section(execution, "Roles and units")
+        state = self._section(state, "Generated tree and commands")
+        listed = tuple(re.findall(r"^\d+\. `(hwahap-[a-z-]+)`$", execution, re.MULTILINE))
         self.assertEqual(listed, ROLES)
         source = tuple(sorted(tomllib.loads(path.read_text(encoding="utf-8"))["name"]
                              for path in AGENTS.glob("hwahap-*.toml")))
@@ -71,11 +78,23 @@ class OrchestratorContractDocsTests(unittest.TestCase):
         for mutated_execution, mutated_state in mutants:
             with self.assertRaises(AssertionError):
                 self._oracle(mutated_execution, mutated_state)
+        planner = "planner activation is mandatory and\n  cannot be skipped, merged, or deferred past a Luna writer."
+        publication = ("Every terminal run outcome—`completed`, `blocked`, `failed`, `awaiting_user`,\n"
+                       "or `cancelled`—automatically publishes both `report-data.json` and\n"
+                       "`report.html`; artifact publication does not alter the terminal status.")
+        decoys = (
+            (self._mutate(execution, planner,
+                          f"<!-- {planner} -->\nplanner activation is optional and may be skipped."), state),
+            (execution, self._mutate(state, publication,
+                                     f"<!-- {publication} -->\n{publication.replace('automatically publishes both', 'does not automatically publish both')}")),
+        )
+        for mutated_execution, mutated_state in decoys:
+            with self.assertRaises(AssertionError):
+                self._oracle(mutated_execution, mutated_state)
 
     def test_reference_line_limits(self):
         for name in ("execution-review.md", "state-contract.md"):
             self.assertLessEqual(len((REFS / name).read_text(encoding="utf-8").splitlines()), 200)
-
 
 if __name__ == "__main__":
     unittest.main()
