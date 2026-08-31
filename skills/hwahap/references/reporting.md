@@ -96,7 +96,7 @@ source and `token_total`; elapsed time and `test_runs` are derived locally.
 Do not estimate exact totals, actual external receipt contents, model identity,
 or true parallel execution from local files alone. The Git snapshot relies on
 the binary object store and exact diff bytes and cannot prevent mutation after
-a read. Installer exact-five and lstat/unlink checks describe an observation
+a read. Installer exact-six and lstat/unlink checks describe an observation
 with a race window; rollback cannot guarantee recovery across a crash or
 non-durable disk write.
 

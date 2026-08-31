@@ -7,7 +7,7 @@ locked contracts, invalid transitions, and unsupported review histories. It
 does not create a cryptographic trust boundary, prove reviewer independence,
 or prove true parallel execution. The snapshot depends on Git's binary object
 store and exact diff bytes; it cannot prevent a mutation after a file/object
-was read. Installer exact-five checks describe the observed snapshot only, and
+was read. Installer exact-six checks describe the observed snapshot only, and
 the lstat/unlink cleanup check has a race window. Rollback is best-effort and
 cannot guarantee recovery across a crash or non-durable disk write. Sol must
 spawn both reviewers before waiting, retain distinct thread IDs, recompute the

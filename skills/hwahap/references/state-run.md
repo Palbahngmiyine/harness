@@ -11,7 +11,8 @@ invalidates the run.
 
 `run.json` has `schema_version: 1`, `goal_id`, fixed `status`, timestamps, the
 exact role map, and the SHA-256 digest of every installed custom-agent profile.
-The source and installed Hwahap set is exactly these five regular files:
+The source and installed Hwahap set is exactly these six regular files:
+`hwahap-sol-planner.toml` (Sol, `xhigh`, `read-only`),
 `hwahap-luna-implementer.toml` (Luna, `high`, `workspace-write`),
 `hwahap-luna-verifier.toml` (Luna, `xhigh`, `read-only`),
 `hwahap-sol-final-reviewer.toml` (Sol, `read-only`, effort omitted so the

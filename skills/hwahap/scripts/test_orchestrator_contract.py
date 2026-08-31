@@ -64,6 +64,17 @@ class OrchestratorContractTests(unittest.TestCase):
         self.assertIn("run `complete` locally and validate before external Goal completion sync", profile)
         self.assertIn("atomically generates the same canonical report artifacts", protocol)
 
+    def test_no_exact_five_profile_claim_remains_under_hwahap(self):
+        five = "five"
+        forbidden = ("exact-" + five, "exactly " + five,
+                     "exactly these " + five + " regular files",
+                     five + " named Hwahap")
+        for path in ROOT.rglob("*"):
+            if path.is_file():
+                text = path.read_text(encoding="utf-8", errors="replace").lower()
+                for phrase in forbidden:
+                    self.assertNotIn(phrase, text, path)
+
 
 if __name__ == "__main__":
     unittest.main()
