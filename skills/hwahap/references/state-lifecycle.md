@@ -15,15 +15,17 @@ Every transition appends one `events.jsonl` object containing `timestamp`,
 validator rejects unknown entities, illegal graph edges, successors after a
 terminal state, or a last event that disagrees with the current state.
 
-When the user explicitly requests a Goal, Sol may call `create_goal`; it never
-creates one automatically. Sol uses `get_goal` to inspect an active Goal and
-records `bound`, `no_active_goal`, or `unavailable` with `goal-sync`. It links
-objective, non-goals, proof, and checkpoint to the locked contract. A bound
-receipt with `completion_sync: pending` is only the observed pre-completion
-value; Sol keeps the external Goal control plane current by calling
-`update_goal(complete)` only after local `complete` and `validate` pass. Local
-state and Goal tooling cannot expand scope or authority; unavailable tooling
-uses the manual contract/state path. For the
+Every direct request starts with Sol calling `get_goal`. If no active Goal
+exists, Sol calls `create_goal` automatically with the current implementation
+objective and then calls `get_goal` again. A compatible active Goal is reused.
+A conflicting active Goal requires `HW_USER_DECISION_REQUIRED`; unavailable
+Goal tooling or retrieval/creation failure requires `HW_GOAL_REQUIRED` and
+stops before contract lock. Sol records the bound receipt with `goal-sync` and
+links objective, non-goals, proof, and checkpoint to the locked contract. A
+bound receipt with `completion_sync: pending` is only the observed
+pre-completion value; Sol keeps the external Goal control plane current by
+calling `update_goal(complete)` only after local `complete` and `validate` pass.
+Local state and Goal tooling cannot expand scope or authority. For the
 F34/F35 correction rule, a verifiable new hypothesis permits Sol to continue
 correction on the same unit within locked scope; otherwise use `awaiting_user`.
 The external Goal is the durable objective and verified stop condition. Hwahap

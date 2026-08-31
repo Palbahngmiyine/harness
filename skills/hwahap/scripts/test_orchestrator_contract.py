@@ -75,6 +75,15 @@ class OrchestratorContractTests(unittest.TestCase):
                 for phrase in forbidden:
                     self.assertNotIn(phrase, text, path)
 
+    def test_lifecycle_goal_contract_has_no_automatic_creation_legacy(self):
+        lifecycle = compact(ROOT / "references" / "state-lifecycle.md")
+        self.assertIn("Every direct request starts with Sol calling `get_goal`", lifecycle)
+        self.assertIn("calls `create_goal` automatically with the current implementation objective and then calls `get_goal` again", lifecycle)
+        self.assertIn("A compatible active Goal is reused", lifecycle)
+        self.assertIn("conflicting active Goal requires `HW_USER_DECISION_REQUIRED`", lifecycle)
+        self.assertIn("retrieval/creation failure requires `HW_GOAL_REQUIRED`", lifecycle)
+        self.assertNotIn("it never creates one automatically", lifecycle)
+
 
 if __name__ == "__main__":
     unittest.main()
