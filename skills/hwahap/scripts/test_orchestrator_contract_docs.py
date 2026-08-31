@@ -73,7 +73,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
             (self._mutate(execution, "## Roles and units\n", "~~~\n## Roles and units\n~~~\n"), state),
             (self._mutate(execution, "## Roles and units\n", "    ## Roles and units\n"), state),
             (self._mutate(execution, "## Roles and units\n", "## Roles and units ##\n## Roles and units\n"), state),
-            (self._mutate(execution, "## Roles and units\n", "<!--\n-->## Roles and units\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "<!--\n-->## Roles and units\n"), state), (self._mutate(execution, "## Roles and units\n", "<!-- closed -->## Roles and units\n"), state),
         )
         for mutated_execution, mutated_state in mutants:
             with self.assertRaises(AssertionError):
@@ -83,8 +83,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
                        "or `cancelled`—automatically publishes both `report-data.json` and\n"
                        "`report.html`; artifact publication does not alter the terminal status.")
         decoys = (
-            (self._mutate(execution, planner,
-                          f"<!-- {planner} -->\nplanner activation is optional and may be skipped."), state),
+            (self._mutate(execution, planner, f"<!-- {planner} -->\nplanner activation is optional and may be skipped."), state),
             (execution, self._mutate(state, publication,
                                      f"<!-- {publication} -->\n{publication.replace('automatically publishes both', 'does not automatically publish both')}")),
             (self._mutate(execution, planner, "<!--\n-->planner activation is mandatory and\n  cannot be skipped, merged, or deferred past a Luna writer."), state),

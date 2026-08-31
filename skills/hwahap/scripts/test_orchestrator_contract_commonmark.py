@@ -30,8 +30,8 @@ def _fence(line):
     prefix = match.group(0)[:-len(match.group(2))] if match.group(2) else match.group(0)
     return match.group(1), len(prefix.strip(" "))
 def _closes_fence(line, fence):
-    char, length = fence
-    return re.fullmatch(rf" {{0,3}}{re.escape(char)}{{{length},}}[ \t]*", line) is not None
+    char, length = fence; return re.fullmatch(rf" {{0,3}}{re.escape(char)}{{{length},}}[ \t]*", line) is not None
+def _block_comment(line): return re.match(r"^ {0,3}<!--", line) is not None
 def visible_h2s(text):
     headings, offset, in_comment, fence = [], 0, False, None
     for raw in text.splitlines(keepends=True):
@@ -47,6 +47,7 @@ def visible_h2s(text):
         if re.match(r"^(?: {4,}|\t)", line): offset += len(raw); continue
         opener = _fence(line)
         if opener: fence = opener; offset += len(raw); continue
+        if _block_comment(line): _, in_comment = _without_comments(line, False); offset += len(raw); continue
         visible, in_comment = _without_comments(line, False)
         heading = _atx_h2(visible, offset)
         if heading: headings.append(heading)
@@ -66,6 +67,7 @@ def _visible_region(text, start, end):
         elif not re.match(r"^(?: {4,}|\t)", line):
             opener = _fence(line)
             if opener: fence = opener
+            elif _block_comment(line): _, in_comment = _without_comments(line, False)
             else:
                 clean, in_comment = _without_comments(line, False)
                 if offset >= start and offset + len(raw) <= end: visible.append(clean + line_ending)
@@ -91,7 +93,8 @@ class CommonMarkScannerTests(unittest.TestCase):
         self.assertEqual([h.normalized for h in visible_h2s("~~~\n## hidden\n~~~\t\n## visible\n")], ["visible"])
         with self.assertRaises(AssertionError):
             normative_section("## One\n## One ##\n", "One")
-        self.assertEqual(normative_section("## Target\nvisible\n<!-- hidden -->\n~~~\n## Fake\n~~~\n    hidden\n## Next\n", "Target"),
-                         "visible\n\n")
+        self.assertEqual(normative_section("## Target\nvisible\n<!-- hidden -->\n~~~\n## Fake\n~~~\n    hidden\n## Next\n", "Target"), "visible\n")
+        self.assertEqual([h.normalized for h in visible_h2s("  <!-- closed -->## Hidden\n## Next\n")], ["Next"])
+        self.assertEqual(normative_section("## Target <!-- inline -->\nvisible <!-- x --> suffix\n## Next\n", "Target"), "visible  suffix\n")
 if __name__ == "__main__":
     unittest.main()
