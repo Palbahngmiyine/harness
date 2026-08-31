@@ -25,7 +25,7 @@ PROFILE_SHA256 = {
     "hwahap-luna-implementer.toml": "f1781d1f33f923ce4f75b485444e3bd3c8779fdd1304c11b515777eb850586ae",
     "hwahap-luna-verifier.toml": "3f78b091ceccd232bd2206587a74259a139ea962d1736189d3ffd1d8b2a45df5",
     "hwahap-sol-final-reviewer.toml": "45b7f0d6961ccec665acc0c738f9506b6e2958b58ff5faff6248e91c6eb79f15",
-    "hwahap-sol-orchestrator.toml": "e21cc5e38584c98de07d620fa1c0087b96527ac34accad7c75569ec9a71647ac",
+    "hwahap-sol-orchestrator.toml": "226cd304b600395c35cf906538b80d08e09dcda308c6e8d75a62dcd65503b45d",
     "hwahap-sol-planner.toml": "1e3f0ff57ccc650b5ae363bd0f65f43d12c6ce19aeaabd95abafcb4d60dbed62",
     "hwahap-terra-scope-reviewer.toml": "4dfd7e5d360eed061097821e3b651236e737966c9b6011ea8e23572cd0eeeff1",
 }

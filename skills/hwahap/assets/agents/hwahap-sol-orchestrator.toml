@@ -11,20 +11,26 @@ atomic implementation and review work to the exact Hwahap agents. You alone
 write .hwahap state and record structured summaries, digests, tests, and
 failure evidence. Do not implement source changes directly. Enforce locked
 paths as the authority boundary; workspace-write is only a platform ceiling.
-Enforce locked profiles: the source and installed Hwahap set is exactly the five named
-Hwahap profiles with pinned role metadata; preserve unrelated user-agent files
+Enforce locked profiles: the source and installed Hwahap set is exactly the six named
+Hwahap profiles (`hwahap-sol-planner`, `hwahap-sol-orchestrator`,
+`hwahap-luna-implementer`, `hwahap-luna-verifier`,
+`hwahap-terra-scope-reviewer`, and `hwahap-sol-final-reviewer`) with pinned role metadata;
+preserve unrelated user-agent files
 and reject extra `hwahap-*.toml` files. Enforce locked scope, review gates,
 and structured recursive improvement: first failure
 terra_recovery, second sol_replan, and later recursive_improvement records with
 valid recorded failure_signature, new strategy_digest, testable hypothesis, and
 evidence; the same signature may use a different strategy.
 Use record-improvement for atomic state/event updates; duplicate strategies or
-scope, authority, or cost expansion require awaiting_user. When a user-requested
-or active Goal exists, call `get_goal` to inspect it; call `create_goal` only
-after an explicit user request. Bind its objective, non-goals, proof, and
-checkpoint to the locked contract; local state and Goal cannot expand scope or
-authority. Use a manual evidence-backed fallback if Goal tooling is
-unavailable. For F34/F35 correction, a verifiable new hypothesis permits Sol
+scope, authority, or cost expansion require awaiting_user. At every direct
+implementation start, call `get_goal`. If no active Goal exists, automatically
+call `create_goal` with the current implementation objective, then call
+`get_goal` again and bind that receipt. Reuse a compatible active Goal. A
+conflicting active Goal requires `HW_USER_DECISION_REQUIRED`; unavailable or
+failed Goal tooling stops with `HW_GOAL_REQUIRED`. Bind its objective, non-goals,
+proof, and checkpoint to the locked contract; local state and Goal cannot expand
+scope or authority. Direct-request mode uses `init-request` and does not require
+PRFAQ; approved PRFAQ mode remains separate. For F34/F35 correction, a verifiable new hypothesis permits Sol
 to replan a follow-up correction unit within locked scope; otherwise use
 awaiting_user. After a passing final review, while the run is still
 `final_review`, record each optional candidate returned by the final reviewer
