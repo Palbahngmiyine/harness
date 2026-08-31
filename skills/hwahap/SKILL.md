@@ -1,18 +1,23 @@
 ---
 name: hwahap
-description: "Execute an explicitly approved `status: prfaq` implementation spec with Sol/Luna/Terra orchestration, atomic units, plan-drift control, structured evidence, and time/token reporting. Trigger for implementation or orchestration requests; do not trigger for ideation, grilling, or unapproved specs."
+description: "Execute an implementation request or approved `status: prfaq` spec with staged Sol/Luna/Terra orchestration, automatic Goal binding, atomic units, scope control, and structured evidence. Trigger for implementation or orchestration; do not trigger for ideation or grilling."
 ---
 
 # Hwahap
 
-Use this skill only to execute an implementation request against an explicitly
-provided PR/FAQ path. The current request is authoritative over stored context.
+Use this skill for an implementation request that is authoritative in the
+current conversation or for an explicitly provided approved PR/FAQ. A direct
+request does not need a PR/FAQ path; an idea, question, grill, or planning-only
+request is not implementation authority. The current request is authoritative
+over stored context.
+Only two input modes are authoritative: direct-request mode and approved-spec
+mode.
 Resolve `<hwahap-skill-dir>` from this loaded `SKILL.md`; it may be installed
 outside the target workspace.
-The approved PR/FAQ is an input and may live outside the target repository;
-never copy it into that repository's `docs/prfaq`. Hwahap requires no login,
-API key, access token, or other credential and rejects such values in state.
-`token_total` means a numeric model-usage receipt, not an authentication token.
+An approved PR/FAQ may live outside the target repository; never copy it into
+that repository's `docs/prfaq`. Hwahap requires no login, API key, access token,
+or other credential and rejects such values in state. `token_total` means a
+numeric model-usage receipt, not an authentication token.
 
 Use `<absolute-hwahap-skill-dir>/scripts/hwahap` as the official state entrypoint. It
 starts the fixed adjacent trusted state script with an isolated (`-I`) trusted interpreter;
@@ -33,18 +38,18 @@ and a stronger native or signed bootstrap are not covered.
 
 Before implementation, check these four inputs explicitly:
 
-1. Workspace and spec paths must be existing regular directories/files with no
-   symlink in any lexical ancestor. An unsafe workspace returns
-   `HW_STATE_INVALID`; an unsafe spec returns `HW_SPEC_UNCONFIRMED`. Preserve
-   state and request a real path. In plain terms: the path must point directly
-   to the intended workspace/spec. A real directory plus real `spec.md` passes;
-   `workspace-link/spec.md` or a symlinked ancestor fails before reading and the
-   next action is to provide the real path.
-2. The spec must be readable UTF-8 with `status: prfaq` and nonempty
-   `confirmed_at`. Any failure returns `HW_SPEC_UNCONFIRMED` with bounded
-   evidence and a request for a confirmed accessible PR/FAQ. In plain terms:
-   approval must be visible in the file. Matching frontmatter passes; a draft,
-   invalid UTF-8, or changed bytes after `init` fails and work stops.
+1. Workspace and selected input paths must be existing regular
+   directories/files with no symlink in any lexical ancestor. An unsafe
+   workspace returns `HW_STATE_INVALID`; an unsafe approved spec returns
+   `HW_SPEC_UNCONFIRMED`; an unsafe request capsule returns
+   `HW_REQUEST_UNCONFIRMED`.
+2. Select exactly one authoritative input mode. Approved-spec mode requires
+   readable UTF-8 with `status: prfaq` and nonempty `confirmed_at`. Direct-
+   request mode is available only for a current implementation instruction;
+   Sol writes a credential-free capsule under `.hwahap/requests/` with
+   `status: request`, a concise title, and `confirmed_at`, then pins its bytes
+   with `init-request --request`. A draft, idea, or planning-only conversation
+   never becomes a request capsule.
 3. Installed profiles must be the exact six Hwahap source profiles, each a
    regular byte-identical file with the source role metadata:
    `hwahap-luna-implementer` (Luna/high/workspace-write), `hwahap-luna-verifier`
@@ -72,12 +77,12 @@ Before implementation, check these four inputs explicitly:
 1. Read the applicable `AGENTS.md` files, then inspect the Git root, branch, and
    current working-tree changes. Preserve unrelated work and limit edits to the
    approved contract paths.
-2. Before execution, read [references/protocol.md](references/protocol.md).
-   Require the user to provide the exact PR/FAQ path. Read its frontmatter and
-   require both `status: prfaq` and `confirmed_at`. If the path is absent,
-   inaccessible, or fails either check, return `HW_SPEC_UNCONFIRMED` with the
-   reason, evidence, and next action, then stop. Never infer approval from a
-   draft, title, conversation, or stored context.
+2. Before execution, read [references/protocol.md](references/protocol.md) and
+   select direct-request or approved-spec mode. Require a PR/FAQ path only
+   when the user chose or supplied that mode. For direct mode, require an
+   explicit current implementation instruction and create the internal
+   request capsule; do not infer authority from an idea, draft, title, or
+   stored context.
 3. Install the project-scoped custom agents before initializing state:
 
    `<absolute-hwahap-skill-dir>/scripts/install-project-agents --workspace <workspace>`
@@ -85,9 +90,18 @@ Before implementation, check these four inputs explicitly:
    Require `HW_OK`. A conflict or path/source error is a stable failure; record
    its code and bounded evidence and stop. The installer never edits
    `.codex/config.toml` and never overwrites a different existing profile.
-4. Run the bundled initializer once the installer succeeds:
+4. After installation, spawn only `hwahap-sol-orchestrator`. It owns Goal and
+   run setup. The orchestrator first calls `get_goal`; when no active Goal
+   exists, it automatically calls `create_goal` with the current implementation
+   objective, then calls `get_goal` again for the bound receipt. A conflicting
+   active Goal requires `HW_USER_DECISION_REQUIRED`; Goal-tool unavailability
+   requires `HW_GOAL_REQUIRED`. Do not silently run without a Goal.
+
+5. Run the initializer selected by the input mode:
 
    `<absolute-hwahap-skill-dir>/scripts/hwahap init --workspace <workspace> --goal-id <goal-id> --spec <approved-prfaq-path>`
+
+   `<absolute-hwahap-skill-dir>/scripts/hwahap init-request --workspace <workspace> --goal-id <goal-id> --request <request-capsule-path>`
 
    Treat any non-zero result as a stable failure; record its code and evidence
    and stop unless the defined recovery is safe and in scope.
@@ -95,7 +109,7 @@ Before implementation, check these four inputs explicitly:
    Initialization constructs and scans the complete initial state in memory
    before creating the run directory; sensitive title or source
    inputs fail with a generic `HW_STATE_INVALID` and no state files are made.
-5. Before Sol writes or validates state, read
+6. Before Sol writes or validates state, read
    [references/state-contract.md](references/state-contract.md). Sol then fills
    one contract containing nonempty `goals`, `non_goals`,
    `allowed_paths`, `forbidden_changes`, `acceptance_criteria`, and
