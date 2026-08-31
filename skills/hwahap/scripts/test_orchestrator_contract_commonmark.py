@@ -36,10 +36,7 @@ def visible_h2s(text):
     headings, offset, in_comment, fence = [], 0, False, None
     for raw in text.splitlines(keepends=True):
         line = raw.rstrip("\r\n")
-        if in_comment:
-            _, in_comment = _without_comments(line, True)
-            offset += len(raw)
-            continue
+        if in_comment: _, in_comment = _without_comments(line, True); offset += len(raw); continue
         if fence:
             if _closes_fence(line, fence): fence = None
             offset += len(raw)
@@ -94,7 +91,8 @@ class CommonMarkScannerTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             normative_section("## One\n## One ##\n", "One")
         self.assertEqual(normative_section("## Target\nvisible\n<!-- hidden -->\n~~~\n## Fake\n~~~\n    hidden\n## Next\n", "Target"), "visible\n")
-        self.assertEqual([h.normalized for h in visible_h2s("  <!-- closed -->## Hidden\n## Next\n")], ["Next"])
+        for spaces in range(4):
+            self.assertEqual([h.normalized for h in visible_h2s(f"{' ' * spaces}<!-- closed -->## Hidden\n## Next\n")], ["Next"])
         self.assertEqual(normative_section("## Target <!-- inline -->\nvisible <!-- x --> suffix\n## Next\n", "Target"), "visible  suffix\n")
 if __name__ == "__main__":
     unittest.main()

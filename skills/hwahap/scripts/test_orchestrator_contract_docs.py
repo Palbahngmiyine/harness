@@ -87,6 +87,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
             (execution, self._mutate(state, publication,
                                      f"<!-- {publication} -->\n{publication.replace('automatically publishes both', 'does not automatically publish both')}")),
             (self._mutate(execution, planner, "<!--\n-->planner activation is mandatory and\n  cannot be skipped, merged, or deferred past a Luna writer."), state),
+            (self._mutate(execution, planner, "\n<!-- closed -->planner activation is mandatory and\n  cannot be skipped, merged, or deferred past a Luna writer."), state),
         )
         for mutated_execution, mutated_state in decoys:
             with self.assertRaises(AssertionError):
