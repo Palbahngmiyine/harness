@@ -1,0 +1,7 @@
+interface:
+  display_name: "Align Goal"
+  short_description: "구현 방향의 모호함을 사용자와 제거하는 정밀 기획"
+  default_prompt: "Use $align-goal to resolve every implementation-direction choice, produce an aligned goal specification, and make it handoff-ready when the target is implementation."
+
+policy:
+  allow_implicit_invocation: true
