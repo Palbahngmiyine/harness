@@ -10,7 +10,8 @@ class ReportSlice28Tests(HwahapReportTests):
             self.assertEqual(report._text("secret handling"), "secret handling")
             contract["goals"] = [canary]
             run["deviations"] = [{"summary": canary, "root_cause": canary, "impact": canary,
-                                  "prevention": canary, "evidence": [canary]}]
+                                  "prevention": canary, "evidence_explanation": canary,
+                                  "evidence": [canary]}]
             run["deferred_security"] = [{"summary": canary, "reason": canary,
                                           "next_action": canary, "evidence": [canary]}]
             run["goal_link"]["current"] = {"mode": "unobserved", "reason": canary,

@@ -48,6 +48,7 @@ class ReportSlice39Tests(HwahapReportTests):
                       "SERVICE_SECRET_KEY:=supersecret")
             run["deviations"] = [{"summary": value, "root_cause": "context",
                                   "impact": "impact", "prevention": "prevention",
+                                  "evidence_explanation": "evidence explains prevention",
                                   "evidence": ["evidence"]} for value in values]
             run["improvement_candidates"] = [{"status": "proposed", "summary": value,
                                                "evidence": ["evidence"],

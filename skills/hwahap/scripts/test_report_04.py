@@ -53,7 +53,8 @@ class ReportSlice10Tests(HwahapReportTests):
                                      "action": "recovery-action-sentinel"}
             run["final_review"]["attempts"][0]["evidence"] = ["final-evidence-sentinel"]
             run["deviations"] = [{"summary": "deviation-summary-sentinel", "root_cause": "cause",
-                                  "impact": "impact", "prevention": "prevention", "evidence": ["deviation-evidence-sentinel"]}]
+                                  "impact": "impact", "prevention": "prevention",
+                                  "evidence_explanation": "근거가 prevention을 검증함", "evidence": ["deviation-evidence-sentinel"]}]
             run["deferred_security"] = [{"summary": "deferred-summary-sentinel", "reason": "deferred-reason-sentinel",
                                           "next_action": "deferred-action", "evidence": ["deferred-evidence-sentinel"]}]
             run["goal_link"]["current"] = {"mode": "unobserved", "reason": "goal-reason-sentinel",

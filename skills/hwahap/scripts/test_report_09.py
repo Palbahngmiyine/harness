@@ -9,7 +9,9 @@ class ReportSlice19Tests(HwahapReportTests):
             units[0]["review_history"] = [{"round": 1, "changed_paths": ["/outside/file"], "outcome": "fail",
                                             "verifier": {"evidence": ["password=hunter2", "Authorization: Bearer topsecret", "-----BEGIN PRIVATE KEY-----abc-----END PRIVATE KEY-----", "https://user:pass@example.invalid/x"], "unknown_nested": "omit"}, "scope_reviewer": {}}]
             units[0]["improvement_history"] = [{"after_round": 1, "kind": "terra_recovery", "root_cause": "cause", "hypothesis": "hypothesis", "action": "action", "evidence": ["proof"]}]
-            run["deviations"] = [{"summary": "drift", "root_cause": "cause", "impact": "impact", "prevention": "prevention", "next_action": "next"}]
+            run["deviations"] = [{"summary": "drift", "root_cause": "cause", "impact": "impact",
+                                   "prevention": "prevention", "evidence_explanation": "evidence explains prevention",
+                                   "evidence": ["bounded evidence"]}]
             payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
             digest = report.canonical_payload_digest(payload)
             data = report.render_report(payload, digest).decode()

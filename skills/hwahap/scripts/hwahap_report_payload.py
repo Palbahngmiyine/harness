@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from hwahap_report_assemble import assemble
+from hwahap_report_canonical import validate_deviations
 from hwahap_report_clean import clean, pick, scope_audit, snapshot
 from hwahap_report_goal import goal_link, improvement_candidates
 from hwahap_report_security import text
@@ -11,6 +12,7 @@ from hwahap_report_unit import command_receipts, roles, unit
 
 
 def _run_data(run: dict, root: str) -> dict:
+    validate_deviations(run.get("deviations", []))
     data = pick(run, ("schema_version", "goal_id", "status", "started_at",
                        "completed_at", "fast_status"), root)
     data["roles"] = roles(run.get("roles"), root)
@@ -24,8 +26,8 @@ def _run_data(run: dict, root: str) -> dict:
         ("availability", "reason", "source", "total"), root)
     data["metrics"] = metrics | {"token_usage": token}
     data["deviations"] = [pick(item,
-        ("summary", "root_cause", "impact", "prevention", "evidence",
-         "evidence_explanation", "decision_context"), root)
+        ("summary", "root_cause", "impact", "prevention",
+         "evidence_explanation", "evidence"), root)
         for item in run.get("deviations", [])]
     data["deferred_security"] = [pick(item,
         ("summary", "reason", "next_action", "evidence", "decision_context"), root)

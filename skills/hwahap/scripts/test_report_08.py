@@ -42,7 +42,12 @@ class ReportSlice17Tests(HwahapReportTests):
             units[0]["improvement_history"] = [{"after_round": index, "action": f"improvement-{index}"} for index in range(1, 101)] + [{"after_round": 101, "action": "improvement-101-sentinel"}]
             run["goal_link"]["history"] = [{"reason": f"goal-history-{index}"} for index in range(1, 101)] + [{"reason": "goal-history-101-sentinel"}]
             run["improvement_candidates"] = [{"summary": f"candidate-{index}"} for index in range(1, 101)] + [{"summary": "candidate-101-sentinel"}]
-            run["deviations"] = [{"summary": f"deviation-{index}"} for index in range(1, 101)] + [{"summary": long_text}]
+            run["deviations"] = [{"summary": f"deviation-{index}", "root_cause": "cause", "impact": "impact",
+                                   "prevention": "prevention", "evidence_explanation": "evidence explains prevention",
+                                   "evidence": ["bounded evidence"]} for index in range(1, 101)] + [{
+                                       "summary": long_text, "root_cause": "cause", "impact": "impact",
+                                       "prevention": "prevention", "evidence_explanation": "evidence explains prevention",
+                                       "evidence": ["bounded evidence"]}]
             run["deferred_security"] = [{"summary": f"deferred-{index}"} for index in range(1, 101)] + [{"summary": "deferred-101-sentinel"}]
             run["final_review"]["attempts"] = [{"thread_id": f"attempt-{index}"} for index in range(1, 21)] + [{"thread_id": "attempt-21-sentinel"}]
             events = [{"sequence": index, "entity": "event", "from": "before", "to": "after", "reason": f"event-{index}"} for index in range(1, 501)] + [{"sequence": 501, "entity": "event", "from": "before", "to": "after", "reason": "event-501-sentinel"}]

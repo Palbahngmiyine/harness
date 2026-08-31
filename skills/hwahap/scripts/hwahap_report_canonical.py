@@ -6,6 +6,26 @@ import json
 from hwahap_report_security import credential_bearing_text
 from hwahap_report_types import ABS_PATH, HwahapReportError
 
+DEVIATION_FIELDS = frozenset(("summary", "root_cause", "impact", "prevention",
+                              "evidence_explanation", "evidence"))
+DEVIATION_TEXT_FIELDS = DEVIATION_FIELDS - {"evidence"}
+
+
+def validate_deviations(value: object) -> None:
+    if not isinstance(value, list):
+        raise HwahapReportError("deviations are not an exact v4 list")
+    for index, item in enumerate(value, 1):
+        label = f"deviations[{index}]"
+        if not isinstance(item, dict) or set(item) != DEVIATION_FIELDS:
+            raise HwahapReportError(f"{label} is not an exact v4 deviation")
+        if any(not isinstance(item[field], str) or not item[field].strip()
+               for field in DEVIATION_TEXT_FIELDS):
+            raise HwahapReportError(f"{label} has empty v4 causal text")
+        evidence = item["evidence"]
+        if (not isinstance(evidence, list) or not evidence
+                or any(not isinstance(ref, str) or not ref.strip() for ref in evidence)):
+            raise HwahapReportError(f"{label}.evidence is incomplete")
+
 
 def canonical_payload_bytes(payload: dict) -> bytes:
     try:
@@ -48,6 +68,8 @@ def validate_report_data_bytes(data: bytes, expected_payload: dict,
         if not isinstance(data, bytes) or not isinstance(expected_payload, dict):
             raise ValueError
         actual = json.loads(data.decode("utf-8", errors="strict"))
+        deviations = expected_payload.get("deviations", {}).get("items", [])
+        validate_deviations(deviations)
         canonical = canonical_payload_bytes(expected_payload)
         digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
         if (actual != expected_payload or data != canonical or expected_digest != digest
@@ -62,6 +84,8 @@ def validate_payload(payload: dict, source_digest: str) -> None:
     try:
         if not isinstance(payload, dict) or canonical_payload_digest(payload) != source_digest:
             raise ValueError
+        deviations = payload.get("deviations", {}).get("items", [])
+        validate_deviations(deviations)
         validate_report_data_bytes(canonical_payload_bytes(payload), payload, source_digest)
     except Exception:
         raise HwahapReportError("report data is invalid") from None

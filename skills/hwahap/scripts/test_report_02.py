@@ -7,7 +7,8 @@ class ReportSlice4Tests(HwahapReportTests):
     def test_human_summary_precedes_collapsed_complete_evidence(self) -> None:
             contract, run, units, events, digests = self.fixture()
             run["deviations"] = [{"summary": "문제", "root_cause": "원인", "impact": "이전 영향",
-                                  "prevention": "적용한 개선", "evidence": ["검증 근거"]}]
+                                  "prevention": "적용한 개선", "evidence_explanation": "근거가 개선을 검증",
+                                  "evidence": ["검증 근거"]}]
             run["deferred_security"] = [{"summary": "남은 위험", "reason": "미검증",
                                          "next_action": "사용자 결정", "evidence": ["경계"]}]
             run["improvement_candidates"] = [{"status": "proposed", "summary": "후속 후보",
