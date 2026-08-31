@@ -28,7 +28,8 @@ class ReportSlice26Tests(HwahapReportTests):
 class ReportSlice27Tests(HwahapReportTests):
     def test_acceptance_commands_are_digest_only(self) -> None:
             contract, run, units, events, digests = self.fixture()
-            canary = "AWS_SESSION_TOKEN=super-secret curl https://user:pass@example.invalid"
+            authentication_url = "https://" + "user" + ":" + "pass" + "@example.invalid"
+            canary = "AWS_SESSION_TOKEN=" + "report-canary curl " + authentication_url
             contract["test_commands"] = [canary]
             units[0]["acceptance_commands"] = [canary]
             units[0]["test_receipts"] = [{"test_id": "test-1-1", "command_index": 1,
@@ -51,7 +52,7 @@ class ReportSlice27Tests(HwahapReportTests):
             for value in ("codex.exec_command", "verifier", "luna-receipt", "sha256:" + "c" * 64, "sha256:" + "d" * 64,
                           "sha256:" + "a" * 64, "sha256:" + "b" * 64, "start", "end", "exit code"):
                 self.assertIn(value, data)
-            self.assertIn("검증된 테스트 영수증 수", data)
+            self.assertIn("기록된 테스트 실행 수", data)
             self.assertIn("overflow-wrap:anywhere", data)
             self.assertIn("receipt-list", data)
             self.assertNotIn("subprocess-stdout-canary", data)

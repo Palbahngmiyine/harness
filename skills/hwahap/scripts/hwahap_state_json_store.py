@@ -18,6 +18,7 @@ def read_json(path: Path) -> dict:
 
 def write_json(path: Path, value: dict) -> None:
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    path.chmod(0o600)
 
 
 def restore_state_files(originals: tuple[tuple[Path, bytes], ...]) -> None:
@@ -80,7 +81,10 @@ def state_paths(workspace: Path, run_id: str) -> tuple[Path, Path]:
 
 def _single_regular_file(path: Path) -> bool:
     try:
-        return not path.is_symlink() and path.is_file() and path.stat().st_nlink == 1
+        info = path.stat(follow_symlinks=False)
+        return (stat.S_ISREG(info.st_mode)
+                and info.st_nlink == 1 and info.st_uid == os.geteuid()
+                and not info.st_mode & 0o077)
     except (OSError, UnicodeError):
         raise HwahapError("HW_STATE_INVALID", "state file is invalid") from None
 

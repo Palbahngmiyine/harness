@@ -28,7 +28,7 @@ class ReportSlice43Tests(HwahapReportTests):
                     self.assertEqual(engine.redact(cleaned), cleaned)
 
 class ReportSlice44Tests(HwahapReportTests):
-    def test_credential_engine_is_loaded_from_sibling_path(self) -> None:
+    def test_redaction_engine_is_loaded_from_sibling_path(self) -> None:
             with tempfile.TemporaryDirectory() as directory:
                 Path(directory, "hwahap_credentials.py").write_text(
                     "def credential_bearing_text(value): return False\n", encoding="utf-8")

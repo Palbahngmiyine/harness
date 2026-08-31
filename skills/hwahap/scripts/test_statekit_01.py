@@ -13,6 +13,7 @@ class StateFixtureMixin01:
                 "---\ntitle: Test goal\nstatus: prfaq\nconfirmed_at: 2026-08-27T00:00:00Z\n---\n",
                 encoding="utf-8",
             )
+            (self.workspace / ".gitignore").write_text(".hwahap/\n", encoding="utf-8")
             self.install_agents(self.workspace)
             (self.workspace / "src").write_text("base\n", encoding="utf-8")
             def git(*args: str) -> str:
@@ -54,7 +55,9 @@ class StateFixtureMixin01:
                 hwahap_state.validate_run(args)
 
         def write_json(self, path: Path, value: dict) -> None:
-            path.write_text(json.dumps(value, indent=2) + "\n", encoding="utf-8")
+            hwahap_state._atomic_replace_bytes(
+                path, (json.dumps(value, indent=2) + "\n").encode("utf-8"))
+            path.chmod(0o600)
 
         def write_events(self, run_dir: Path, transitions: list[tuple[str, str, str]]) -> None:
             events = []
@@ -65,15 +68,17 @@ class StateFixtureMixin01:
                     "actor": "sol-1", "role": "orchestrator", "reason": "test transition",
                     "input_digest": "sha256:" + "a" * 64, "evidence_refs": ["test"], "review_round": 0,
                 })
-            (run_dir / "events.jsonl").write_text(
-                "".join(json.dumps(event) + "\n" for event in events), encoding="utf-8"
-            )
+            hwahap_state._atomic_replace_bytes(
+                run_dir / "events.jsonl",
+                "".join(json.dumps(event) + "\n" for event in events).encode("utf-8"))
+            (run_dir / "events.jsonl").chmod(0o600)
 
         def bind_last_event_digest(self, run_dir: Path) -> None:
             path = run_dir / "events.jsonl"
             events = hwahap_state.parse_events(path)
             events[-1]["input_digest"] = self.snapshot["diff_digest"]
-            path.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+            hwahap_state._atomic_replace_bytes(
+                path, "".join(json.dumps(event) + "\n" for event in events).encode("utf-8"))
 
         @staticmethod
         def phase_events(unit_status: str = "reviewing", run_status: str | None = None) -> list[tuple[str, str, str]]:

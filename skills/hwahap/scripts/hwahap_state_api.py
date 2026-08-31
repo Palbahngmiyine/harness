@@ -5,6 +5,8 @@ import hwahap_state_credential_dependency as _credential
 import hwahap_state_report_entry as _report
 import hwahap_state_runtime as _runtime
 import hwahap_state_dependencies
+import hwahap_state_process
+import hwahap_state_git_ignore
 import hwahap_state_config_report
 import hwahap_state_config_schema
 import hwahap_state_config_machine

@@ -16,7 +16,7 @@ except ImportError:
     from test_statekit_06 import *
 
 class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMixin03, StateFixtureMixin04, StateFixtureMixin05, StateFixtureMixin06, unittest.TestCase):
-        def test_terminal_run_requires_failure_evidence_and_report(self) -> None:
+        def test_terminal_run_requires_failure_evidence(self) -> None:
             run_dir = self.init_run()
             run_path = run_dir / "run.json"
             run = json.loads(run_path.read_text())

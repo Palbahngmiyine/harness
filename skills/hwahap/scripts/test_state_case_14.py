@@ -60,6 +60,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
                     self.assertEqual(victim.read_bytes(), before)
                     path.unlink()
                     path.write_bytes(before)
+                    path.chmod(0o600)
 
             run_dir = self.prepare_final_review()
             with redirect_stdout(io.StringIO()):

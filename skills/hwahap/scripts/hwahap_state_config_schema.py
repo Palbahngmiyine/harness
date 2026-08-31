@@ -20,7 +20,8 @@ CONTRACT_LISTS = (
     "goals", "non_goals", "allowed_paths", "forbidden_changes",
     "acceptance_criteria", "test_commands",
 )
-CANDIDATE_FIELDS = frozenset(("status", "summary", "evidence", "expected_effect", "next_action"))
+CANDIDATE_FIELDS = frozenset(("status", "summary", "evidence", "expected_effect", "next_action", "decision_context"))
+DECISION_CONTEXT_FIELDS = frozenset(("scenario", "affected_scope", "impact", "decision_reason", "evidence_relation", "success_condition"))
 EVENT_FIELDS = (
     "timestamp", "type", "sequence", "entity", "from", "to", "actor", "role",
     "reason", "input_digest", "evidence_refs", "review_round",

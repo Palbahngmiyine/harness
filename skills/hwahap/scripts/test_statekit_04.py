@@ -30,6 +30,8 @@ class StateFixtureMixin04:
                               "generated_at": generated_at, "redaction_policy": "hwahap-report-v3"}
             (run_dir / "report-data.json").write_bytes(data)
             (run_dir / "report.html").write_bytes(html)
+            (run_dir / "report-data.json").chmod(0o600)
+            (run_dir / "report.html").chmod(0o600)
             self.write_json(run_path, run)
 
         def prepare_final_review(self) -> Path:
@@ -64,6 +66,9 @@ class StateFixtureMixin04:
         def candidate_args(self, **overrides: object) -> Namespace:
             values = {"workspace": str(self.workspace), "run_id": "test-goal",
                       "summary": "reduce repeated setup", "expected_effect": "fewer manual steps",
-                      "next_action": "review in a new Goal", "evidence_ref": ["final-review"]}
+                      "next_action": "review in a new Goal", "evidence_ref": ["final-review"],
+                      "scenario": "candidate scenario", "affected_scope": "candidate scope",
+                      "impact": "candidate impact", "decision_reason": "candidate decision",
+                      "evidence_relation": "candidate evidence", "success_condition": "candidate success"}
             values.update(overrides)
             return Namespace(**values)

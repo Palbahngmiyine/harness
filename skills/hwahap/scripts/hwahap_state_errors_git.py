@@ -29,8 +29,7 @@ def git_diff_snapshot(workspace: Path, base_commit: object, target_commit: objec
 
     def git(args: list[str]) -> bytes:
         try:
-            return subprocess.run([git_executable, *args], cwd=workspace, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL, check=True, env=env).stdout
+            return _bounded_process_output([git_executable, *args], workspace, env, 32 * 1024 * 1024, 30)
         except Exception as exc:
             raise HwahapError("HW_STATE_INVALID", "could not resolve Git diff snapshot") from exc
 

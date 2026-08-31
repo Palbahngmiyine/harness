@@ -19,14 +19,15 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
         def test_invalid_utf8_state_json_is_rejected_without_read_details(self) -> None:
             for kind in ("contract", "run", "unit"):
                 with self.subTest(kind=kind):
-                    run_dir = self.init_run(f"invalid-{kind}")
+                    run_id = "test-goal" if kind == "unit" else f"invalid-{kind}"
+                    run_dir = self.prepare_test_unit() if kind == "unit" else self.init_run(run_id)
                     if kind == "unit":
                         target = run_dir / "units" / "unit-1.json"
                     else:
                         target = run_dir / f"{kind}.json"
                     target.write_bytes(b"\xff\xfe\n")
                     with self.assertRaises(hwahap_state.HwahapError) as raised:
-                        self.validate(f"invalid-{kind}")
+                        self.validate(run_id)
                     self.assertEqual(raised.exception.code, "HW_STATE_INVALID")
                     self.assertEqual(str(raised.exception), "could not read state JSON")
                     self.assertNotIn("UnicodeDecodeError", str(raised.exception))

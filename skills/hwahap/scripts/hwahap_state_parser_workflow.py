@@ -25,7 +25,10 @@ def _parser_workflow(commands) -> None:
     _command(commands, "record-improvement-candidate",
              "record one report-only improvement candidate", record_improvement_candidate,
              common + [required(name) for name in ("summary", "expected-effect", "next-action")]
-             + [(("--evidence-ref",), {"action": "append", "required": True})])
+             + [(("--evidence-ref",), {"action": "append", "required": True})]
+             + [required(name) for name in ("scenario", "affected-scope", "impact",
+                                             "decision-reason", "evidence-relation",
+                                             "success-condition")])
 
 
 def _parser_goal(commands) -> None:

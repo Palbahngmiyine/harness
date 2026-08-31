@@ -25,6 +25,14 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
                 "evidence": [f"candidate-evidence-{index}"],
                 "expected_effect": f"candidate-effect-{index}",
                 "next_action": f"candidate-action-{index}",
+                "decision_context": {
+                    "scenario": f"candidate-scenario-{index}",
+                    "affected_scope": f"candidate-scope-{index}",
+                    "impact": f"candidate-impact-{index}",
+                    "decision_reason": f"candidate-decision-{index}",
+                    "evidence_relation": f"candidate-relation-{index}",
+                    "success_condition": f"candidate-success-{index}",
+                },
             } for index in range(1, 102)]
             run["improvement_candidates"] = candidates
             self.write_json(run_path, run)

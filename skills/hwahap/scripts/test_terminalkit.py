@@ -44,4 +44,4 @@ class TerminalReportFixture:
         return self.fixture.workspace / ".hwahap" / "runs" / goal_id
 
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = [name for name in globals() if not name.startswith("__") and name != "load_tests"]
