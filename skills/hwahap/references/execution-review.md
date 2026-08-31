@@ -43,36 +43,43 @@ The exact profile metadata and installation-preservation rules are defined in
 [state-contract.md](state-contract.md); do not infer a
 role from a similarly named user agent.
 
-After Goal binding and initialization, wait for the planner proposal before
-any Luna writer starts; this staged lifecycle cannot be skipped. Split the
-locked goal into atomic units. Each unit must describe exactly one
-user-observable change, its explicit `allowed_paths`, and at least one
-mechanical acceptance command. Keep the unit's paths within the contract and
-exclude every `forbidden_changes` path or behavior. Create it with the bundled
-`add-unit` command; do not hand-author the initial unit state.
-At most one unit may be unresolved at a time. An unresolved unit has any status
-other than `planned` or `passed`, including `implementing`, `reviewing`,
-`recovery`, `replan_required`, and terminal failure states. Planned future units
-may coexist; a different unit can enter `implementing` only when every other
-unit is `planned` or `passed`, so the next new unit starts only after the
-current unit has passed. The same unit may resume from `recovery` or
-`replan_required`.
-Unsafe IDs, paths, and commands containing sensitive data remain `HW_STATE_INVALID`
-with no write. A safe but non-member path or command records `HW_SCOPE_DRIFT`,
-moves the run to `awaiting_user`, creates no unit, and stores command evidence
-as a SHA-256 digest only. It asks the user to approve a new Goal/contract or
-corrected in-scope inputs; failed writes or validation restore both state files.
+After Goal binding and initialization, wait for the planner proposal before any
+Luna writer; this staged lifecycle cannot be skipped. Split the locked goal into
+atomic units, each exactly one user-observable change with `allowed_paths` and
+an acceptance command. Keep paths within the contract and exclude every
+`forbidden_changes` rule; create units with `add-unit`, never by hand.
+At most one unit may be unresolved (anything other than `planned` or `passed`,
+including `implementing`, `reviewing`, `recovery`, `replan_required`, or failure).
+Planned units may coexist, but the next unit starts only after the current one
+passes; the same unit may resume from `recovery` or `replan_required`.
+Unsafe IDs, paths, or sensitive commands remain `HW_STATE_INVALID` with no
+write. A safe non-member records `HW_SCOPE_DRIFT`, moves to `awaiting_user`,
+creates no unit, and stores only a command digest; failed writes restore state.
 
-For each unit, Sol records `planned` and then `implementing`, gives Luna only
-that unit's contract, and records a compact summary. After Luna finishes,
-compute one full `diff_snapshot` and spawn both the separate Luna xhigh
-verifier and Terra xhigh scope reviewer before waiting. Give both the same
-snapshot and contract. They inspect without editing. Advance only when both
-report pass; record their distinct thread IDs, statuses, full snapshot,
-evidence, and mechanical test results. A run may enter `final_review` only
-after every unit is `passed`, each latest receipt is `pass`, and each latest
-passing Luna/Terra review pair shares one full snapshot that receipts and the
-Luna verifier thread match.
+For each unit, Sol records `planned` then `implementing`, gives Luna only that
+contract, and records a compact summary. After Luna finishes, compute one full
+`diff_snapshot`; start the separate Luna and Terra reviewers with the same
+contract/snapshot before waiting. They inspect without editing. Advance only
+when both pass; record distinct thread IDs, status, evidence, snapshot, and
+tests. `final_review` requires every unit passed, a latest pass receipt for each
+command, and a matching latest Luna/Terra review pair.
+
+### Review activation and fallback
+
+Each unit review starts with concurrent-first activation: start a fresh Luna
+reviewer and fresh Terra reviewer together on one identical six-field
+`diff_snapshot`, then wait for both. Fresh means a new thread unused by any attempt.
+Only the exact platform result `agent thread limit reached`
+permits fallback. End both children and discard all partial parallel-attempt
+envelopes, receipts, and review history. Then start a fresh Luna reviewer; after
+Luna completes, start a fresh Terra reviewer sequentially on that identical snapshot;
+both fresh envelopes are required. A missing reviewer, failure, timeout,
+changed/reused snapshot or thread is a gate failure. Substrings, case variants, other
+capacity errors, timeout, or reviewer failures never trigger fallback.
+Record exactly one complete exact-v4 deviation for a fallback episode, with
+nonempty `evidence_explanation` connecting the exact result, discarded evidence,
+and sequential proof. The post-source installation synchronization is external-only:
+record it only after every source unit/full source checks pass and before final Sol Ultra; it is never a source unit, allowed path, or `diff_snapshot` mutation.
 
 Record each status change with the bundled `transition` command. Sol records
 structured review history, failure evidence, metrics, and final-review
@@ -176,22 +183,18 @@ Use only the fixed states accepted by the bundled validator. Run states are
 `reviewing`, `recovery`, `replan_required`, `passed`, `blocked`, `failed`, and
 `awaiting_user`.
 
-The state commands validate after every transition and contract lock. Also run
-an explicit validation before spawning the next writer or returning to the
-user:
-
+State commands validate after every transition and contract lock; also run
+explicit validation before spawning the next writer or returning to the user:
 `<absolute-hwahap-skill-dir>/scripts/hwahap validate --workspace <workspace> --run-id <goal-id>`
 
 Validate again before the final response. A `blocked`, `failed`, or
-`awaiting_user` outcome must include a stable failure code, plain reason,
-evidence, and recovery/next action. Use the validator's codes, including
-`HW_AGENT_CONFIG_INVALID`, `HW_IMPLEMENTATION_BLOCKED`,
-`HW_IMPLEMENTATION_FAILED`,
+`awaiting_user` outcome must include stable failure code, plain reason,
+evidence, and recovery/next action. Use validator codes including
+`HW_AGENT_CONFIG_INVALID`, `HW_IMPLEMENTATION_BLOCKED`, `HW_IMPLEMENTATION_FAILED`,
 `HW_VERIFICATION_FAILED`, `HW_REPLAN_REQUIRED`, `HW_FINAL_REVIEW_FAILED`,
 `HW_MODEL_UNAVAILABLE`, `HW_STATE_INVALID`, and the scope/spec codes above.
 Never continue a failed review without a validated improvement record or an
 explicit `awaiting_user` failure record. For the F34/F35 correction rule, a
 verifiable new hypothesis permits Sol to continue correction on the same unit
 within the locked scope; without one, or when scope or authority must expand,
-use `awaiting_user`. This is a general rule, not a new final-review recursion
-policy. A user gate remains authoritative.
+use `awaiting_user`; this is a general rule, not new final-review recursion policy. A user gate remains authoritative.
