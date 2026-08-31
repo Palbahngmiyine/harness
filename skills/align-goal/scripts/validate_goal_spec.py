@@ -588,18 +588,23 @@ class V:
         if isinstance(a,dict) and (a.get("status")=="findings" or any(x.get("kind")=="conflict" and x.get("status")=="open" for x in self.O.values())):return "resolve_findings"
         x=self.c.get("confirmations",{}).get("alignment_summary") if isinstance(self.c.get("confirmations"),dict) else None
         if not isinstance(x,dict) or any(y.startswith("alignment_summary") for y in self.stale):return "request_final_confirmation"
-        if self.f.get("target")=="decision":return "complete" if not self.gate("aligned") else "resolve_findings"
+        if self.f.get("target")=="decision":return "complete" if self.gate_passes("aligned") else "resolve_findings"
         c=self.c.get("reviews",{}).get("cold_consumer") if isinstance(self.c.get("reviews"),dict) else None
         if not isinstance(c,dict) or any(x.startswith("cold_consumer") for x in self.stale):return "run_cold_consumer"
         if isinstance(c,dict) and any(dict_value(c.get("output")).get(k) for k in ("required_user_choices","implicit_assumptions","contradictions","underspecified_clauses","unmapped_spec_ids")):return "resolve_findings"
         h=self.c.get("confirmations",{}).get("handoff_document") if isinstance(self.c.get("confirmations"),dict) else None
         if not isinstance(h,dict) or any(x.startswith("handoff_document") for x in self.stale):return "request_final_confirmation"
-        return "complete" if not self.gate("handoff-ready") else "resolve_findings"
+        return "complete" if self.gate_passes("handoff-ready") else "resolve_findings"
+    def gate_passes(self,require):
+        """Return whether the target gate is fully satisfied."""
+        return not self.gate(require)
     def output(self,require):
         f=self.gate(require)
         next_action=self.action()
         relevant="handoff-ready" if self.f.get("target")=="implementation" else "aligned"
-        if next_action=="complete" and self.gate(relevant):next_action="resolve_findings"
+        # Completion is an assertion about the target gate, even for a
+        # structural invocation whose requested gate is weaker.
+        if next_action=="complete" and not self.gate_passes(relevant):next_action="resolve_findings"
         return {"valid":not f,"require":require,"next_action":next_action,"errors":f,"unresolved_choice_ids":sorted(set(self.unresolved)),"uncovered_surfaces":sorted(set(self.uncovered)),"untraced_spec_ids":sorted(set(self.untraced)),"unverified_spec_ids":sorted(set(self.unverified)),"graph_cycles":self.cycles,"graph_orphans":sorted(set(x for x in self.orphans if isinstance(x,str) and x)),"stale_receipts":sorted(set(self.stale)),"spec_digest":self.spec_digest(),"repository_context_digest":dg(self.c.get("repository_context"))}
 
 def diagnostic(require,next_action,errors,*,spec_digest=None,repository_context_digest=None):
@@ -615,7 +620,7 @@ def validate(path,require):
         v.run();o=v.output(require)
     except Exception as ex:
         # Any parseable JSON shape must fail validation without leaking a traceback.
-        return 1,diagnostic(require,"resolve_findings",["malformed contract structure: "+type(ex).__name__+": "+str(ex)],spec_digest=v.spec_digest(),repository_context_digest=dg(c.get("repository_context")))
+        return 1,diagnostic(require,"resolve_findings",["malformed contract structure: "+type(ex).__name__+": "+str(ex)])
     return (0 if o["valid"] else 1),o
 
 class UsageError(Exception):pass
