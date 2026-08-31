@@ -74,6 +74,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
             (self._mutate(execution, "## Roles and units\n", "    ## Roles and units\n"), state),
             (self._mutate(execution, "## Roles and units\n", "## Roles and units ##\n## Roles and units\n"), state),
             (self._mutate(execution, "## Roles and units\n", "<!--\n-->## Roles and units\n"), state), (self._mutate(execution, "## Roles and units\n", "<!-- closed -->## Roles and units\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "<!--\n--> <!--\n## Roles and units\n-->\n## Roles and units\n"), state),
         )
         for mutated_execution, mutated_state in mutants:
             with self.assertRaises(AssertionError):
@@ -95,6 +96,5 @@ class OrchestratorContractDocsTests(unittest.TestCase):
     def test_reference_line_limits(self):
         for name in ("execution-review.md", "state-contract.md"):
             self.assertLessEqual(len((REFS / name).read_text(encoding="utf-8").splitlines()), 200)
-
 if __name__ == "__main__":
     unittest.main()

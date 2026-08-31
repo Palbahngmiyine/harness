@@ -36,7 +36,7 @@ def visible_h2s(text):
     headings, offset, in_comment, fence = [], 0, False, None
     for raw in text.splitlines(keepends=True):
         line = raw.rstrip("\r\n")
-        if in_comment: _, in_comment = _without_comments(line, True); offset += len(raw); continue
+        if in_comment: in_comment = line.find("-->") < 0; offset += len(raw); continue
         if fence:
             if _closes_fence(line, fence): fence = None
             offset += len(raw)
@@ -44,7 +44,7 @@ def visible_h2s(text):
         if re.match(r"^(?: {4,}|\t)", line): offset += len(raw); continue
         opener = _fence(line)
         if opener: fence = opener; offset += len(raw); continue
-        if _block_comment(line): _, in_comment = _without_comments(line, False); offset += len(raw); continue
+        if _block_comment(line): in_comment = line.find("-->") < 0; offset += len(raw); continue
         visible, in_comment = _without_comments(line, False)
         heading = _atx_h2(visible, offset)
         if heading: headings.append(heading)
@@ -56,7 +56,7 @@ def _visible_region(text, start, end):
         line = raw.rstrip("\r\n")
         line_ending = raw[len(line):]
         if in_comment:
-            _, in_comment = _without_comments(line, True)
+            in_comment = line.find("-->") < 0
             offset += len(raw)
             continue
         if fence:
@@ -64,7 +64,7 @@ def _visible_region(text, start, end):
         elif not re.match(r"^(?: {4,}|\t)", line):
             opener = _fence(line)
             if opener: fence = opener
-            elif _block_comment(line): _, in_comment = _without_comments(line, False)
+            elif _block_comment(line): in_comment = line.find("-->") < 0
             else:
                 clean, in_comment = _without_comments(line, False)
                 if offset >= start and offset + len(raw) <= end: visible.append(clean + line_ending)
@@ -85,14 +85,16 @@ class CommonMarkScannerTests(unittest.TestCase):
         self.assertEqual([(h.normalized, h.start) for h in visible_h2s(text)],
                          [("Roles and units", 19), ("Next", len(text) - 8)])
     def test_noop_guards_and_unclosed_regions(self):
-        for text in ("plain text\n", "<!-- no close\n## Hidden\n", "~~~\n## Hidden\n"):
-            self.assertEqual(visible_h2s(text), ())
+        for text in ("plain text\n", "<!-- no close\n## Hidden\n", "~~~\n## Hidden\n"): self.assertEqual(visible_h2s(text), ())
         self.assertEqual([h.normalized for h in visible_h2s("~~~\n## hidden\n~~~\t\n## visible\n")], ["visible"])
-        with self.assertRaises(AssertionError):
-            normative_section("## One\n## One ##\n", "One")
+        with self.assertRaises(AssertionError): normative_section("## One\n## One ##\n", "One")
         self.assertEqual(normative_section("## Target\nvisible\n<!-- hidden -->\n~~~\n## Fake\n~~~\n    hidden\n## Next\n", "Target"), "visible\n")
-        for spaces in range(4):
-            self.assertEqual([h.normalized for h in visible_h2s(f"{' ' * spaces}<!-- closed -->## Hidden\n## Next\n")], ["Next"])
+        for spaces in range(4): self.assertEqual([h.normalized for h in visible_h2s(f"{' ' * spaces}<!-- closed -->## Hidden\n## Next\n")], ["Next"])
         self.assertEqual(normative_section("## Target <!-- inline -->\nvisible <!-- x --> suffix\n## Next\n", "Target"), "visible  suffix\n")
+    def test_comment_lines_hide_without_reopening(self):
+        cases = (("<!-- --> <!--\n## Visible\n", "## Target\n<!-- --> <!-- hidden\n## Visible\n", ""), ("<!--\n--> <!--\n## Visible\n", "## Target\n<!--\n--> <!--\nbody\n## Visible\n", "body\n"))
+        for headings, region, expected in cases:
+            self.assertEqual([h.normalized for h in visible_h2s(headings)], ["Visible"])
+            self.assertEqual(normative_section(region, "Target"), expected)
 if __name__ == "__main__":
     unittest.main()
