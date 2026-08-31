@@ -1,11 +1,12 @@
 """Static semantic regression checks for the normative Hwahap references."""
-
 import re
 import tomllib
 import unittest
 from pathlib import Path
-
-
+try:
+    from .test_orchestrator_contract_commonmark import normative_section
+except ImportError:
+    from test_orchestrator_contract_commonmark import normative_section
 ROOT = Path(__file__).resolve().parents[1]
 REFS = ROOT / "references"
 AGENTS = ROOT / "assets" / "agents"
@@ -13,14 +14,9 @@ ROLES = (
     "hwahap-sol-orchestrator", "hwahap-sol-planner", "hwahap-luna-implementer",
     "hwahap-luna-verifier", "hwahap-terra-scope-reviewer", "hwahap-sol-final-reviewer",
 )
-
-
 class OrchestratorContractDocsTests(unittest.TestCase):
     def _section(self, text, heading):
-        visible = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-        matches = list(re.finditer(rf"^## {re.escape(heading)}\s*$", visible, re.MULTILINE))
-        self.assertEqual(len(matches), 1)
-        return visible[matches[0].end():].split("\n## ", 1)[0]
+        return normative_section(text, heading)
 
     def _oracle(self, execution, state):
         execution = self._section(execution, "Roles and units")
@@ -53,7 +49,6 @@ class OrchestratorContractDocsTests(unittest.TestCase):
             "Every terminal run outcome—`completed`, `blocked`, `failed`, `awaiting_user`, or `cancelled`—automatically publishes both `report-data.json` and `report.html`; artifact publication does not alter the terminal status.",
             compact,
         )
-
     def _mutate(self, text, source, replacement):
         self.assertEqual(text.count(source), 1)
         mutated = text.replace(source, replacement)
@@ -74,6 +69,11 @@ class OrchestratorContractDocsTests(unittest.TestCase):
                                      "does not automatically publish both")),
             (execution, self._mutate(state, "approved PR/FAQ and\n`init --spec`; direct-request mode first writes a credential-free request\ncapsule, then uses `init-request --request`",
                                      "approved PR/FAQ and\n`init-request --request`; direct-request mode first writes a credential-free request\ncapsule, then uses `init --spec`")),
+            (self._mutate(execution, "## Roles and units\n", "<!--\n## Roles and units\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "```\n## Roles and units\n```\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "~~~\n## Roles and units\n~~~\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "    ## Roles and units\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "## Roles and units ##\n## Roles and units\n"), state),
         )
         for mutated_execution, mutated_state in mutants:
             with self.assertRaises(AssertionError):
@@ -91,7 +91,6 @@ class OrchestratorContractDocsTests(unittest.TestCase):
         for mutated_execution, mutated_state in decoys:
             with self.assertRaises(AssertionError):
                 self._oracle(mutated_execution, mutated_state)
-
     def test_reference_line_limits(self):
         for name in ("execution-review.md", "state-contract.md"):
             self.assertLessEqual(len((REFS / name).read_text(encoding="utf-8").splitlines()), 200)
