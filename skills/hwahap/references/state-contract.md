@@ -26,8 +26,8 @@ native or signed bootstraps are not covered.
 ├── contract.json
 ├── run.json
 ├── events.jsonl
-├── report-data.json (completed runs only)
-├── report.html (completed runs only)
+├── report-data.json (every terminal outcome)
+├── report.html (every terminal outcome)
 ├── .report-recovery.json (transient during report transactions)
 └── units/<unit-id>.json
 ```
@@ -36,8 +36,17 @@ In a Git workspace, `.hwahap/` must be ignored before initialization. Hwahap
 creates state directories as `0700` and files as `0600`; wrong ownership,
 group/world access, symlinks, or hard links fail validation.
 
-Resolve `<skill-dir>` from the loaded Hwahap `SKILL.md`. The normal command
-sequence is:
+Resolve `<skill-dir>` from the loaded Hwahap `SKILL.md`. Select exactly one
+input branch: approved-spec mode uses an approved PR/FAQ and
+`init --spec`; direct-request mode first writes a credential-free request
+capsule, then uses `init-request --request`. Neither branch is interchangeable.
+
+The exact pre-lock Goal sequence for either branch is `get_goal` -> conditional
+`create_goal` (only when no active Goal exists) -> `get_goal` -> `goal-sync`
+(`--mode bound`) -> `lock`. A compatible Goal is reused; a conflict or failed
+Goal tool stops the run. The selected initializer remains the branch-specific
+`init --spec` or `init-request --request` described above and must complete
+before lock.
 
 ```text
 <absolute-skill-dir>/scripts/install-project-agents --workspace <workspace>
@@ -66,6 +75,10 @@ validation fails where restoration is possible. Non-Hwahap write failures are
 reported as generic `HW_STATE_INVALID` without path or value details.
 Rollback is best-effort and non-durable: a persistent filesystem failure may
 leave incomplete state and requires operator inspection.
+
+Every terminal run outcome—`completed`, `blocked`, `failed`, `awaiting_user`,
+or `cancelled`—automatically publishes both `report-data.json` and
+`report.html`; artifact publication does not alter the terminal status.
 
 Before an existing run is read or changed, validation rejects a pre-existing
 symlink at any required state path, including `events.jsonl`, with generic

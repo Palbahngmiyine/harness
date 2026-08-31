@@ -2,13 +2,20 @@
 
 ## Roles and units
 
-After installation, spawn roles by these exact custom-agent names:
-`hwahap-sol-orchestrator`, `hwahap-luna-implementer`,
-`hwahap-luna-verifier`, `hwahap-terra-scope-reviewer`, and
-`hwahap-sol-final-reviewer`.
+After installation, the normative activation list is exactly these six source
+Hwahap role names, activated in this staged order:
+1. `hwahap-sol-orchestrator`
+2. `hwahap-sol-planner`
+3. `hwahap-luna-implementer`
+4. `hwahap-luna-verifier`
+5. `hwahap-terra-scope-reviewer`
+6. `hwahap-sol-final-reviewer`
 
 - `hwahap-sol-orchestrator` (`gpt-5.6-sol`, `xhigh`) is the sole orchestrator
   and only `.hwahap` state writer; it delegates and never implements source.
+- `hwahap-sol-planner` (`gpt-5.6-sol`, `xhigh`) is read-only and proposes the
+  bounded six-list contract and atomic units; planner activation is mandatory and
+  cannot be skipped, merged, or deferred past a Luna writer.
 - `hwahap-luna-implementer` (`gpt-5.6-luna`, `high`) is the only implementation
   writer. Its test output is preliminary evidence, not an official acceptance
   receipt. Run no more than one writer at a time; it never edits `.hwahap`.
@@ -36,7 +43,9 @@ The exact profile metadata and installation-preservation rules are defined in
 [state-contract.md](state-contract.md); do not infer a
 role from a similarly named user agent.
 
-Split the locked goal into atomic units. Each unit must describe exactly one
+After Goal binding and initialization, wait for the planner proposal before
+any Luna writer starts; this staged lifecycle cannot be skipped. Split the
+locked goal into atomic units. Each unit must describe exactly one
 user-observable change, its explicit `allowed_paths`, and at least one
 mechanical acceptance command. Keep the unit's paths within the contract and
 exclude every `forbidden_changes` path or behavior. Create it with the bundled
