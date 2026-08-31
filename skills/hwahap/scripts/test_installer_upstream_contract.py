@@ -38,3 +38,10 @@ class UpstreamInstallerContractTests(InstallerFaultMixin, unittest.TestCase):
             self.assertIn(phrase, text["hwahap-sol-final-reviewer.toml"])
         for phrase in ("--decision-reason", "--evidence-relation", "generic risk warning"):
             self.assertIn(phrase, text["hwahap-sol-orchestrator.toml"])
+        self.assertNotIn("evidence and a diff digest", text["hwahap-luna-implementer.toml"])
+        self.assertNotIn("contract and diff digest", text["hwahap-luna-verifier.toml"])
+        self.assertNotIn("same locked contract and diff digest", text["hwahap-terra-scope-reviewer.toml"])
+        self.assertNotIn("exact final `diff_digest`", text["hwahap-sol-final-reviewer.toml"])
+        self.assertNotIn("exact final diff digest only", text["hwahap-sol-final-reviewer.toml"])
+        self.assertNotIn("Give the final reviewer the exact final diff digest.", text["hwahap-sol-orchestrator.toml"])
+        self.assertNotIn("latest Luna verifier thread/digest", text["hwahap-sol-orchestrator.toml"])

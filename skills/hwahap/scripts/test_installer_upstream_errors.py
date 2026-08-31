@@ -32,11 +32,13 @@ class UpstreamInstallerErrorTests(InstallerFaultMixin, unittest.TestCase):
             with self.assertRaises(installer.InstallError) as raised: installer.source_profiles()
         self.assertEqual(raised.exception.code, "HW_AGENT_SOURCE_INVALID")
         self.assertNotIn(marker, str(raised.exception))
+        self.assertNotIn(str(self.root), str(raised.exception))
         stderr = io.StringIO()
         with patch.object(installer, "install", side_effect=OSError(marker)):
             with redirect_stderr(stderr): self.assertEqual(installer.main(["--workspace", str(self.root)]), 1)
         self.assertEqual(stderr.getvalue(), "HW_AGENT_INSTALL_FAILED: profile installation failed\n")
         self.assertNotIn(marker, stderr.getvalue())
+        self.assertNotIn(str(self.root), stderr.getvalue())
 
     def test_installer_never_creates_or_edits_config_toml(self):
         self.run_install(); self.assertFalse((self.root / ".codex" / "config.toml").exists())
@@ -50,7 +52,12 @@ class UpstreamInstallerErrorTests(InstallerFaultMixin, unittest.TestCase):
             with self.subTest(name=name):
                 agents = self.root / f"unexpected-{index}" / ".codex" / "agents"; agents.mkdir(parents=True)
                 marker = agents / name; marker.write_bytes(b"credential-canary")
+                unrelated = agents / "user-agent.toml"; unrelated.write_bytes(b"unrelated")
+                config = agents.parents[1] / ".codex" / "config.toml"; config.write_bytes(b"[project]\nname='keep'\n")
                 with self.assertRaises(installer.InstallError) as raised: self.run_install(agents.parents[1])
                 self.assertEqual(raised.exception.code, "HW_AGENT_CONFLICT")
                 self.assertNotIn(name, str(raised.exception)); self.assertEqual(marker.read_bytes(), b"credential-canary")
+                self.assertNotIn(str(agents.parents[1]), str(raised.exception))
+                self.assertEqual(unrelated.read_bytes(), b"unrelated")
+                self.assertEqual(config.read_bytes(), b"[project]\nname='keep'\n")
                 self.assertFalse(any((agents / path.name).exists() for path, _ in installer.source_profiles()))
