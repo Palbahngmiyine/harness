@@ -40,7 +40,7 @@ def _receipt_items(view, values):
                 f"<dt>{view.esc(label)}</dt><dd>{view.esc(receipt.get(key))}</dd>"
                 for key, label in RECEIPT_LABELS)
             fields += f'<dt>diff snapshot</dt><dd>{view.snapshot(receipt.get("diff_snapshot"))}</dd>'
-            cards.append(f'<article class="receipt md-card md-card-filled"><h3>{view.esc(item.get("unit_id"))}/'
+            cards.append(f'<article class="receipt md-card md-card-filled"><h3>{view.esc(item.get("unit_id"))} / '
                          f'{view.esc(receipt.get("test_id"))}</h3><dl>{fields}</dl></article>')
     if not cards:
         return '<p class="empty">기록 없음</p>'

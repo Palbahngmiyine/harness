@@ -70,3 +70,19 @@ class ReportSlice34Tests(HwahapReportTests):
                 b"</main>", b'<div class="Authorization:" aria-live="Basic [redacted]"></div></main>'
             )
             self.assertTrue(report.validate_report_bytes(data, digest, payload))
+
+    def test_receipt_heading_boundary_keeps_composed_identifier_safe(self) -> None:
+            contract, run, units, events, digests = self.fixture()
+            unit_id, test_id = "unit-Alpha1234567", "test-Beta8901234560"
+            self.assertFalse(report.credential_bearing_text(unit_id))
+            self.assertFalse(report.credential_bearing_text(test_id))
+            self.assertEqual(len(unit_id + "/" + test_id), 37)
+            units[0]["unit_id"] = unit_id
+            units[0]["test_receipts"] = [{"test_id": test_id}]
+            payload = report.build_payload("/tmp/work", contract, run, units, events, digests)
+            digest = report.canonical_payload_digest(payload)
+            data = report.render_report(payload, digest)
+            self.assertTrue(report.validate_report_bytes(data, digest, payload))
+            raw = data.replace(b"</main>", b"<p>Authorization: Basic body-credential-secret</p></main>")
+            with self.assertRaisesRegex(ValueError, "credential-bearing"):
+                report.validate_report_bytes(raw, digest, payload)
