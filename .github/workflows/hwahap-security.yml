@@ -32,7 +32,7 @@ jobs:
         run: python3 skills/hwahap/scripts/test_repository_security.py
 
       - name: Test agent installer
-        run: python3 skills/hwahap/scripts/test_install_project_agents.py
+        run: python3 -B -m unittest discover -s skills/hwahap/scripts -p 'test_installer_*.py'
 
       - name: Test sealed dependencies and documents
         run: python3 skills/hwahap/scripts/test_hwahap_dependency_integrity.py
