@@ -54,7 +54,6 @@ class OrchestratorContractDocsTests(unittest.TestCase):
         mutated = text.replace(source, replacement)
         self.assertNotEqual(mutated, text)
         return mutated
-
     def test_contract_oracle_rejects_each_semantic_mutant(self):
         execution = (REFS / "execution-review.md").read_text(encoding="utf-8")
         state = (REFS / "state-contract.md").read_text(encoding="utf-8")
@@ -74,6 +73,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
             (self._mutate(execution, "## Roles and units\n", "~~~\n## Roles and units\n~~~\n"), state),
             (self._mutate(execution, "## Roles and units\n", "    ## Roles and units\n"), state),
             (self._mutate(execution, "## Roles and units\n", "## Roles and units ##\n## Roles and units\n"), state),
+            (self._mutate(execution, "## Roles and units\n", "<!--\n-->## Roles and units\n"), state),
         )
         for mutated_execution, mutated_state in mutants:
             with self.assertRaises(AssertionError):
@@ -87,6 +87,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
                           f"<!-- {planner} -->\nplanner activation is optional and may be skipped."), state),
             (execution, self._mutate(state, publication,
                                      f"<!-- {publication} -->\n{publication.replace('automatically publishes both', 'does not automatically publish both')}")),
+            (self._mutate(execution, planner, "<!--\n-->planner activation is mandatory and\n  cannot be skipped, merged, or deferred past a Luna writer."), state),
         )
         for mutated_execution, mutated_state in decoys:
             with self.assertRaises(AssertionError):

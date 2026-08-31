@@ -37,11 +37,9 @@ def visible_h2s(text):
     for raw in text.splitlines(keepends=True):
         line = raw.rstrip("\r\n")
         if in_comment:
-            visible, in_comment = _without_comments(line, True)
-            if in_comment:
-                offset += len(raw)
-                continue
-            line = visible
+            _, in_comment = _without_comments(line, True)
+            offset += len(raw)
+            continue
         if fence:
             if _closes_fence(line, fence): fence = None
             offset += len(raw)
@@ -58,12 +56,11 @@ def _visible_region(text, start, end):
     visible, offset, in_comment, fence = [], 0, False, None
     for raw in text.splitlines(keepends=True):
         line = raw.rstrip("\r\n")
+        line_ending = raw[len(line):]
         if in_comment:
-            clean, in_comment = _without_comments(line, True)
-            if in_comment:
-                offset += len(raw)
-                continue
-            line = clean
+            _, in_comment = _without_comments(line, True)
+            offset += len(raw)
+            continue
         if fence:
             if _closes_fence(line, fence): fence = None
         elif not re.match(r"^(?: {4,}|\t)", line):
@@ -71,7 +68,7 @@ def _visible_region(text, start, end):
             if opener: fence = opener
             else:
                 clean, in_comment = _without_comments(line, False)
-                if offset >= start and offset + len(raw) <= end: visible.append(clean + raw[len(line):])
+                if offset >= start and offset + len(raw) <= end: visible.append(clean + line_ending)
         offset += len(raw)
     return "".join(visible)
 def normative_section(text, target):
