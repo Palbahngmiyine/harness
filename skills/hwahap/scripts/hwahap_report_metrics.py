@@ -3,7 +3,7 @@
 LABELS = {
     "unit_count": "작업 단위", "agent_runs": "에이전트 실행",
     "review_rounds": "검수 회차", "recoveries": "복구", "replans": "재계획",
-    "scope_deviations": "범위 편차", "test_runs": "검증된 테스트 영수증 수",
+    "scope_deviations": "범위 편차", "test_runs": "기록된 테스트 실행 수",
     "elapsed_seconds": "완료 시간(초)", "availability": "확인 가능 여부",
     "reason": "사유", "source": "출처", "total": "총 토큰",
 }
@@ -40,7 +40,7 @@ def _receipt_items(view, values):
                 f"<dt>{view.esc(label)}</dt><dd>{view.esc(receipt.get(key))}</dd>"
                 for key, label in RECEIPT_LABELS)
             fields += f'<dt>diff snapshot</dt><dd>{view.snapshot(receipt.get("diff_snapshot"))}</dd>'
-            cards.append(f'<article class="receipt"><h3>{view.esc(item.get("unit_id"))}/'
+            cards.append(f'<article class="receipt md-card md-card-filled"><h3>{view.esc(item.get("unit_id"))}/'
                          f'{view.esc(receipt.get("test_id"))}</h3><dl>{fields}</dl></article>')
     if not cards:
         return '<p class="empty">기록 없음</p>'

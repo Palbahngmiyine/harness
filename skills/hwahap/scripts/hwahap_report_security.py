@@ -26,3 +26,8 @@ def text(value: Any, workspace: str = "") -> str:
         value = re.sub(re.escape(workspace.rstrip("/")) + r"(?=/|$)",
                        "$WORKSPACE", value)
     return ABS_PATH.sub("[external reference]", value).strip()
+
+
+def path_text(value: str) -> str:
+    """Redact sensitive ledger path components without hiding JSON pointers."""
+    return _credentials().redact(value)

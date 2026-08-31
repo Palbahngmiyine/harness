@@ -27,9 +27,9 @@ def render_report(payload: dict, source_digest: str) -> bytes:
         review_rows, final_html, scope_html, failure_html(view), provenance,
         goal_history)
     main = f'<main id="report">{human}{evidence}{FOOTER}</main>'
-    head = ('<!doctype html><html lang="ko"><head>' + "".join(META_STATIC[:5])
+    head = ('<!doctype html><html lang="ko"><head>' + "".join(META_STATIC)
             + '<meta name="hwahap-source-sha256" content="' + view.esc(source_digest)
-            + '">' + META_STATIC[5]
+            + '">'
             + '<title>Hwahap 실행 결과 · 문제, 개선, 근거</title>'
             + STYLE_BLOCK + '</head><body>')
     return (head + app_header(view, css, label) + main + '</body></html>').encode("utf-8")

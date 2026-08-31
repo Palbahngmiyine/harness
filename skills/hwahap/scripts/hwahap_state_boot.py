@@ -59,6 +59,8 @@ def boot():
 
 def _getattr(name: str):
     boot()
+    if name == "contains_sensitive_data":
+        name = "credential_bearing_text"
     try:
         return _root[name]
     except KeyError:
@@ -82,6 +84,9 @@ def install(root: dict, module, error, finder_type, reader, manifest_pin: str) -
 
 
 def run() -> int:
+    if "--help" in sys.argv[1:]:
+        print("usage: hwahap [command] [options]")
+        return 0
     try:
         return boot().get_value("main")()
     except _error as exc:

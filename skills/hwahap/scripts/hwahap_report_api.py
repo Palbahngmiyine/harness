@@ -18,6 +18,9 @@ import hwahap_report_metrics as metrics
 import hwahap_report_changes as changes
 import hwahap_report_provenance as provenance
 import hwahap_report_human as human
+import hwahap_report_human_detail as human_detail
+import hwahap_report_human_context as human_context
+import hwahap_report_human_decisions as human_decisions
 import hwahap_report_evidence as evidence
 import hwahap_report_render as render
 import hwahap_report_parser as parser
@@ -31,5 +34,7 @@ modules = {
     "core_sections": core_sections, "review_sections": review_sections,
     "metrics": metrics, "changes": changes, "provenance": provenance,
     "human": human, "evidence": evidence, "render": render,
+    "human_detail": human_detail, "human_context": human_context,
+    "human_decisions": human_decisions,
     "parser": parser, "validate": validate,
 }

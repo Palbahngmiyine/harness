@@ -1,5 +1,6 @@
 """Failure, recovery, deviation, and proposal report sections."""
 
+from hwahap_report_human_context import contextual_evidence, decision_context
 from hwahap_report_security import text
 
 
@@ -17,8 +18,8 @@ def _improvement(record):
 
 def proposal_html(view):
     html = "".join(
-        '<article class="proposal-card"><span class="label-chip status-warning">사용자 결정 필요</span>'
-        f'<h3>{view.esc(item.get("summary"))}</h3><span class="field-label">기대 효과</span>'
+        '<article class="proposal-card tile md-card md-card-filled"><span class="label-chip status-warning">사용자 결정 필요</span>'
+        f'<h3>{view.esc(item.get("summary"))}</h3>{decision_context(view, item.get("decision_context"), "개선 후보")}<span class="field-label">기대 효과</span>'
         f'<p>{view.esc(item.get("expected_effect"))}</p><span class="field-label">다음 결정</span>'
         f'<p>{view.esc(item.get("next_action"))}</p><details><summary>제안 근거 보기</summary>'
         f'{view.items(item.get("evidence"))}</details>'
@@ -32,7 +33,7 @@ def failure_html(view):
               if item.get("failure") or item.get("recovery")
               or item.get("improvement_history")]
     html = "".join(
-        f'<article class="card"><h3>{view.esc(item.get("unit_id"))}</h3>'
+        f'<article class="card md-card md-card-filled"><h3>{view.esc(item.get("unit_id"))}</h3>'
         f'<p>{view.esc(item.get("failure", {}).get("code", "실패 없음"))}: '
         f'{view.esc(item.get("failure", {}).get("reason", ""))}</p><p>실패 증거</p>'
         f'{view.items(item.get("failure", {}).get("evidence"))}'
@@ -47,7 +48,7 @@ def failure_html(view):
 
 def deviation_html(view):
     html = "".join(
-        '<article class="change-card"><header class="change-card-header">'
+        '<article class="change-card panel md-card md-card-filled"><header class="change-card-header">'
         '<span class="status-chip status-success">개선 적용·검증됨</span>'
         f'<h3>{view.esc(item.get("summary"))}</h3></header><div class="change-card-body">'
         f'<div class="change-field"><span class="field-label">이전 문제</span><p>{view.esc(item.get("impact"))}</p></div>'
@@ -57,15 +58,17 @@ def deviation_html(view):
         '위의 “이전 문제”가 다시 발생하기 전에 “적용한 개선”에 적힌 검사로 '
         '같은 유형의 누락이나 오판을 발견하거나 차단할 것으로 기대합니다. '
         '표시된 검증 근거 범위의 기대이며 실제 운영 효과를 보장한다는 뜻은 아닙니다.</p>'
-        f'<details><summary>검증 근거 보기</summary>{view.items(item.get("evidence"))}</details></article>'
+        f'<div class="evidence-rationale"><span class="field-label">왜 이 검사로 개선됐다고 판단했나</span>'
+        f'<p>{view.shown(item.get("evidence_explanation"))}</p></div>'
+        f'{contextual_evidence(view, "검증 근거와 한계 보기", view.shown(item.get("prevention")), "기록된 원인에 대응하는 예방 조치가 적용됐다는 판단을 확인하기 위함", view.shown(item.get("evidence_explanation")) or "근거와 개선 조치의 연결 설명이 기록되지 않음", item.get("evidence"), "실행 receipt와 연결된 구체적 설명이 없거나 동일 문제가 다시 발생하지 않는 기간을 측정하지 않았다면 실제 운영 효과까지 보장하지 않음")}</article>'
         for item in view.payload.get("deviations", {}).get("items", []))
     return html or '<p class="empty">기록된 문제와 개선 없음</p>'
 
 
 def deferred_html(view):
     html = "".join(
-        '<article class="risk-card"><span class="status-chip status-error">아직 확인되지 않음</span>'
-        f'<h3>{view.esc(item.get("summary"))}</h3><span class="field-label">남은 이유</span>'
+        '<article class="risk-card tile md-card md-card-filled"><span class="status-chip status-error">아직 확인되지 않음</span>'
+        f'<h3>{view.esc(item.get("summary"))}</h3>{decision_context(view, item.get("decision_context"), "남은 위험")}<span class="field-label">남은 이유</span>'
         f'<p>{view.esc(item.get("reason"))}</p><span class="field-label">다음 결정</span>'
         f'<p>{view.esc(item.get("next_action"))}</p><details><summary>현재 근거 보기</summary>'
         f'{view.items(item.get("evidence"))}</details></article>'

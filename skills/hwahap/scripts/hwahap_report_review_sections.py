@@ -32,7 +32,7 @@ def review_sections(view):
     final = reviews.get("final_review", {})
     attempts = final.get("attempts", [])
     cards = "".join(
-        f'<article class="receipt"><p>{view.esc(item.get("model"))} / '
+        f'<article class="receipt md-card md-card-filled"><p>{view.esc(item.get("model"))} / '
         f'{view.esc(item.get("effort"))} / {view.esc(item.get("status"))} / '
         f'{view.esc(item.get("thread_id"))}</p><p>diff_digest: '
         f'{view.esc(item.get("diff_digest"))}</p><p>evidence: '
@@ -44,7 +44,7 @@ def review_sections(view):
         if attempts else '<p class="empty">기록 없음</p>'
     scope = view.payload.get("scope_audit", {})
     scope_rows = "".join(
-        f'<article class="card"><h3>{view.esc(item.get("path"))}: {view.esc(item.get("verdict"))}</h3>'
+        f'<article class="card md-card md-card-filled"><h3>{view.esc(item.get("path"))}: {view.esc(item.get("verdict"))}</h3>'
         f'<p>contract_allowed: {view.esc(item.get("contract_allowed"))}; '
         f'passed_unit_covered: {view.esc(item.get("passed_unit_covered"))}; '
         f'forbidden_overlap: {view.esc(item.get("forbidden_overlap"))}</p>'

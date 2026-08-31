@@ -3,7 +3,7 @@
 from typing import Any
 
 from hwahap_report_security import text
-from hwahap_report_types import DIFF_SNAPSHOT_FIELDS
+from hwahap_report_types import DECISION_CONTEXT_FIELDS, DIFF_SNAPSHOT_FIELDS
 
 
 def clean(value: Any, workspace: str = "") -> Any:
@@ -20,7 +20,19 @@ def clean(value: Any, workspace: str = "") -> Any:
 def pick(value: Any, keys: tuple[str, ...], workspace: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
-    return {key: clean(value[key], workspace) for key in keys if key in value}
+    result = {}
+    for key in keys:
+        if key in value or key == "decision_context":
+            result[key] = (decision_context(value.get(key), workspace)
+                           if key == "decision_context" else clean(value[key], workspace))
+    return result
+
+
+def decision_context(value: Any, workspace: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    return {key: clean(value[key], workspace) for key in DECISION_CONTEXT_FIELDS
+            if key in value}
 
 
 def snapshot(value: Any, workspace: str) -> dict[str, Any]:

@@ -24,8 +24,13 @@ DIFF_SNAPSHOT_FIELDS = (
     "base_commit", "target_commit", "base_tree", "target_tree",
     "diff_digest", "changed_paths",
 )
+DECISION_CONTEXT_FIELDS = (
+    "scenario", "affected_scope", "impact", "decision_reason",
+    "evidence_relation", "success_condition",
+)
 IMPROVEMENT_CANDIDATE_FIELDS = (
     "status", "summary", "evidence", "expected_effect", "next_action",
+    "decision_context",
 )
 SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
 ABS_PATH = re.compile(r"(?<![A-Za-z0-9_])/(?:[^\s<>\"']+/)+[^\s<>\"']+")

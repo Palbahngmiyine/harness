@@ -23,27 +23,27 @@ def core_sections(view):
     )
     metadata_html = "".join(
         f"<dt>{view.esc(key)}</dt><dd>{view.esc(value)}</dd>" for key, value in metadata)
-    contract_html = f'<article class="card"><h3>계약 메타데이터</h3><dl>{metadata_html}</dl></article>'
+    contract_html = f'<article class="card md-card md-card-filled"><h3>계약 메타데이터</h3><dl>{metadata_html}</dl></article>'
     contract_html += "".join(
-        f'<article class="card"><h3>{view.esc(LABELS[key])}</h3>'
+        f'<article class="card md-card md-card-filled"><h3>{view.esc(LABELS[key])}</h3>'
         f'{view.commands(contract.get(key)) if key == "test_commands" else view.items(contract.get(key))}</article>'
         for key in CONTRACT_LISTS)
     agents = payload.get("agents", {})
     role_html = "".join(
-        f'<article class="card"><h3>{view.esc(role)}</h3>'
+        f'<article class="card md-card md-card-filled"><h3>{view.esc(role)}</h3>'
         f'<p>agent: {view.esc(info.get("agent"))}</p>'
         f'<p>model: {view.esc(info.get("model"))}</p>'
         f'<p>effort: {view.esc(info.get("effort"))}</p>'
         f'<p>Fast: {view.esc(info.get("fast", info.get("fallback_effort", "unknown")))}</p></article>'
         for role, info in agents.get("roles", {}).items() if isinstance(info, dict))
     profile_html = "".join(
-        f'<article class="card"><h3>agent profile</h3><p>filename: {view.esc(name)}</p>'
+        f'<article class="card md-card md-card-filled"><h3>agent profile</h3><p>filename: {view.esc(name)}</p>'
         f'<p>digest: {view.esc(digest)}</p></article>'
         for name, digest in agents.get("profiles", {}).items())
     agents_html = role_html + profile_html or view.card("상태", "역할 정보 없음")
     units = payload.get("units", [])
     unit_html = "".join(
-        f'<article class="card"><h3>{view.esc(unit.get("unit_id"))}: {view.esc(unit.get("title"))}</h3>'
+        f'<article class="card md-card md-card-filled"><h3>{view.esc(unit.get("unit_id"))}: {view.esc(unit.get("title"))}</h3>'
         f'<p>상태: {view.esc(unit.get("status"))}</p><p>writer: {view.shown(unit.get("writer"))}</p>'
         f'<p>replan_count: {view.shown(unit.get("replan_count"))}</p><p>허용 경로</p>'
         f'{view.items(unit.get("allowed_paths"))}<p>Acceptance receipts</p>'

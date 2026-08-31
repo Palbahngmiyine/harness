@@ -3,7 +3,7 @@
 import html
 import json
 
-from hwahap_report_security import text
+from hwahap_report_security import path_text, text
 
 
 def payload_ledger(payload: dict) -> tuple[tuple[str, str, str], ...]:
@@ -38,7 +38,7 @@ def payload_ledger(payload: dict) -> tuple[tuple[str, str, str], ...]:
 
 def payload_ledger_block(payload: dict) -> str:
     ledger = payload_ledger(payload)
-    rows = "".join(f"<tr><td>{html.escape(path, quote=True)}</td><td>{kind}</td>"
+    rows = "".join(f"<tr><td>{html.escape(path_text(path), quote=True)}</td><td>{kind}</td>"
         f"<td>{html.escape(text(value), quote=True)}</td></tr>"
         for path, kind, value in ledger)
     count = len(ledger)

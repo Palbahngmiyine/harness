@@ -24,10 +24,11 @@ def _run_data(run: dict, root: str) -> dict:
         ("availability", "reason", "source", "total"), root)
     data["metrics"] = metrics | {"token_usage": token}
     data["deviations"] = [pick(item,
-        ("summary", "root_cause", "impact", "prevention", "evidence"), root)
+        ("summary", "root_cause", "impact", "prevention", "evidence",
+         "evidence_explanation", "decision_context"), root)
         for item in run.get("deviations", [])]
     data["deferred_security"] = [pick(item,
-        ("summary", "reason", "next_action", "evidence"), root)
+        ("summary", "reason", "next_action", "evidence", "decision_context"), root)
         for item in run.get("deferred_security", [])]
     final = run.get("final_review") if isinstance(run.get("final_review"), dict) else {}
     attempts = []

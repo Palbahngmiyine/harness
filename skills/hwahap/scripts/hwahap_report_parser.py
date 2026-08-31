@@ -2,14 +2,14 @@
 
 from html.parser import HTMLParser
 
-TAGS = frozenset(("a", "article", "body", "br", "caption", "dd", "details",
+TAGS = frozenset(("a", "article", "aside", "body", "br", "caption", "dd", "details",
     "div", "dl", "dt", "footer", "h1", "h2", "h3", "head", "header",
     "html", "li", "main", "meta", "nav", "ol", "p", "section", "small",
     "span", "strong", "style", "summary", "table", "tbody", "td", "th",
     "thead", "time", "title", "tr", "ul"))
 ATTRS = frozenset(("aria-label", "aria-live", "charset", "class", "colspan",
     "content", "href", "id", "lang", "name", "scope"))
-BOUNDARIES = frozenset(("a", "article", "body", "br", "caption", "dd",
+BOUNDARIES = frozenset(("a", "article", "aside", "body", "br", "caption", "dd",
     "details", "div", "dl", "dt", "footer", "h1", "h2", "h3", "head",
     "header", "html", "li", "main", "nav", "ol", "p", "section", "strong",
     "summary", "table", "tbody", "td", "th", "thead", "time", "title", "tr", "ul"))
