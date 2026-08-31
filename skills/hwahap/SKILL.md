@@ -45,16 +45,16 @@ Before implementation, check these four inputs explicitly:
    evidence and a request for a confirmed accessible PR/FAQ. In plain terms:
    approval must be visible in the file. Matching frontmatter passes; a draft,
    invalid UTF-8, or changed bytes after `init` fails and work stops.
-3. Installed profiles must be the exact five Hwahap source profiles, each a
+3. Installed profiles must be the exact six Hwahap source profiles, each a
    regular byte-identical file with the source role metadata:
    `hwahap-luna-implementer` (Luna/high/workspace-write), `hwahap-luna-verifier`
-   (Luna/xhigh/read-only), `hwahap-sol-final-reviewer` (Sol/read-only with no
+   (Luna/xhigh/read-only), `hwahap-sol-planner` (Sol/xhigh/read-only), `hwahap-sol-final-reviewer` (Sol/read-only with no
    configured effort), `hwahap-sol-orchestrator` (Sol/xhigh/Fast/workspace-write), and
    `hwahap-terra-scope-reviewer` (Terra/xhigh/read-only). The installer must
    return `HW_OK`; otherwise return
    `HW_AGENT_CONFIG_INVALID`, do not overwrite conflicts or
    `.codex/config.toml`, and repair the installation. In plain terms: every
-   named role must be the expected file. Five byte-identical profiles pass; a
+   named role must be the expected file. Six byte-identical profiles pass; a
    missing, symlinked, conflicting, or extra `hwahap-*.toml` fails. Unrelated
    user agent files are preserved and do not count toward the Hwahap set.
 4. Before `lock`, the contract must contain all six nonempty lists and safe,
@@ -104,14 +104,15 @@ Before implementation, check these four inputs explicitly:
    The locked contract is the sole scope authority for the run; never edit it
    after locking.
 
-After `init`, if the user explicitly requested a Goal or `get_goal` observes
-an active Goal, record its normalized receipt with `goal-sync --mode bound`.
-If the receipt confirms no active Goal, use `--mode no_active_goal`; if the
-tool is unavailable, use `--mode unavailable` with manual evidence. Once a
-bound receipt is in Goal history, later syncs cannot downgrade to
-`no_active_goal` or `unavailable`; every bound receipt and the eventual
-completion sync retain the same Goal thread/objective pair. A Goal receipt
-never expands the locked scope or authority.
+At every direct implementation start, call `get_goal`. If no active Goal
+exists, automatically call `create_goal` with the current implementation
+objective, then call `get_goal` again and record its normalized receipt with
+`goal-sync --mode bound`. Reuse a compatible active Goal. A conflicting active
+Goal requires `HW_USER_DECISION_REQUIRED`; unavailable or failed Goal tooling
+stops with `HW_GOAL_REQUIRED`. Once a bound receipt is in Goal history, later
+syncs cannot downgrade it; every bound receipt and the eventual completion sync
+retain the same Goal thread/objective pair. A Goal receipt never expands the
+locked scope or authority.
 
 If the current request conflicts with the approved spec or locked contract, do
 not silently expand or reinterpret scope. Set the run/unit to `awaiting_user`,
@@ -130,14 +131,17 @@ and their receipt byte-for-byte on failure.
 
 ## Goal binding
 
-When the user explicitly requests a Goal, Sol may call `create_goal`; otherwise
-Sol never creates one automatically. Sol uses `get_goal` to inspect an active
-Goal, records the receipt with `goal-sync`, and binds its objective, non-goals,
+At every direct implementation start, Sol calls `get_goal`. If no active Goal
+exists, Sol automatically calls `create_goal` with the current objective and
+then calls `get_goal` again. A compatible active Goal is reused; a conflicting
+active Goal requires `HW_USER_DECISION_REQUIRED`. Sol records the bound receipt
+with `goal-sync` and binds its objective, non-goals,
 proof, and checkpoint to the locked contract. Local state and a Goal never
 expand locked scope or authority. A bound Goal history is sticky: no later
 `no_active_goal` or `unavailable` downgrade is valid, and completion sync keeps
-the same thread/objective pair. If Goal tooling is unavailable, Sol uses the
-manual contract/state path and records the unavailable API and evidence. After
+the same thread/objective pair. If Goal tooling is unavailable or fails, stop
+with `HW_GOAL_REQUIRED`. A direct request does not need a PR/FAQ path; approved
+PR/FAQ remains a separate mode. After
 completion, improvement candidates are report-only; do not implement one
 until the user approves a new Goal or scope.
 
