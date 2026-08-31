@@ -1,0 +1,619 @@
+{
+  "schema": "align-goal-behavioral-evals/v1",
+  "skill_path": "skills/align-goal",
+  "cases": [
+    {
+      "id": "E01",
+      "title": "Observed naming convention is evidence, not a decision",
+      "capability": "naming_choice",
+      "mode": "interactive",
+      "domains": ["general"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/cache_config.py",
+            "content": "DEFAULT_TTL_SECONDS = 300\n\ndef load_cache_config(raw):\n    return {\"cache_key\": raw[\"cache_key\"]}\n"
+          }
+        ],
+        "runtime_notes": ["No schema or compatibility rule outside the fixture forces a field name."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to specify a persisted opt-in field that lets users bypass the cache. Inspect this repository first. I have not selected its exact public field name.",
+        "follow_ups": [
+          {
+            "trigger": "after the agent asks the exact public-name choice",
+            "user_message": "{{asked_choice_id}}={{snake_case_alternative_exact_value}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "docs/goals generated artifact"],
+      "oracle": {
+        "must_observe": [
+          "The existing snake_case convention is recorded as F evidence.",
+          "A distinct C asks for exact alternatives such as preserving snake_case or choosing a different public field name.",
+          "The C is confirmed only after the ID-specific follow-up is received."
+        ],
+        "must_not_observe": [
+          "The naming convention alone is classified as a forced consequence.",
+          "The recommendation is copied into confirmed_value before the user response."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+        ]
+      }
+    },
+    {
+      "id": "E02",
+      "title": "Vague delegation causes an exact re-ask",
+      "capability": "vague_reask",
+      "mode": "interactive",
+      "domains": ["general"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/export.py",
+            "content": "def export(payload):\n    raise NotImplementedError\n"
+          }
+        ],
+        "runtime_notes": ["The export format is not forced by an external consumer."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to plan export support. I need the exact output format settled before implementation.",
+        "follow_ups": [
+          {
+            "trigger": "after the agent first asks the output-format C",
+            "user_message": "알아서 해줘",
+            "repeat": "once"
+          },
+          {
+            "trigger": "after the agent re-asks the same unresolved C with exact alternatives",
+            "user_message": "{{asked_choice_id}}={{json_alternative_exact_value}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "artifact immediately after vague answer", "final goal artifact"],
+      "oracle": {
+        "must_observe": [
+          "After the vague answer, the C remains asked or candidate with null user_response and confirmed fields.",
+          "The agent re-asks using the same C ID and exact alternatives.",
+          "Only the later ID-specific answer is stored as the exact user response."
+        ],
+        "must_not_observe": [
+          "알아서 해줘, best judgment, or a recommendation is stored as confirmation.",
+          "The original C is silently replaced with a new ID merely because the answer was vague."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{artifact_after_vague_answer}} --require structural --json",
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+        ]
+      }
+    },
+    {
+      "id": "E03",
+      "title": "Cold timeout finding returns to the recursive choice loop",
+      "capability": "cold_timeout_resolution",
+      "mode": "cold_handoff",
+      "domains": ["api"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/webhook_client.py",
+            "content": "def deliver(event, endpoint):\n    # transport is selected during planning\n    raise NotImplementedError\n"
+          },
+          {
+            "path": "tests/test_webhook_client.py",
+            "content": "def test_placeholder():\n    pass\n"
+          }
+        ],
+        "runtime_notes": ["No global HTTP timeout policy exists in the fixture."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to produce an implementation handoff for outbound webhook delivery. Resolve the choices you find and run an independent cold-consumer review.",
+        "follow_ups": [
+          {
+            "trigger": "after each ordinary choice round before the first cold review",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after the cold consumer reports that timeout behavior is underspecified",
+            "user_message": "{{timeout_choice_id}}=5 seconds per delivery attempt",
+            "repeat": "once"
+          },
+          {
+            "trigger": "after the revised document and fresh reviews are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "pre-finding goal artifact", "cold finding output", "revised goal artifact", "fresh cold output"],
+      "oracle": {
+        "must_observe": [
+          "The first cold output identifies timeout as a required user choice or underspecified clause and is not treated as PASS.",
+          "A new C is created for timeout and confirmed with the exact 5-second value.",
+          "Timeout S, A, and U mappings are added or updated before the cold consumer is rerun.",
+          "The revised spec digest invalidates old reviews and confirmations, and fresh receipts bind to the revised spec and unchanged repository context.",
+          "The final cold blocker arrays are empty and all plan steps map to S, A, and U."
+        ],
+        "must_not_observe": [
+          "The author chooses a timeout without asking the user.",
+          "The original cold receipt is reused after the canonical spec changes."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{revised_goal_artifact}} --require handoff-ready --json"
+        ]
+      }
+    },
+    {
+      "id": "E04",
+      "title": "Nine independent choices are asked as eight plus one",
+      "capability": "question_batching",
+      "mode": "interactive",
+      "domains": ["general"],
+      "workspace": {
+        "files": [
+          {
+            "path": "README.md",
+            "content": "# New notification tool\n\nNo behavior is implemented yet.\n"
+          }
+        ],
+        "runtime_notes": ["All nine listed decisions are independent and none is forced by the fixture."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal for a notification tool. I need nine independent public choices settled: command name, config path, config format, event name, default channel, retry count, per-attempt timeout, error format, and log format. I have not selected any values.",
+        "follow_ups": [
+          {
+            "trigger": "after each question round",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "goal artifact after two rounds"],
+      "oracle": {
+        "must_observe": [
+          "The nine independent choices have distinct stable C IDs.",
+          "The first relevant round has exactly eight choice_ids and the next has exactly one.",
+          "Each answer is stored under its own C ID."
+        ],
+        "must_not_observe": [
+          "A round contains nine questions.",
+          "Unrelated choices are collapsed into one policy choice merely to stay under the limit."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+        ]
+      }
+    },
+    {
+      "id": "E05",
+      "title": "Equivalent repeated retry choices form one scoped policy",
+      "capability": "policy_grouping_valid",
+      "mode": "interactive",
+      "domains": ["api"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/clients.py",
+            "content": "CLIENTS = [\"profile_reader\", \"catalog_reader\", \"inventory_reader\"]\n# All are idempotent GET clients behind the same transport adapter.\n"
+          }
+        ],
+        "runtime_notes": ["All three targets use the same transport, idempotency semantics, alternatives, and failure outcome."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to settle the retry policy for the three read-only clients in this repository. The same answer should apply only if their exact alternatives and consequences are identical.",
+        "follow_ups": [
+          {
+            "trigger": "after the agent asks the retry-policy choice",
+            "user_message": "{{asked_choice_id}}=maximum 2 retries with exponential backoff for profile_reader, catalog_reader, and inventory_reader",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "goal artifact"],
+      "oracle": {
+        "must_observe": [
+          "One policy C governs exactly the three named clients.",
+          "policy_targets and scope enumerate all three targets without duplicates.",
+          "The question, alternatives, and outcome delta are truly shared by every target."
+        ],
+        "must_not_observe": [
+          "The policy has an empty or implied target list.",
+          "Unrelated error or timeout choices are silently absorbed into the retry policy."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+        ]
+      }
+    },
+    {
+      "id": "E06",
+      "title": "Different retry consequences cannot share a policy choice",
+      "capability": "policy_grouping_invalid",
+      "mode": "interactive",
+      "domains": ["api"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/outbound.py",
+            "content": "def charge_payment(request):\n    pass  # provider has no idempotency key\n\ndef upload_metric(batch):\n    pass  # receiver deduplicates batch IDs\n"
+          }
+        ],
+        "runtime_notes": ["Retrying payment can duplicate a charge; retrying metric upload cannot duplicate the logical batch."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to settle retries for payment charging and metric upload. Do not assume that matching retry-count labels make their outcomes equivalent.",
+        "follow_ups": [
+          {
+            "trigger": "after each retry choice is asked separately",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "goal artifact"],
+      "oracle": {
+        "must_observe": [
+          "Payment and metric upload have separate C IDs or a concrete fact proves one is not applicable.",
+          "Each choice records its distinct duplicate-side-effect consequence."
+        ],
+        "must_not_observe": [
+          "One policy C groups both targets despite different outcome deltas.",
+          "The idempotency difference is treated as local coding."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+        ]
+      }
+    },
+    {
+      "id": "E07",
+      "title": "Changing a confirmed choice invalidates only mapped artifacts plus spec-bound receipts",
+      "capability": "choice_change_invalidation",
+      "mode": "cold_handoff",
+      "domains": ["cli"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/report.py",
+            "content": "def write_report(data):\n    raise NotImplementedError\n\ndef log_completion(path):\n    raise NotImplementedError\n"
+          }
+        ],
+        "runtime_notes": ["Report serialization and completion-log style are independent choices."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to make report serialization and completion logging handoff-ready. Treat them as independent implementation directions.",
+        "follow_ups": [
+          {
+            "trigger": "after both choices are asked",
+            "user_message": "{{report_format_choice_id}}=JSON; {{log_style_choice_id}}=plain text",
+            "repeat": "once"
+          },
+          {
+            "trigger": "after the first complete reviews but before final handoff confirmation",
+            "user_message": "Change {{report_format_choice_id}} to YAML. Keep the confirmed completion-log choice unchanged.",
+            "repeat": "once"
+          },
+          {
+            "trigger": "after updated mappings and fresh reviews are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["pre-change goal artifact", "post-change goal artifact", "full transcript"],
+      "oracle": {
+        "must_observe": [
+          "The report-format C response/value and only its mapped S/A/U content are revised.",
+          "The unrelated logging C and its mapped S/A/U remain byte-for-byte semantically unchanged.",
+          "Old ambiguity, cold, and confirmation receipts become stale because the canonical spec digest changed; the repository-context digest does not change.",
+          "Fresh reviews and confirmations bind to the revised spec."
+        ],
+        "must_not_observe": [
+          "Unrelated logging decisions are re-authored without a finding or user change.",
+          "Timestamp-only edits are presented as the reason the spec digest changed.",
+          "A whole-spec receipt is claimed to remain fresh after its bound spec digest changes."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{post_change_goal_artifact}} --require handoff-ready --json"
+        ]
+      }
+    },
+    {
+      "id": "E08",
+      "title": "Private helper inline or split remains local coding only with full proof",
+      "capability": "private_local_coding",
+      "mode": "cold_handoff",
+      "domains": ["general"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/token.py",
+            "content": "def public_token(subject):\n    normalized = subject.strip().lower()\n    return normalized.encode(\"utf-8\").hex()\n"
+          },
+          {
+            "path": "tests/test_token.py",
+            "content": "def test_public_token():\n    from src.token import public_token\n    assert public_token(\" Alice \") == \"616c696365\"\n"
+          }
+        ],
+        "runtime_notes": ["Inlining normalization or moving it to one private helper changes no named or observed surface."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to make the existing public_token behavior implementation-ready without changing its public contract. Have the cold consumer account for whether normalization is inline or a private helper.",
+        "follow_ups": [
+          {
+            "trigger": "after any actual material choices are asked",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after fresh reviews and final documents are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "goal artifact", "cold output"],
+      "oracle": {
+        "must_observe": [
+          "The inline/split item appears, if needed, in cold local_choices rather than as an invented user confirmation.",
+          "The local choice has all five satisfied proof objects with concrete evidence tied to one U.",
+          "The proof covers observable behavior, named surfaces, system impact, private-unit scope, and reversibility without spec change."
+        ],
+        "must_not_observe": [
+          "The agent asks the user to select inline versus split merely because two code shapes exist.",
+          "Any proof field is missing, false, or justified only with preference."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"
+        ]
+      }
+    },
+    {
+      "id": "E09",
+      "title": "Cold consumer plans a CLI without adding a material choice",
+      "capability": "cold_domain_plan",
+      "mode": "cold_handoff",
+      "domains": ["cli"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/cli.py",
+            "content": "def main(argv):\n    return 0\n"
+          }
+        ],
+        "runtime_notes": ["The fixture has no existing flag, output, exit-code, or destructive-confirmation policy."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to produce a handoff-ready cache-prune CLI. Cover command and flag names, defaults, output and error formats, exit codes, destructive confirmation, idempotency, and acceptance evidence.",
+        "follow_ups": [
+          {
+            "trigger": "after each choice round",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after final summaries and documents are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["goal artifact", "cold output", "full transcript"],
+      "oracle": {
+        "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
+        "must_not_observe": ["The cold consumer invents a flag, default, output contract, or destructive behavior not fixed by the canonical contract."],
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+      }
+    },
+    {
+      "id": "E10",
+      "title": "Cold consumer plans an API without adding a material choice",
+      "capability": "cold_domain_plan",
+      "mode": "cold_handoff",
+      "domains": ["api"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/http.py",
+            "content": "ROUTES = []\n"
+          }
+        ],
+        "runtime_notes": ["No route, schema, authorization, idempotency, error, versioning, or timeout rule is forced."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to make a create-job HTTP API handoff-ready. Cover route and method, request and response schema, status and error contracts, authentication and authorization, idempotency, versioning, timeout, and acceptance evidence.",
+        "follow_ups": [
+          {
+            "trigger": "after each choice round",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after final summaries and documents are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["goal artifact", "cold output", "full transcript"],
+      "oracle": {
+        "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
+        "must_not_observe": ["The cold consumer invents an HTTP contract, auth rule, idempotency behavior, or timeout not fixed by the canonical contract."],
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+      }
+    },
+    {
+      "id": "E11",
+      "title": "Cold consumer plans a UI without adding a material choice",
+      "capability": "cold_domain_plan",
+      "mode": "cold_handoff",
+      "domains": ["ui"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/settings_view.tsx",
+            "content": "export function SettingsView() { return null; }\n"
+          }
+        ],
+        "runtime_notes": ["No save timing, validation, loading, error, keyboard, accessibility, or unsaved-change policy is forced."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to make an account-settings UI handoff-ready. Cover visible states, defaults, save order and atomicity, validation and errors, loading and recovery, unsaved changes, keyboard and accessibility behavior, authorization, and acceptance evidence.",
+        "follow_ups": [
+          {
+            "trigger": "after each choice round",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after final summaries and documents are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["goal artifact", "cold output", "full transcript"],
+      "oracle": {
+        "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
+        "must_not_observe": ["The cold consumer invents a visible state, save behavior, recovery path, or accessibility rule not fixed by the canonical contract."],
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+      }
+    },
+    {
+      "id": "E12",
+      "title": "Cold consumer plans a stateful workflow without adding a material choice",
+      "capability": "cold_domain_plan",
+      "mode": "cold_handoff",
+      "domains": ["stateful_workflow"],
+      "workspace": {
+        "files": [
+          {
+            "path": "src/job.py",
+            "content": "class Job:\n    state = \"new\"\n"
+          }
+        ],
+        "runtime_notes": ["Only the initial state exists; transitions, ownership, concurrency, retry, cancellation, and recovery are undecided."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to make a durable background-job workflow handoff-ready. Cover exact states and transitions, ownership and persistence, concurrency and ordering, duplicate delivery, retries and timeout, cancellation, partial failure and recovery, observability, and acceptance evidence.",
+        "follow_ups": [
+          {
+            "trigger": "after each choice round",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after final summaries and documents are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["goal artifact", "cold output", "full transcript"],
+      "oracle": {
+        "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
+        "must_not_observe": ["The cold consumer invents a transition, retry, cancellation, concurrency, or recovery rule not fixed by the canonical contract."],
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+      }
+    },
+    {
+      "id": "E13",
+      "title": "Cold consumer plans a data migration without adding a material choice",
+      "capability": "cold_domain_plan",
+      "mode": "cold_handoff",
+      "domains": ["data_migration"],
+      "workspace": {
+        "files": [
+          {
+            "path": "db/schema.sql",
+            "content": "CREATE TABLE users (id INTEGER PRIMARY KEY, display_name TEXT NOT NULL);\n"
+          }
+        ],
+        "runtime_notes": ["The new field, backfill, dual-read/write window, compatibility, rollout, rollback, and deletion timing are undecided."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal to make a user-name normalization migration handoff-ready. Cover exact schema and persisted values, ownership and lifecycle, backfill and batching, read/write compatibility, rollout order, partial failure, rollback and downgrade, old-field deletion, performance limits, and acceptance evidence.",
+        "follow_ups": [
+          {
+            "trigger": "after each choice round",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "after final summaries and documents are shown",
+            "user_message": "{{id_specific_final_confirmation_responses}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["goal artifact", "cold output", "full transcript"],
+      "oracle": {
+        "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
+        "must_not_observe": ["The cold consumer invents schema, compatibility, backfill, rollout, rollback, deletion, or performance behavior not fixed by the canonical contract."],
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+      }
+    },
+    {
+      "id": "E14",
+      "title": "Six dependent rounds survive pause and resume",
+      "capability": "pause_resume",
+      "mode": "interactive",
+      "domains": ["stateful_workflow"],
+      "workspace": {
+        "files": [
+          {
+            "path": "README.md",
+            "content": "# Import workflow\n\nThe workflow has six sequential stages but no selected contracts.\n"
+          }
+        ],
+        "runtime_notes": ["Each stage's material choice depends on the prior stage's selected output, so only one can be asked per round."]
+      },
+      "stimulus": {
+        "initial_user_message": "Use $align-goal for a six-stage import workflow. Each stage consumes the exact result selected for the previous stage, so explore the dependent choices recursively and preserve the session across a pause.",
+        "follow_ups": [
+          {
+            "trigger": "after rounds 1 through 5",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "until_not_triggered"
+          },
+          {
+            "trigger": "immediately after round 5 is recorded",
+            "user_message": "Pause this align-goal session and preserve the artifact exactly for a later resume.",
+            "repeat": "once"
+          },
+          {
+            "trigger": "in a fresh model turn after the paused artifact is supplied",
+            "user_message": "Resume this $align-goal artifact. Continue from its recorded next action without renumbering existing IDs or rewriting exact responses.",
+            "repeat": "once"
+          },
+          {
+            "trigger": "after round 6",
+            "user_message": "{{round_id_value_answers_using_first_alternatives}}",
+            "repeat": "once"
+          }
+        ]
+      },
+      "artifacts_to_collect": ["full transcript", "artifact at pause", "artifact after resume and round 6"],
+      "oracle": {
+        "must_observe": [
+          "The paused artifact records session_status paused and validator next_action pause.",
+          "The resumed run continues after five rounds and creates a sixth round rather than ending at an arbitrary limit.",
+          "All pre-pause F/C/S/A/U/O IDs and exact user responses are preserved unless a recorded user change requires revision.",
+          "Round 4 contains a complete checkpoint."
+        ],
+        "must_not_observe": [
+          "The agent declares completion because five rounds elapsed.",
+          "Resume renumbers prior IDs, loses an answer, or silently changes a confirmed value."
+        ],
+        "mechanical_checks": [
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{paused_goal_artifact}} --require structural --json",
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{resumed_goal_artifact}} --require structural --json"
+        ]
+      }
+    }
+  ]
+}
