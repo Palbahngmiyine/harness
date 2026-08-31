@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 _BOOT_PIN = "f2f9f1c7dfb1c022bbf984898a03ddc6c1d3ff94c7e4475161d3c5abfe8b7e22"
-_MANIFEST_PIN = "8a583f903873d9f57bdc40e24fa5dc0b6d1ed55e9b935d5ecb1047886424fe5f"
+_MANIFEST_PIN = "b75628bf73b66a69d1531a5794e38171f2b5aa0a5d7bf12efc3ad03c9ed57dc5"
 _credential_module = None
 _boot = None
 

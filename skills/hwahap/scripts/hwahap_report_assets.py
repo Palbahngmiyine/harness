@@ -3,7 +3,7 @@
 import hashlib
 from pathlib import Path
 
-STYLE_SHA256 = "db41d318e514e396304c375907e3208be64eb637924ea5b73ae4f2fe880bf17f"
+STYLE_SHA256 = "db7acdf9f00b69031f8e1dfce46180fd7fea61504963a45a45817687519d68ac"
 META_STATIC = (
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
