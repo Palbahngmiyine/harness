@@ -56,7 +56,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
                     self.assertNotIn(separator, " ".join(errors))
                     probe_run = copy.deepcopy(clean_run)
                     probe_run["deviations"] = [{"summary": "supported path", "root_cause": "probe", "impact": "none",
-                                                 "prevention": "test", "evidence": [raw]}]
+                                                 "prevention": "test", "evidence_explanation": "Canonical data and HTML checks confirm the canary is removed without weakening validation.", "evidence": [raw]}]
                     payload = hwahap_report.build_payload(self.workspace, contract, probe_run, [], events, digests)
                     encoded = hwahap_report.canonical_payload_bytes(payload)
                     digest = hwahap_report.canonical_payload_digest(payload)
@@ -84,7 +84,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             run = json.loads(run_path.read_text())
             run["deviations"] = [{"client-secret=whole-feature-key-canary": "safe",
                                    "summary": "bounded deviation", "root_cause": "cause",
-                                   "impact": "none", "prevention": "test", "evidence": ["evidence"]}]
+                                   "impact": "none", "prevention": "test", "evidence_explanation": "State validation must reject this credential-bearing key; this field does not alter that security decision.", "evidence": ["evidence"]}]
             run["metrics"]["scope_deviations"] = 1
             self.write_json(run_path, run)
             original = {name: (run_dir / name).read_bytes() for name in ("run.json", "events.jsonl")}
