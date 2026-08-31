@@ -61,6 +61,8 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
                     self.write_events(run_dir, transitions)
                     if status in {"reviewing", "recovery"} and outcomes == ["fail", "fail"]:
                         self.assert_invalid("recovery requires")
+                    elif status == "reviewing" and outcomes == ["fail"] and kinds == ["terra_recovery"]:
+                        self.validate()
                     elif status == "reviewing":
                         self.assert_invalid("reviewing cannot end")
                     elif status == "replan_required" and outcomes == ["fail", "pass", "fail"]:

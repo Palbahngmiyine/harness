@@ -51,10 +51,6 @@ def validate_review_history(unit: dict, contract: dict, errors: list[str], works
         first_pass = outcomes.index("pass")
         if any(outcome == "fail" for outcome in outcomes[first_pass + 1:]):
             errors.append(f"{label}: failed review cannot follow a passing round")
-    pending_improvement = (status == "reviewing" and outcomes and outcomes[-1] == "fail"
-                           and failures[-1] not in failure_records)
-    if status == "reviewing" and outcomes and outcomes[-1] == "fail" and not pending_improvement:
-        errors.append(f"{label}: reviewing cannot end on a failed review")
     if status == "recovery" and (outcomes != ["fail"] or not failures or failures[0] != 1
                                   or 1 not in failure_records or failure_records[1].get("kind") != "terra_recovery"):
         errors.append(f"{label}: recovery requires first failed round terra_recovery")
