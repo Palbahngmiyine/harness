@@ -1,5 +1,4 @@
 """Install the lazy verified report graph into its facade."""
-
 import importlib
 import json
 import re
@@ -11,8 +10,6 @@ _error = None
 _finder_type = None
 _reader = None
 _manifest_pin = None
-
-
 def _entries() -> dict:
     value = json.loads(_reader("hwahap_report_manifest.json", _manifest_pin))
     if set(value) != {"schema_version", "modules"} or value["schema_version"] != 1:
@@ -23,7 +20,8 @@ def _entries() -> dict:
             raise ValueError
         name, filename, digest = item
         valid = (isinstance(name, str)
-                 and name.startswith(("hwahap_report_", "hwahap_credential_"))
+                 and (name == "hwahap_redaction"
+                      or name.startswith(("hwahap_report_", "hwahap_credential_")))
                  and isinstance(filename, str) and "/" not in filename
                  and filename.endswith(".py") and isinstance(digest, str)
                  and re.fullmatch(r"[0-9a-f]{64}", digest))
@@ -31,8 +29,6 @@ def _entries() -> dict:
             raise ValueError
         entries[name] = (filename, digest)
     return entries
-
-
 def boot():
     global _api
     if _api is not None:
@@ -51,8 +47,6 @@ def boot():
             sys.meta_path.remove(finder)
         for name in entries:
             sys.modules.pop(name, None)
-
-
 def _call(module: str, name: str, *args):
     try:
         return getattr(boot().modules[module], name)(*args)
@@ -60,30 +54,39 @@ def _call(module: str, name: str, *args):
         if type(error).__name__ == "HwahapReportError":
             raise _error(str(error)) from None
         raise
-
-
 def _ensure_credentials() -> None:
     boot()
     _root["_credential_module"] = _api.credential
-
-
+    _root["_redaction_module"] = _api.credential
+    _root["_shared_contains_sensitive_data"] = _api.credential.credential_bearing_text
+    _root["_shared_redact"] = _api.credential.redact
+def _ensure_redaction() -> None:
+    try:
+        _reader(*_entries()["hwahap_redaction"])
+        _ensure_credentials()
+    except Exception:
+        raise _error("report redaction dependency unavailable") from None
 def _getattr(name: str):
-    mapping = {"EVENT_FIELDS": ("types", "EVENT_FIELDS"),
-               "CONTRACT_LISTS": ("types", "CONTRACT_LISTS"),
-               "IMPROVEMENT_CANDIDATE_FIELDS": ("types", "IMPROVEMENT_CANDIDATE_FIELDS"),
-               "STYLE_BLOCK": ("assets", "STYLE_BLOCK")}
+    names = ("EVENT_FIELDS", "CONTRACT_LISTS", "REPORT_IDS", "DIFF_SNAPSHOT_FIELDS",
+             "IMPROVEMENT_CANDIDATE_FIELDS", "SHA256", "ABS_PATH")
+    mapping = {name: ("types", name) for name in names}
+    mapping.update({"STYLE_BLOCK": ("assets", "STYLE_BLOCK"), "META_STATIC": ("assets", "META_STATIC")})
+    if name == "REPORT_STATIC_IDS":
+        return frozenset((*boot().modules["types"].REPORT_IDS, "report", "evidence-vault"))
     if name not in mapping:
         raise AttributeError(name)
     module, attribute = mapping[name]
     return getattr(boot().modules[module], attribute)
-
-
 def install(root: dict, error, finder_type, reader, manifest_pin: str) -> None:
     global _root, _error, _finder_type, _reader, _manifest_pin
     _root, _error = root, error
     _finder_type, _reader, _manifest_pin = finder_type, reader, manifest_pin
     root["__getattr__"] = _getattr
     root["_ensure_credentials"] = _ensure_credentials
+    root["_ensure_redaction"] = _ensure_redaction
+    root["_redaction_module"] = None
+    root["contains_sensitive_data"] = lambda value: (
+        _ensure_credentials() or _api.credential.credential_bearing_text(value))
     root["credential_bearing_text"] = lambda value: (
         _ensure_credentials() or _call("security", "credential_bearing_text", value))
     root["_text"] = lambda *args: _call("security", "text", *args)

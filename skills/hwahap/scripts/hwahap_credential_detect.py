@@ -1,15 +1,15 @@
 """Find and redact credentials with stable raw offsets."""
 
+import math
 import re
 
 from hwahap_credential_normalize import _views, is_redacted, view
 from hwahap_credential_patterns import (
     ASSIGNMENT_CREDENTIAL, AUTH_HEADER_CREDENTIAL, BEARER_CREDENTIAL,
     CREDENTIAL_URL, CURL_CREDENTIAL, FLAG_CREDENTIAL, HEADER_CREDENTIAL, PEM,
+    PROVIDER_TOKEN, HIGH_ENTROPY,
 )
 from hwahap_credential_types import CredentialFinding, NormalizedView
-
-
 def _finding(value: NormalizedView, match: re.Match[str], kind: str) -> CredentialFinding:
     start, end = match.span()
     value_start, value_end = (
@@ -27,10 +27,8 @@ def _finding(value: NormalizedView, match: re.Match[str], kind: str) -> Credenti
 
     raw_start, raw_end = raw_span(start, end)
     raw_value_start, raw_value_end = raw_span(value_start, value_end)
-    return CredentialFinding(kind, raw_start, raw_end, raw_value_start,
-        raw_value_end, scheme, start, end, value_start, value_end)
-
-
+    return CredentialFinding(kind, raw_start, raw_end, raw_value_start, raw_value_end,
+                             scheme, start, end, value_start, value_end)
 def _findings(value: NormalizedView) -> list[CredentialFinding]:
     found, safe = [], []
     for kind, pattern in (("auth", AUTH_HEADER_CREDENTIAL),
@@ -44,18 +42,27 @@ def _findings(value: NormalizedView) -> list[CredentialFinding]:
     for start, end in safe:
         visible[start:end] = [" "] * (end - start)
     text = "".join(visible)
-    patterns = (("assignment", ASSIGNMENT_CREDENTIAL),
-                ("bearer", BEARER_CREDENTIAL), ("flag", FLAG_CREDENTIAL),
-                ("curl", CURL_CREDENTIAL))
+    patterns = (("assignment", ASSIGNMENT_CREDENTIAL), ("bearer", BEARER_CREDENTIAL),
+                ("flag", FLAG_CREDENTIAL), ("curl", CURL_CREDENTIAL))
     for kind, pattern in patterns:
         found.extend(_finding(value, match, kind)
                      for match in pattern.finditer(text) if not is_redacted(match))
     for kind, pattern in (("url", CREDENTIAL_URL), ("pem", PEM)):
         found.extend(_finding(value, match, kind)
                      for match in pattern.finditer(value.text))
+    found.extend(_finding(value, match, "provider-token")
+                 for match in PROVIDER_TOKEN.finditer(value.text))
+    for match in HIGH_ENTROPY.finditer(value.text):
+        token = match.group("value")
+        if token.count("/") <= 1 and not re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", token):
+            classes = sum(bool(re.search(pattern, token)) for pattern in
+                          (r"[a-z]", r"[A-Z]", r"[0-9]", r"[_+/=-]"))
+            counts = {char: token.count(char) for char in set(token)}
+            entropy = -sum((count / len(token)) * math.log2(count / len(token))
+                           for count in counts.values())
+            if classes >= 3 and entropy >= 4.0:
+                found.append(_finding(value, match, "high-entropy-secret"))
     return found
-
-
 def findings(value: str) -> tuple[CredentialFinding, ...]:
     unique = {}
     for normalized in _views(value):
@@ -64,10 +71,7 @@ def findings(value: str) -> tuple[CredentialFinding, ...]:
                    item.value_end, item.scheme)
             unique.setdefault(key, item)
     return tuple(sorted(unique.values(), key=lambda item: (
-        item.start, item.end, item.kind, item.value_start,
-        item.value_end, item.scheme)))
-
-
+        item.start, item.end, item.kind, item.value_start, item.value_end, item.scheme)))
 def credential_bearing_text(value: object) -> bool:
     return isinstance(value, str) and bool(findings(value))
 
@@ -75,8 +79,9 @@ def credential_bearing_text(value: object) -> bool:
 def redact(value: str) -> str:
     replacements = []
     for item in findings(value):
-        marker = {"url": "[redacted credential URL]",
-                  "pem": "[redacted private key]"}.get(item.kind, "[redacted]")
+        marker = {"url": "[redacted credential URL]", "pem": "[redacted private key]",
+                  "provider-token": "[redacted provider token]",
+                  "high-entropy-secret": "[redacted possible secret]"}.get(item.kind, "[redacted]")
         if item.scheme:
             marker = f"{item.scheme} [redacted]"
         replacements.append((item.value_start, item.value_end, marker))

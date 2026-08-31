@@ -14,12 +14,12 @@
     [
       "hwahap_report_assets",
       "hwahap_report_assets.py",
-      "a916ed7e320df34ccd0bfebc7bfd94dc4eabb1b20400eb91fc6ef3c82c2c9dbc"
+      "05e9d92074fddf98507d6e219a761023dce3980e59911f84c2388304166545f2"
     ],
     [
       "hwahap_report_security",
       "hwahap_report_security.py",
-      "89c170a9d1fcf4154ea31f9197d27711d31e58c6dc0085129fcbe78a555bf75b"
+      "50e4105300708527b079b807594e9bcd71d359031318ca51e3c486aaffafb182"
     ],
     [
       "hwahap_report_clean",
@@ -54,7 +54,7 @@
     [
       "hwahap_report_ledger",
       "hwahap_report_ledger.py",
-      "441a464af0a653662cec36e257238bb22f6998b95ba7e1f0c2f721c9e0265e77"
+      "e6d2326f08068ee0ea540d9429df8496dfd27e7231b49c16a2228d49d19967c2"
     ],
     [
       "hwahap_report_view",
@@ -79,7 +79,7 @@
     [
       "hwahap_report_changes",
       "hwahap_report_changes.py",
-      "81ce307689bb114248f1bd64134fa51fff184731ff63b70937e6506e96f8ebf6"
+      "3b02b488d9aef0d8484bdce133a54ca9236ca38aaa2bcd763735d33300fef2f3"
     ],
     [
       "hwahap_report_provenance",
@@ -89,7 +89,7 @@
     [
       "hwahap_report_human",
       "hwahap_report_human.py",
-      "b2624c13ec19001130907abcab977cbd9cec7d67076073c2712349efb5d105c8"
+      "af433aef771fbe37b27fc59c7168a4f47575d53d0d2c1f93675a16d6c7979848"
     ],
     [
       "hwahap_report_evidence",
@@ -99,7 +99,7 @@
     [
       "hwahap_report_render",
       "hwahap_report_render.py",
-      "d80bfdb1c327ea0c6f70d0ff4815b4645a603f3d914ea10776f28772f864f4bf"
+      "bdb978c291454bc4c91b69ea54c7db3e5e98fd8da74a48d699dca6ddddae111a"
     ],
     [
       "hwahap_report_parser",
@@ -114,7 +114,7 @@
     [
       "hwahap_report_credential_dependency",
       "hwahap_credentials.py",
-      "ac177e6deed9852da363068c75241ddf1847e738abf45494a3ab1f6dc0599e2f"
+      "83a258f356c300e425c196fd403d3c98dad46dab1fc4d8f50e0b625ef9c78802"
     ],
     [
       "hwahap_credential_types",
@@ -124,7 +124,7 @@
     [
       "hwahap_credential_patterns",
       "hwahap_credential_patterns.py",
-      "91f51a1f0c04f2154097f300b7aaad0671646a52bf49dcf1ce561abf75249d1f"
+      "cd6e25b8599cbc99981b79d508341062d6851c38a92fcc4a26b1c7705a96cbb0"
     ],
     [
       "hwahap_credential_normalize",
@@ -134,7 +134,12 @@
     [
       "hwahap_credential_detect",
       "hwahap_credential_detect.py",
-      "3414ae83c7bdafe78187c2336d08c06e2a466e9c1e86165e6610ca2f5a867bf3"
+      "dd8b0fbfcc84df057f33ad461fe7183405ae698af1e40d959f63ae2cf7945ee6"
+    ],
+    [
+      "hwahap_redaction",
+      "hwahap_redaction.py",
+      "40e9e07bf297bf67a34d35fbe25f9c0b3d470e6b1cd79592ac72226be7040220"
     ]
   ]
 }

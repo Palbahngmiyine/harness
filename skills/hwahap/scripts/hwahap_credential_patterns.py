@@ -35,3 +35,12 @@ CURL_CREDENTIAL = re.compile(
     r"(?:=|\s+))(?P<value>\"[^\"]*\"|'[^']*'|[^\s,;<>]+)")
 CREDENTIAL_URL = re.compile(r"(?i)https?://[^/\s:@]+:[^/\s@]+@[^\s<>\"']*")
 PEM = re.compile(r"-----BEGIN [^-]+-----.*?(?:-----END [^-]+-----|$)", re.DOTALL)
+PROVIDER_TOKEN = re.compile(
+    r"(?x)(?<![A-Za-z0-9_-])(?P<value>(?:gh[pousr]_[A-Za-z0-9]{36,255}|"
+    r"github_pat_[A-Za-z0-9_]{20,255}|sk-(?:proj-|svcacct-)?[A-Za-z0-9_-]{20,}|"
+    r"xox[baprs]-[A-Za-z0-9-]{20,}|npm_[A-Za-z0-9]{20,}|"
+    r"(?:sk|rk)_live_[A-Za-z0-9]{16,}|AIza[0-9A-Za-z_-]{35}|"
+    r"(?:AKIA|ASIA)[A-Z0-9]{16}))(?![A-Za-z0-9_-])")
+HIGH_ENTROPY = re.compile(
+    r"(?<![A-Za-z0-9_+/=-])(?P<value>[A-Za-z0-9_+/-]{32,}={0,2})"
+    r"(?![A-Za-z0-9_+/=-])")
