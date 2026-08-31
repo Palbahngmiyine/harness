@@ -87,7 +87,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             self.validate()
             self.assertEqual(hwahap_state.parse_events(run_dir / "events.jsonl")[-1]["to"], "completed")
 
-        def test_report_v3_pending_has_no_physical_artifacts(self) -> None:
+        def test_report_v4_pending_has_no_physical_artifacts(self) -> None:
             run_dir = self.init_run()
             receipt = json.loads((run_dir / "run.json").read_text())["report"]
             self.assertEqual(receipt, {"schema_version": 3, "status": "pending",

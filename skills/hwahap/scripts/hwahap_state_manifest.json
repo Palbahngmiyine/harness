@@ -4,12 +4,22 @@
     [
       "hwahap_state_api",
       "hwahap_state_api.py",
-      "20764e0145b2e59e5e3529e9f0ff43111a2a6af3a970e1523474d58c337246af"
+      "eb67c5ad8d581728011caaf43037c2b92e0c0b996e4e1dae7a67d3a2d042726d"
     ],
     [
       "hwahap_state_runtime",
       "hwahap_state_runtime.py",
       "1fc447d1d0865d8c6ee0b1c3109f975fd843b4056842f6009e11f3564ccdb976"
+    ],
+    [
+      "hwahap_state_process",
+      "hwahap_state_process.py",
+      "566d101626ec6dfbabd6af9686d8d2c2d0f39138d9c78146abd8c1906bb32359"
+    ],
+    [
+      "hwahap_state_git_ignore",
+      "hwahap_state_git_ignore.py",
+      "c5edfe8c26aa5e1a1a03d0eb15b54504de11914b94217a6df7d538d336b0aa4b"
     ],
     [
       "hwahap_state_dependencies",
@@ -29,17 +39,17 @@
     [
       "hwahap_state_config_schema",
       "hwahap_state_config_schema.py",
-      "0ebdf54113fcd67da8eb8ac5973f9b3f9eaa710e25bd19042350a7a48a28d84c"
+      "24340834a348b94659fcd486c48996fa86aedc138ef7397413b4045571d616f1"
     ],
     [
       "hwahap_state_errors_git",
       "hwahap_state_errors_git.py",
-      "be7400b91ed8e78b2180e1afe5593b0e10fb2ec92d7ebe2258a7a0a8bd13b621"
+      "0698a0e33e51eb359e85f0dfc2b127abed0d76d3cb29c4776ab30eac783d8bf1"
     ],
     [
       "hwahap_state_json_store",
       "hwahap_state_json_store.py",
-      "cc664c7c97bea5db75c86b22d0dbe8f52ea2da21b5409b583af1bbbbd3164a8d"
+      "83bb05d7a53f61628b79772a52fbea00e7574d28766ce6fe97e378b0b5c3d3d3"
     ],
     [
       "hwahap_state_atomic",
@@ -74,7 +84,7 @@
     [
       "hwahap_state_init_data",
       "hwahap_state_init_data.py",
-      "215dc0096633a62f8c819227f9f7fd7cc527e067d51bd83c136a975fe6d1a754"
+      "a9352492989c650a463cb7db15f32fb98131a94e713b11e8b2b3d69427edab74"
     ],
     [
       "hwahap_state_report_gateway",
@@ -134,12 +144,12 @@
     [
       "hwahap_state_candidate_schema",
       "hwahap_state_candidate_schema.py",
-      "a2c31325146887091956195a80a52b423799229b93388a061f3bc90c2bcaaddd"
+      "bf55a3c0eed3f8ce2d58d02d066518da5e0567709ccbbf766ad67fbaf2cd91d0"
     ],
     [
       "hwahap_state_candidate",
       "hwahap_state_candidate.py",
-      "b1cdba72c33e4be11a5aeb876cc13096bc571c2225fcef0872625e884246ed04"
+      "63bd16c48ae1c1e5c6acf22d0af12a0ebd82a267df051e89149a321f8a50648e"
     ],
     [
       "hwahap_state_goal_complete",
@@ -239,7 +249,7 @@
     [
       "hwahap_state_parser_workflow",
       "hwahap_state_parser_workflow.py",
-      "74a4e9e9b3be6c6ffe1b3dcb124f52b9b01bb18126ee34069887af5777b45ac1"
+      "f9213ea58fd5cfdb00bca393b72e4bc8579baf6839c1d6db72d83d2f44776579"
     ],
     [
       "hwahap_state_cli",

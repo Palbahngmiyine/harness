@@ -51,4 +51,4 @@ class HwahapReportTests(unittest.TestCase):
         event = {field: (1 if field == "sequence" else 0 if field == "review_round" else ["ev"] if field == "evidence_refs" else "value") for field in report.EVENT_FIELDS}
         return contract, run, [unit], [event], {"contract": "sha256:" + "d" * 64}
 
-__all__ = [name for name in globals() if not name.startswith("__")]
+__all__ = [name for name in globals() if not name.startswith("__") and name != "load_tests"]

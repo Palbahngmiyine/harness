@@ -21,6 +21,10 @@ def validate_improvement_candidate(
     if (not isinstance(evidence, list) or not evidence
             or any(not required_text(item) for item in evidence)):
         errors.append(f"{label}.evidence must be nonempty")
+    context = record.get("decision_context")
+    if (not isinstance(context, dict) or set(context) != DECISION_CONTEXT_FIELDS
+            or any(not required_text(context.get(field)) for field in DECISION_CONTEXT_FIELDS)):
+        errors.append(f"{label}.decision_context is invalid")
 
 
 def validate_improvement_candidates(value: object, errors: list[str]) -> None:

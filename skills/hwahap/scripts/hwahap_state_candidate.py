@@ -16,6 +16,7 @@ def record_improvement_candidate(args: argparse.Namespace) -> None:
     record = {
         "status": "proposed", "summary": args.summary, "evidence": args.evidence_ref,
         "expected_effect": args.expected_effect, "next_action": args.next_action,
+        "decision_context": {field: getattr(args, field) for field in DECISION_CONTEXT_FIELDS},
     }
     candidate_errors: list[str] = []
     validate_improvement_candidate(record, "improvement_candidate", candidate_errors)

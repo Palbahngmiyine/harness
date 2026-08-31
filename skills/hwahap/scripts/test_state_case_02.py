@@ -41,7 +41,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             self.assertEqual(json.loads((run_dir / "report-data.json").read_text())["provenance"]["fast_status"], "unknown")
             self.assertIn("unknown", (run_dir / "report.html").read_text())
 
-        def test_v2_report_receipt_is_rejected_without_migration(self) -> None:
+        def test_v3_report_receipt_is_rejected_without_migration(self) -> None:
             run_dir = self.init_run()
             run_path = run_dir / "run.json"
             run = json.loads(run_path.read_text())
@@ -54,7 +54,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             self.write_json(run_path, run)
             self.assert_invalid("report receipt")
 
-        def test_report_v3_data_and_receipt_tampering_are_rejected(self) -> None:
+        def test_report_v4_data_and_receipt_tampering_are_rejected(self) -> None:
             run_dir = self.prepare_final_review()
             with redirect_stdout(io.StringIO()):
                 hwahap_state.complete_run(self.complete_args())
@@ -68,7 +68,7 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             self.write_json(run_path, run)
             self.assert_invalid("report data digest")
 
-        def test_report_v3_pending_artifact_and_goal_sync_require_data(self) -> None:
+        def test_report_v4_pending_artifact_and_goal_sync_require_data(self) -> None:
             run_dir = self.init_run()
             (run_dir / "report-data.json").write_bytes(b"{}")
             self.assert_invalid("pending report must not have report artifacts")

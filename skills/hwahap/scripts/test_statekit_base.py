@@ -32,3 +32,5 @@ MODULE_PATH = ROOT / "hwahap_state.py"
 hwahap_state = _load("hwahap_state", ROOT / "hwahap_state.py")
 hwahap_report = _load("hwahap_report", ROOT / "hwahap_report.py")
 installer = _load("install_project_agents", ROOT / "install_project_agents.py")
+
+__all__ = [name for name in globals() if not name.startswith("__") and name != "load_tests"]

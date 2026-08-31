@@ -17,6 +17,7 @@ def _init_input(args: argparse.Namespace) -> tuple[Path, Path, dict, str, dict[s
     spec = spec_arg.resolve()
     if not workspace.is_dir():
         raise HwahapError("HW_STATE_INVALID", "workspace must be a real directory")
+    _require_hwahap_ignored(workspace)
     if not spec.is_file():
         raise HwahapError(error_code, "input must be a regular file")
     if input_kind == "request" and spec.suffix.casefold() != ".md":
@@ -85,6 +86,7 @@ def _write_initial_state(workspace: Path, run_dir: Path, contract: dict, run: di
         write_json(contract_path, contract)
         write_json(run_path, run)
         events_path.write_text("", encoding="utf-8")
+        events_path.chmod(0o600)
     except Exception as exc:
         for path in (contract_path, run_path, events_path):
             remove_path_best_effort(path)

@@ -5,6 +5,8 @@ import unittest
 
 
 def load_tests(loader, tests, pattern):
+    if pattern is not None:
+        return tests
     suite = unittest.TestSuite()
     for index in range(1, 3):
         name = f"test_terminal_{index:02d}"

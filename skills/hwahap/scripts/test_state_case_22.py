@@ -16,7 +16,7 @@ except ImportError:
     from test_statekit_06 import *
 
 class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMixin03, StateFixtureMixin04, StateFixtureMixin05, StateFixtureMixin06, unittest.TestCase):
-        def test_completed_run_requires_bound_goal(self) -> None:
+        def test_completed_run_requires_observed_goal_but_allows_bound_pending(self) -> None:
             run_dir = self.init_run()
             unobserved = json.loads((run_dir / "run.json").read_text())["goal_link"]
             contract = self.lock_contract(run_dir)

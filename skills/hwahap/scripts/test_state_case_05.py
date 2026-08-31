@@ -47,7 +47,11 @@ class HwahapStateTests(StateFixtureMixin01, StateFixtureMixin02, StateFixtureMix
             self.assertEqual(run["improvement_candidates"], [{
                 "status": "proposed", "summary": "reduce repeated setup",
                 "evidence": ["final-review"], "expected_effect": "fewer manual steps",
-                "next_action": "review in a new Goal",
+                "next_action": "review in a new Goal", "decision_context": {
+                    "scenario": "candidate scenario", "affected_scope": "candidate scope",
+                    "impact": "candidate impact", "decision_reason": "candidate decision",
+                    "evidence_relation": "candidate evidence", "success_condition": "candidate success",
+                },
             }])
             self.assertEqual({path: path.read_bytes() for path in before}, before)
             self.validate()
