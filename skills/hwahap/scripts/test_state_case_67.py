@@ -46,3 +46,7 @@ class HwahapStateCase67(StateFixtureMixin01, StateFixtureMixin02, unittest.TestC
         self.init_run()
         self.assertEqual(stat.S_IMODE(hwahap_dir.stat().st_mode), 0o755)
         self.assertEqual(stat.S_IMODE(runs_dir.stat().st_mode), 0o755)
+
+
+if __name__ == "__main__":
+    unittest.main()
