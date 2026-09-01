@@ -70,7 +70,10 @@ def validate_report_data_bytes(data: bytes, expected_payload: dict,
             raise ValueError
         actual = json.loads(data.decode("utf-8", errors="strict"))
         validate_report_handoff(expected_payload)
-        deviations = expected_payload.get("deviations", {}).get("items", [])
+        section = expected_payload.get("deviations", {})
+        if section.get("classification") != "process":
+            raise ValueError
+        deviations = section.get("items", [])
         validate_deviations(deviations)
         canonical = canonical_payload_bytes(expected_payload)
         digest = "sha256:" + hashlib.sha256(canonical).hexdigest()

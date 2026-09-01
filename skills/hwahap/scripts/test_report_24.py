@@ -36,6 +36,8 @@ class HwahapReportHandoffTests(HwahapReportTests):
         self.assertEqual(payload["contract"]["spec"]["handoff"]["schema"],
                          "align-goal/v1")
         self.assertEqual(payload["units"][0]["source_trace"]["unit_id"], "U1")
+        self.assertEqual(payload["deviations"]["classification"], "process")
+        self.assertNotIn("scope_deviations", payload["tests-metrics"]["metrics"])
 
     def test_fidelity_gate_rejects_missing_mismatched_and_duplicate_trace(self):
         payload = self.aligned_payload()

@@ -22,8 +22,8 @@ MATERIAL = (
     "@media (max-width:599px)", "@media (min-width:600px) and (max-width:839px)",
     "@media (min-width:840px)", "@media (min-width:1200px)",
     "@media (min-width:1600px)", '<a class="skip-link" href="#summary">',
-    'aria-label="보고서 주요 항목"', "무엇이 문제였고 어떻게 개선했나",
-    "이전 문제", "발생 원인", "적용한 개선", "이전 대비 기대 변화",
+    'aria-label="보고서 주요 항목"', "오케스트레이션 절차 편차와 재발 방지",
+    "절차 영향", "발생 원인", "재발 방지", "예방 효과의 한계",
     "아직 남은 위험", "다음에 개선할 수 있는 것",
     '<details id="evidence-vault" class="evidence-vault">',
 )

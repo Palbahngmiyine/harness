@@ -40,6 +40,8 @@ Resolve `<skill-dir>` from the loaded Hwahap `SKILL.md`. Select exactly one
 input branch: approved-spec mode uses an approved PR/FAQ and
 `init --spec`; direct-request mode first writes a credential-free request
 capsule, then uses `init-request --request`. Neither branch is interchangeable.
+Handoff-ready align-goal mode is a third branch and uses
+`init-goal --goal-spec`; see [align-goal-handoff.md](align-goal-handoff.md).
 
 The exact pre-lock Goal sequence for either branch is `get_goal` -> conditional
 `create_goal` (only when no active Goal exists) -> `get_goal` -> `goal-sync`
@@ -51,9 +53,10 @@ before lock.
 ```text
 <absolute-skill-dir>/scripts/install-project-agents --workspace <workspace>
 <absolute-hwahap-skill-dir>/scripts/hwahap init --workspace <workspace> --goal-id <goal-id> --spec <approved-prfaq>
+<absolute-hwahap-skill-dir>/scripts/hwahap init-goal --workspace <workspace> --goal-id <goal-id> --goal-spec <handoff-ready-goal>
 # Sol fills the six contract lists while locked is false.
 <absolute-hwahap-skill-dir>/scripts/hwahap lock --workspace <workspace> --run-id <goal-id> --actor <sol-thread> --reason <reason> --evidence-ref <reference>
-<absolute-hwahap-skill-dir>/scripts/hwahap add-unit --workspace <workspace> --run-id <goal-id> --unit-id <unit-id> --title <title> --allowed-path <path> --acceptance-command <command>
+<absolute-hwahap-skill-dir>/scripts/hwahap add-unit --workspace <workspace> --run-id <goal-id> --unit-id <unit-id> --title <title> [--source-unit-id <U-id>] --allowed-path <path> --acceptance-command <command>
 <absolute-hwahap-skill-dir>/scripts/hwahap run-test --workspace <workspace> --run-id <goal-id> --unit-id <unit-id> --command-index <1-based> --timeout-seconds <1..3600> # compatibility; always disabled
 <absolute-hwahap-skill-dir>/scripts/hwahap record-test-receipt --workspace <workspace> --run-id <goal-id> --unit-id <unit-id> --command-index <1-based> --execution-receipt-sha256 <digest> --observer-thread-id <luna-thread> --base-commit <40-hex-commit> --target-commit <40-hex-commit> --diff-digest <digest> --started-at <time> --ended-at <time> --output-sha256 <digest> (--exit-code <n> | --timed-out)
 <absolute-hwahap-skill-dir>/scripts/hwahap transition --workspace <workspace> --run-id <goal-id> --entity <run-or-unit-id> --to <state> --actor <thread-id> --role <role> --reason <reason> --input-digest <digest> --evidence-ref <reference>

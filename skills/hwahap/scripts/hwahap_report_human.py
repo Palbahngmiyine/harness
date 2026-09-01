@@ -17,7 +17,7 @@ def human_sections(view, summary, css, label, counts, metrics, metrics_html,
         f'<span class="metric-value">{counts["passed"]} / {counts["total"]}</span></div>'
         '<div class="metric"><span class="metric-label">검증 기록</span>'
         f'<span class="metric-value">{counts["tests"]}개 receipt</span></div>'
-        '<div class="metric"><span class="metric-label">발견·개선한 문제</span>'
+        '<div class="metric"><span class="metric-label">기록된 절차 편차</span>'
         f'<span class="metric-value">{counts["deviations"]}건</span></div></div>')
     return (
         f'<section id="summary" class="outcome-panel panel md-card md-card-elevated"><span class="eyebrow">Hwahap orchestration · '
@@ -25,9 +25,9 @@ def human_sections(view, summary, css, label, counts, metrics, metrics_html,
         f'{view.esc(label)}</span></p><h1>Hwahap 실행 결과</h1><p class="hero-copy">'
         f'{view.esc(summary.get("goal"))}</p><p class="section-intro">결론과 변화부터 읽고, '
         f'전체 snapshot·receipt·JSON 값은 맨 아래 원본 증거에서 확인할 수 있습니다.</p>{summary_metrics}</section>'
-        '<div class="decision-layout"><div><section id="deviations"><span class="eyebrow">Before → after</span>'
-        '<h2>무엇이 문제였고 어떻게 개선했나</h2><p class="section-intro">각 항목은 이전 문제, 발생 원인, '
-        f'적용한 개선, 이전 대비 기대 변화를 같은 순서로 보여줍니다.</p><div class="change-grid">{deviations}</div>'
+        '<div class="decision-layout"><div><section id="deviations"><span class="eyebrow">Process fidelity</span>'
+        '<h2>오케스트레이션 절차 편차와 재발 방지</h2><p class="section-intro">이 항목은 구현 결과나 '
+        f'승인 범위의 변경이 아니라 실행 절차의 이탈·원인·예방만 기록합니다.</p><div class="change-grid">{deviations}</div>'
         '</section></div><aside class="supporting-pane" aria-label="남은 위험"><section><span class="eyebrow">Remaining risk</span>'
         f'<h2>아직 남은 위험</h2><p class="section-intro">완료 판정과 별개로 아직 직접 검증하지 못했거나 새 승인이 '
         f'필요한 항목 {counts["risks"]}건입니다.</p><div class="cards">{deferred}</div></section></aside></div>'

@@ -4,7 +4,7 @@
 def _next_actions(run, units):
     actions = []
     if run.get("deviations"):
-        actions.append("범위 편차의 prevention을 확인하고 재발 방지를 기록하세요.")
+        actions.append("절차 편차의 prevention을 확인하고 재발 방지를 기록하세요.")
     if run.get("deferred_security"):
         actions.append("보류된 보안 작업은 승인 전 구현하지 말고 다음 결정을 기록하세요.")
     repeated = any(sum(item.get("outcome") == "fail"
@@ -49,7 +49,7 @@ def assemble(contract, run, units, timeline, digests, candidates, scope_audit):
         "tests-metrics": {"metrics": run["metrics"],
                           "acceptance_commands": commands, "test_receipts": receipts},
         "failures-recovery": failures,
-        "deviations": {"items": run["deviations"],
+        "deviations": {"classification": "process", "items": run["deviations"],
                        "deferred_security": run["deferred_security"]},
         "provenance": {"fast_status": run.get("fast_status"),
             "spec": contract.get("spec", {}), "agent_profiles": run["agent_profiles"],

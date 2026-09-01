@@ -49,13 +49,13 @@ def failure_html(view):
 def deviation_html(view):
     html = "".join(
         '<article class="change-card panel md-card md-card-filled"><header class="change-card-header">'
-        '<span class="status-chip status-success">개선 적용·검증됨</span>'
+        '<span class="status-chip status-success">절차 편차·예방 검증</span>'
         f'<h3>{view.esc(item.get("summary"))}</h3></header><div class="change-card-body">'
-        f'<div class="change-field"><span class="field-label">이전 문제</span><p>{view.esc(item.get("impact"))}</p></div>'
+        f'<div class="change-field"><span class="field-label">절차 영향</span><p>{view.esc(item.get("impact"))}</p></div>'
         f'<div class="change-field"><span class="field-label">발생 원인</span><p>{view.esc(item.get("root_cause"))}</p></div>'
-        f'<div class="change-field"><span class="field-label">적용한 개선</span><p>{view.esc(item.get("prevention"))}</p></div></div>'
-        '<p class="expected-change"><strong>이전 대비 기대 변화</strong><br>'
-        '위의 “이전 문제”가 다시 발생하기 전에 “적용한 개선”에 적힌 검사로 '
+        f'<div class="change-field"><span class="field-label">재발 방지</span><p>{view.esc(item.get("prevention"))}</p></div></div>'
+        '<p class="expected-change"><strong>예방 효과의 한계</strong><br>'
+        '위의 “절차 영향”이 다시 발생하기 전에 “재발 방지”에 적힌 검사로 '
         '같은 유형의 누락이나 오판을 발견하거나 차단할 것으로 기대합니다. '
         '표시된 검증 근거 범위의 기대이며 실제 운영 효과를 보장한다는 뜻은 아닙니다.</p>'
         f'<div class="evidence-rationale"><span class="field-label">왜 이 검사로 개선됐다고 판단했나</span>'

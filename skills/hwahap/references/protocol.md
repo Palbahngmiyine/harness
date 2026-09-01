@@ -27,6 +27,9 @@ scope.
    `.hwahap/requests/`, then `init-request --request`. Ideas, grilling, and
    planning-only text are not direct-request authority. Return
    `HW_SPEC_UNCONFIRMED` or `HW_REQUEST_UNCONFIRMED` for invalid selected input.
+   A handoff-ready `align-goal/v1` implementation artifact is a third mode:
+   run its upstream validator, then `init-goal --goal-spec`; failure returns
+   `HW_HANDOFF_UNCONFIRMED`. Never reinterpret one input mode as another.
 2. Install the exact six project profiles. Spawn only the Sol orchestrator. It
    calls `get_goal`; if there is no active Goal, it calls `create_goal`
    automatically with the current implementation objective and then calls
@@ -56,6 +59,8 @@ scope.
 4. After the lock, split the goal into atomic units. Create each with
    `<absolute-hwahap-skill-dir>/scripts/hwahap add-unit`, then use `<absolute-hwahap-skill-dir>/scripts/hwahap transition` for every
    state change. Give Luna only the current unit's contract. `add-unit` rejects
+   Align-goal runs additionally require `--source-unit-id`; exact S/A refs are
+   derived and full source U coverage is required before final review.
    unsafe IDs, paths, and commands containing sensitive data as `HW_STATE_INVALID`
    without writing. At most one unit may be unresolved at a time; unresolved
    means any status other than `planned` or `passed`, including

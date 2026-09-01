@@ -26,10 +26,10 @@ class ReportSlice4Tests(HwahapReportTests):
             self.assertIn('class="change-card panel md-card md-card-filled"', text)
             self.assertIn('class="risk-card tile md-card md-card-filled"', text)
             self.assertIn('class="proposal-card tile md-card md-card-filled"', text)
-            for phrase in ("이전 문제", "발생 원인", "적용한 개선", "이전 대비 기대 변화",
+            for phrase in ("절차 영향", "발생 원인", "재발 방지", "예방 효과의 한계",
                            "아직 남은 위험", "기대 효과", "다음 결정", "실제 운영 효과를 보장"):
                 self.assertIn(phrase, text)
-            self.assertIn("이전 문제”가 다시 발생하기 전에 “적용한 개선", text)
+            self.assertIn("절차 영향”이 다시 발생하기 전에 “재발 방지", text)
             self.assertIn("min-block-size:48px", text)
             self.assertIn("outline:3px solid var(--md-sys-color-primary)", text)
             self.assertIn("details>summary:focus-visible::after{opacity:var(--md-sys-state-focus-opacity)}", text)

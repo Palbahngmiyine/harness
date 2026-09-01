@@ -40,7 +40,7 @@ conflicting active Goal requires `HW_USER_DECISION_REQUIRED`; unavailable or
 failed Goal tooling stops with `HW_GOAL_REQUIRED`. Bind its objective, non-goals,
 proof, and checkpoint to the locked contract; local state and Goal cannot expand
 scope or authority. Direct-request mode uses `init-request` and does not require
-PRFAQ; approved PRFAQ mode remains separate. For F34/F35 correction, a verifiable new hypothesis permits Sol
+PRFAQ; approved PRFAQ mode remains separate. A handoff-ready align-goal/v1 artifact is validated upstream, then uses `init-goal --goal-spec`; bind every execution unit with `--source-unit-id` and require report fidelity. For F34/F35 correction, a verifiable new hypothesis permits Sol
 to replan a follow-up correction unit within locked scope; otherwise use
 awaiting_user. After a passing final review, while the run is still
 `final_review`, record each optional candidate returned by the final reviewer

@@ -32,7 +32,7 @@ def app_header(view, css, label):
         '<div><span class="app-kicker">Local evidence report</span><div class="app-title">Hwahap</div></div>'
         f'<span class="status-chip {css}">{view.esc(label)}</span></header>'
         '<nav class="section-nav" aria-label="보고서 주요 항목"><a class="nav-chip" href="#summary">결론</a>'
-        '<a class="nav-chip" href="#deviations">문제와 개선</a>'
+        '<a class="nav-chip" href="#deviations">절차 편차</a>'
         '<a class="nav-chip" href="#improvement-candidates">다음 개선</a>'
         '<a class="nav-chip" href="#tests-metrics">검증 근거</a>'
         '<a class="nav-chip" href="#evidence-vault">원본 증거</a></nav>')

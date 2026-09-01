@@ -22,7 +22,8 @@ def _run_data(run: dict, root: str) -> dict:
         for key, value in profiles.items() if isinstance(key, str)
         and key.endswith(".toml") and isinstance(value, str) and SHA256.fullmatch(value)}
     metrics = pick(run.get("metrics"), ("unit_count", "agent_runs", "review_rounds",
-        "recoveries", "replans", "scope_deviations", "test_runs", "elapsed_seconds"), root)
+        "recoveries", "replans", "test_runs", "elapsed_seconds"), root)
+    metrics["process_deviations"] = len(run.get("deviations", []))
     token = pick(run.get("metrics", {}).get("token_usage"),
         ("availability", "reason", "source", "total"), root)
     data["metrics"] = metrics | {"token_usage": token}

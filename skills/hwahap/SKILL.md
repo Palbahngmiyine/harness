@@ -1,17 +1,18 @@
 ---
 name: hwahap
-description: "Execute an implementation request or approved `status: prfaq` spec with staged Sol/Luna/Terra orchestration, automatic Goal binding, atomic units, scope control, and structured evidence. Trigger for implementation or orchestration; do not trigger for ideation or grilling."
+description: "Execute an implementation request, approved PR/FAQ, or handoff-ready align-goal/v1 spec with staged Sol/Luna/Terra orchestration, automatic Goal binding, atomic units, scope control, and structured evidence. Trigger for implementation or orchestration; do not trigger for ideation or grilling."
 ---
 
 # Hwahap
 
 Use this skill for an implementation request that is authoritative in the
-current conversation or for an explicitly provided approved PR/FAQ. A direct
+current conversation, an explicitly provided approved PR/FAQ, or a validated
+`align-goal/v1` implementation handoff. A direct
 request does not need a PR/FAQ path; an idea, question, grill, or planning-only
 request is not implementation authority. The current request is authoritative
 over stored context.
-Only two input modes are authoritative: direct-request mode and approved-spec
-mode.
+Only three input modes are authoritative: direct-request, approved-PRFAQ, and
+handoff-ready align-goal mode. They are not interchangeable.
 Resolve `<hwahap-skill-dir>` from this loaded `SKILL.md`; it may be installed
 outside the target workspace.
 An approved PR/FAQ may live outside the target repository; never copy it into
@@ -42,7 +43,8 @@ Before implementation, check these four inputs explicitly:
    directories/files with no symlink in any lexical ancestor. An unsafe
    workspace returns `HW_STATE_INVALID`; an unsafe approved spec returns
    `HW_SPEC_UNCONFIRMED`; an unsafe request capsule returns
-   `HW_REQUEST_UNCONFIRMED`.
+   `HW_REQUEST_UNCONFIRMED`; an invalid aligned goal returns
+   `HW_HANDOFF_UNCONFIRMED`.
 2. Select exactly one authoritative input mode. Approved-spec mode requires
    readable UTF-8 with `status: prfaq` and nonempty `confirmed_at`. Direct-
    request mode is available only for a current implementation instruction;
@@ -50,6 +52,9 @@ Before implementation, check these four inputs explicitly:
    `status: request`, a concise title, and `confirmed_at`, then pins its bytes
    with `init-request --request`. A draft, idea, or planning-only conversation
    never becomes a request capsule.
+   Align-goal mode requires `align-goal/v1`, implementation target, complete,
+   aligned, ready, fresh receipt digests, closed choices/items, and complete
+   S/A/U mapping. Read [references/align-goal-handoff.md](references/align-goal-handoff.md).
 3. Installed profiles must be the exact six Hwahap source profiles, each a
    regular byte-identical file with the source role metadata:
    `hwahap-luna-implementer` (Luna/high/workspace-write), `hwahap-luna-verifier`
@@ -78,7 +83,7 @@ Before implementation, check these four inputs explicitly:
    current working-tree changes. Preserve unrelated work and limit edits to the
    approved contract paths.
 2. Before execution, read [references/protocol.md](references/protocol.md) and
-   select direct-request or approved-spec mode. Require a PR/FAQ path only
+   select direct-request, approved-spec, or align-goal mode. Require a PR/FAQ path only
    when the user chose or supplied that mode. For direct mode, require an
    explicit current implementation instruction and create the internal
    request capsule; do not infer authority from an idea, draft, title, or
@@ -102,6 +107,8 @@ Before implementation, check these four inputs explicitly:
    `<absolute-hwahap-skill-dir>/scripts/hwahap init --workspace <workspace> --goal-id <goal-id> --spec <approved-prfaq-path>`
 
    `<absolute-hwahap-skill-dir>/scripts/hwahap init-request --workspace <workspace> --goal-id <goal-id> --request <request-capsule-path>`
+
+   `<absolute-hwahap-skill-dir>/scripts/hwahap init-goal --workspace <workspace> --goal-id <goal-id> --goal-spec <handoff-ready-goal-path>`
 
    Treat any non-zero result as a stable failure; record its code and evidence
    and stop unless the defined recovery is safe and in scope.
@@ -165,6 +172,7 @@ until the user approves a new Goal or scope.
 Read only the reference needed for the current operation:
 
 - For unit execution, receipts, failures, and recursive recovery, read [references/execution-review.md](references/execution-review.md).
+- For align-goal input and S/A/U report fidelity, read [references/align-goal-handoff.md](references/align-goal-handoff.md).
 - For state and report persistence, read [references/reporting.md](references/reporting.md).
 - Follow [references/protocol.md](references/protocol.md) and its routed review/report continuation before orchestration.
 - Use [references/state-contract.md](references/state-contract.md) as the router for exact JSON state fields.

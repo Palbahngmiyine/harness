@@ -4,6 +4,34 @@ from hwahap_state_runtime import *
 register(globals())
 
 
+def align_review_outputs(contract: dict, ids: tuple[set[str], set[str], set[str]]) -> None:
+    ambiguity = contract["reviews"]["ambiguity_auditor"].get("output")
+    ambiguity_keys = {"new_material_choices", "counterexamples", "contradictions",
+        "invalid_forced_consequences", "invalid_local_coding", "unexamined_surfaces"}
+    if not isinstance(ambiguity, dict) or set(ambiguity) != ambiguity_keys \
+            or any(value != [] for value in ambiguity.values()):
+        raise ValueError
+    cold = contract["reviews"]["cold_consumer"].get("output")
+    empty = {"required_user_choices", "implicit_assumptions", "contradictions",
+             "underspecified_clauses", "unmapped_spec_ids", "local_choices"}
+    if not isinstance(cold, dict) or set(cold) != empty | {"steps"} \
+            or any(cold.get(key) != [] for key in empty) \
+            or not isinstance(cold.get("steps"), list) or not cold["steps"]:
+        raise ValueError
+    covered = [set(), set(), set()]
+    for step in cold["steps"]:
+        if not isinstance(step, dict):
+            raise ValueError
+        refs = (step.get("spec_ids"), step.get("acceptance_ids"), step.get("unit_ids"))
+        if any(not isinstance(value, list) for value in refs) \
+                or any(not set(value) <= known for value, known in zip(refs, ids)):
+            raise ValueError
+        for found, value in zip(covered, refs):
+            found.update(value)
+    if tuple(covered) != ids:
+        raise ValueError
+
+
 def align_ids(items: object) -> set[str]:
     if not isinstance(items, list) or not items:
         raise ValueError
@@ -18,8 +46,9 @@ def align_goal_trace(contract: dict, digest: str) -> dict:
     specs, checks, units = (contract.get("specifications"),
                             contract.get("acceptance_checks"),
                             contract.get("implementation_units"))
-    spec_ids, check_ids = align_ids(specs), align_ids(checks)
-    align_ids(units); covered_specs, covered_checks = set(), set()
+    spec_ids, check_ids, unit_ids = align_ids(specs), align_ids(checks), align_ids(units)
+    align_review_outputs(contract, (spec_ids, check_ids, unit_ids))
+    covered_specs, covered_checks = set(), set()
     for check in checks:
         refs = check.get("spec_ids")
         if not isinstance(refs, list) or not refs or not set(refs) <= spec_ids:

@@ -44,17 +44,17 @@
     [
       "hwahap_report_assemble",
       "hwahap_report_assemble.py",
-      "fa648ae628ea96b88a1aa28db098f7de65c9e205a5f55c0028c7a309eb803aa0"
+      "55cad0af151685e8270721612001e26df14998e77b14069eec19c7aeb1f57db3"
     ],
     [
       "hwahap_report_payload",
       "hwahap_report_payload.py",
-      "c6a27e3a9f93f1bd0bcf88b06c14f2231bbc4277edc5acf9001db866b87ae70c"
+      "c41523f76c1c592098a8d6fe347b4e20b4abe016d26cabfca85e174b47455554"
     ],
     [
       "hwahap_report_canonical",
       "hwahap_report_canonical.py",
-      "de19f7987d2a5e7957a2a59249f052287763ae15429b4fe10b03419ee2f33060"
+      "4bc54cc50c78000e150e016f13156fa705d65cbdeabc59f975f32ce8fa4140bc"
     ],
     [
       "hwahap_report_ledger",
@@ -84,7 +84,7 @@
     [
       "hwahap_report_changes",
       "hwahap_report_changes.py",
-      "4c4c12b4ab86ab37616da53d46e84190514f7a7351f63b9d32a1816c73793b13"
+      "2e949c2bcb0fbc345aa4fd6c712ab00dbdf9a4b484d58263dad076c51b6c92fd"
     ],
     [
       "hwahap_report_provenance",
@@ -94,12 +94,12 @@
     [
       "hwahap_report_human",
       "hwahap_report_human.py",
-      "63cbef9e9665a1a39398dde5f127c15760a2af2908b84fff94357d83fc136d98"
+      "b18751e31e14de84be4615c237dcfc995fb97c11f1f0ad1c162d274f6e7bc551"
     ],
     [
       "hwahap_report_evidence",
       "hwahap_report_evidence.py",
-      "36b23805a9e47995d138bdc3f14852e94d2984af0d410e932d81b54d1e2bddb2"
+      "06ebd8978d6aa54e17db061ca3c49f1ab026463d39d1193058cc217d36041fcd"
     ],
     [
       "hwahap_report_render",
@@ -114,7 +114,7 @@
     [
       "hwahap_report_validate",
       "hwahap_report_validate.py",
-      "4b4f958740c8c72c8931976f69eaab411470440e761ff0929ba858d9c2cc6aae"
+      "cb06bcbe555a291e03be23633d6a11e216ce62452f165cce61624ab9a2728750"
     ],
     [
       "hwahap_report_human_detail",

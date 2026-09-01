@@ -29,7 +29,8 @@ class HwahapStateCase69(StateFixtureMixin01, unittest.TestCase):
 
     def test_goal_handoff_rejects_stale_receipt_and_unmapped_acceptance(self) -> None:
         for change in (lambda c: c["reviews"]["cold_consumer"].update(spec_digest="sha256:" + "b" * 64),
-                       lambda c: c["implementation_units"][0].update(acceptance_ids=[])):
+                       lambda c: c["implementation_units"][0].update(acceptance_ids=[]),
+                       lambda c: c["reviews"]["cold_consumer"]["output"]["implicit_assumptions"].append("choice")):
             with self.subTest(change=change), self.assertRaises(hwahap_state.HwahapError) as raised:
                 hwahap_state.load_goal_spec(write_goal_artifact(self.workspace, change))
             self.assertEqual(raised.exception.code, "HW_HANDOFF_UNCONFIRMED")

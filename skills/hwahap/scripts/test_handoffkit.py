@@ -27,8 +27,15 @@ def write_goal_artifact(workspace: Path, change=None) -> Path:
         "acceptance_checks": [check], "implementation_units": [unit], "open_items": []}
     digest = hwahap_state.align_digest({key: contract[key]
         for key in hwahap_state.ALIGN_PROJECTION_KEYS})
-    ambiguity = {"review_id": "R1", "status": "pass", "spec_digest": digest}
-    cold = {"review_id": "R2", "status": "pass", "spec_digest": digest}
+    ambiguity = {"review_id": "R1", "status": "pass", "spec_digest": digest,
+        "output": {key: [] for key in ("new_material_choices", "counterexamples",
+        "contradictions", "invalid_forced_consequences", "invalid_local_coding",
+        "unexamined_surfaces")}}
+    cold = {"review_id": "R2", "status": "pass", "spec_digest": digest,
+        "output": {"steps": [{"spec_ids": ["S1"], "acceptance_ids": ["A1"],
+        "unit_ids": ["U1"]}], **{key: [] for key in ("required_user_choices",
+        "implicit_assumptions", "contradictions", "underspecified_clauses",
+        "unmapped_spec_ids", "local_choices")}}}
     handoff = {"exact_response": "CONFIRM HANDOFF: ready", "spec_digest": digest,
         "confirmed_at": "2026-09-01T00:03:00Z", "response_ref": {
             "hash": "sha256:" + "a" * 64},
