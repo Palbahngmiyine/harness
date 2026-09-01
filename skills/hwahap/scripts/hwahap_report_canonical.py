@@ -70,11 +70,11 @@ def validate_report_data_bytes(data: bytes, expected_payload: dict,
             raise ValueError
         actual = json.loads(data.decode("utf-8", errors="strict"))
         validate_report_handoff(expected_payload)
-        section = expected_payload.get("deviations", {})
-        if section.get("classification") != "process":
-            raise ValueError
-        deviations = section.get("items", [])
-        validate_deviations(deviations)
+        if "deviations" in expected_payload:
+            section = expected_payload["deviations"]
+            if section.get("classification") != "process":
+                raise ValueError
+            validate_deviations(section.get("items", []))
         canonical = canonical_payload_bytes(expected_payload)
         digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
         if (actual != expected_payload or data != canonical or expected_digest != digest
@@ -89,7 +89,10 @@ def validate_payload(payload: dict, source_digest: str) -> None:
     try:
         if not isinstance(payload, dict) or canonical_payload_digest(payload) != source_digest:
             raise ValueError
-        deviations = payload.get("deviations", {}).get("items", [])
+        section = payload.get("deviations", {})
+        if section.get("classification") != "process":
+            raise ValueError
+        deviations = section.get("items", [])
         validate_deviations(deviations)
         validate_report_data_bytes(canonical_payload_bytes(payload), payload, source_digest)
     except Exception:

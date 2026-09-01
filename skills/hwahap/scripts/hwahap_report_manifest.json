@@ -54,7 +54,7 @@
     [
       "hwahap_report_canonical",
       "hwahap_report_canonical.py",
-      "4bc54cc50c78000e150e016f13156fa705d65cbdeabc59f975f32ce8fa4140bc"
+      "f1caa04c3805d1b7c461de340969102870b1732a5fd613d48ea7756b7ae111b9"
     ],
     [
       "hwahap_report_ledger",
@@ -94,7 +94,7 @@
     [
       "hwahap_report_human",
       "hwahap_report_human.py",
-      "b18751e31e14de84be4615c237dcfc995fb97c11f1f0ad1c162d274f6e7bc551"
+      "403abbda0ac1d89e62feedf1f4b0918d59d8dd745a58bb5646ce510abbf615bf"
     ],
     [
       "hwahap_report_evidence",
