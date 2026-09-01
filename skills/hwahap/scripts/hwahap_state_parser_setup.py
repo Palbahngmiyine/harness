@@ -24,6 +24,7 @@ def _parser_setup(commands) -> None:
                                       (("--evidence-ref",), {"action": "append", "required": True})])
     _command(commands, "add-unit", "add one planned atomic unit", add_unit, common + [
         required("unit-id"), required("title"),
+        (("--source-unit-id",), {}),
         (("--allowed-path",), {"action": "append", "required": True}),
         (("--acceptance-command",), {"action": "append", "required": True})])
     test = _command(commands, "run-test", "compatibility command; test execution is disabled",

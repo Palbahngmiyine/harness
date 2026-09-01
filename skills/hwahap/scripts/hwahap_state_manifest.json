@@ -4,7 +4,7 @@
     [
       "hwahap_state_api",
       "hwahap_state_api.py",
-      "5a23935c2ecd55c16309de43aab9e5191f899db6830d213d1e350f95ece0ca1b"
+      "69de0a8d86a1463e26c7e0ff2ebef285d8b55a1b3a389e72d85dfe51287dada7"
     ],
     [
       "hwahap_state_runtime",
@@ -92,6 +92,11 @@
       "10a08125f4ba6dc80e02d363401f01420d1a7149a81850f4deef89d1dd060ed9"
     ],
     [
+      "hwahap_state_handoff_units",
+      "hwahap_state_handoff_units.py",
+      "fca25a84f07e29c1fe0514a8f427a7c4e29e9a208f1084113bde087f64a1f897"
+    ],
+    [
       "hwahap_state_init_command",
       "hwahap_state_init_command.py",
       "ba6943fd2538fba12ec933799c0521e07a8bdbeb5d8a23e5fae58b2df1e90700"
@@ -139,7 +144,7 @@
     [
       "hwahap_state_add_unit",
       "hwahap_state_add_unit.py",
-      "2f3886461fdb380b063693da97c02863ad7f348d103a35e1930d9d3daea4b19e"
+      "bf2e4eb7f38a3a7f7431481be89969e0b7f042eff2290c44dd2afdff030a3948"
     ],
     [
       "hwahap_state_receipt",
@@ -254,12 +259,12 @@
     [
       "hwahap_state_run_validate",
       "hwahap_state_run_validate.py",
-      "8036719b3489ad92b1f1d0de38253721dae4463781d1d1df64e536be861013db"
+      "1cf4311f61e83708b45374e5cd21fe268d4b390ef1f03c8a6f625b7a4454b718"
     ],
     [
       "hwahap_state_parser_setup",
       "hwahap_state_parser_setup.py",
-      "99394d2870d9099c0250a665aded08d84ed3371cdbec93366122951c4dd56f71"
+      "5e77f88232f1af4473051fdd2b00af53fb7ef368cc2d8294cf94157b6a4439c7"
     ],
     [
       "hwahap_state_parser_workflow",

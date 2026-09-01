@@ -41,6 +41,7 @@ def validate_run(args: argparse.Namespace) -> None:
         args, workspace, contract, run, errors)
     units, histories = _validate_run_units(
         unit_files, contract, forbidden, errors, workspace)
+    validate_handoff_units(contract, units, status in {"final_review", "completed"}, errors)
     if (any(has_pending_improvement(unit) for unit in units)
             and status not in ({"reviewing", "cancelled"} | RUN_FAILURE_STATES)):
         errors.append(

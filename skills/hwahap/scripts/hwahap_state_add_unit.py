@@ -27,8 +27,10 @@ def add_unit(args: argparse.Namespace) -> None:
     unit_path = run_dir / "units" / f"{unit_id}.json"
     if unit_path.exists() or unit_path.is_symlink():
         raise HwahapError("HW_STATE_INVALID", f"unit already exists: {args.unit_id}")
+    trace = source_unit_trace(contract, getattr(args, "source_unit_id", None))
     unit = {
         "unit_id": unit_id, "title": title, "status": "planned",
+        "source_trace": trace,
         "writer": "hwahap-luna-implementer", "allowed_paths": args.allowed_path,
         "acceptance_commands": args.acceptance_command, "replan_count": 0,
         "review_history": [], "improvement_history": [], "recovery": None, "failure": None,
