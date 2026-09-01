@@ -35,7 +35,7 @@ class OrchestratorContractDocsTests(unittest.TestCase):
         )
         compact = " ".join(state.split())
         self.assertIn(
-            "approved-spec mode uses an approved PR/FAQ and `init --spec`; direct-request mode first writes a credential-free request capsule, then uses `init-request --request`. Neither branch is interchangeable.",
+            "approved-spec mode uses an approved PR/FAQ and `init --spec`; direct-request mode writes a credential-free request capsule and uses `init-request --request`; handoff-ready align-goal mode uses `init-goal --goal-spec`. The branches are not interchangeable",
             compact,
         )
         prelock = compact.split("The exact pre-lock Goal sequence", 1)[1].split("A compatible Goal", 1)[0]
@@ -66,8 +66,8 @@ class OrchestratorContractDocsTests(unittest.TestCase):
                                      "conditional\n`create_goal` (when an active Goal exists)")),
             (execution, self._mutate(state, "automatically publishes both",
                                      "does not automatically publish both")),
-            (execution, self._mutate(state, "approved PR/FAQ and\n`init --spec`; direct-request mode first writes a credential-free request\ncapsule, then uses `init-request --request`",
-                                     "approved PR/FAQ and\n`init-request --request`; direct-request mode first writes a credential-free request\ncapsule, then uses `init --spec`")),
+            (execution, self._mutate(state, "handoff-ready align-goal mode uses\n`init-goal --goal-spec`",
+                                     "handoff-ready align-goal mode uses\n`init-request --request`")),
             (self._mutate(execution, "## Roles and units\n", "<!--\n## Roles and units\n"), state),
             (self._mutate(execution, "## Roles and units\n", "```\n## Roles and units\n```\n"), state),
             (self._mutate(execution, "## Roles and units\n", "~~~\n## Roles and units\n~~~\n"), state),
