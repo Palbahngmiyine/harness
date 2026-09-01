@@ -6,6 +6,7 @@ from hwahap_report_assemble import assemble
 from hwahap_report_canonical import validate_deviations
 from hwahap_report_clean import clean, pick, scope_audit, snapshot
 from hwahap_report_goal import goal_link, improvement_candidates
+from hwahap_report_handoff import report_spec
 from hwahap_report_security import text
 from hwahap_report_types import CONTRACT_LISTS, EVENT_FIELDS, SHA256
 from hwahap_report_unit import command_receipts, roles, unit
@@ -51,7 +52,7 @@ def _run_data(run: dict, root: str) -> dict:
 def build_payload(workspace, contract, run, units, events, state_digests,
                   scope_audit_data=None) -> dict:
     root = str(Path(workspace).absolute())
-    spec = pick(contract.get("spec"), ("source", "sha256", "confirmed_at", "status"), root)
+    spec = report_spec(contract.get("spec"), root)
     contract_data = pick(contract,
         ("schema_version", "goal_id", "goal", "locked", "lock_sha256"), root)
     contract_data.update({key: clean(contract.get(key, []), root)

@@ -8,7 +8,7 @@ def load_tests(loader, tests, pattern):
     if pattern is not None:
         return tests
     suite = unittest.TestSuite()
-    for index in range(1, 3):
+    for index in range(1, 4):
         name = f"test_terminal_{index:02d}"
         try:
             module = importlib.import_module(f".{name}", __package__)

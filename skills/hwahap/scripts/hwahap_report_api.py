@@ -5,6 +5,7 @@ import hwahap_report_types as types
 import hwahap_report_assets as assets
 import hwahap_report_security as security
 import hwahap_report_clean as clean
+import hwahap_report_handoff as handoff
 import hwahap_report_unit as unit
 import hwahap_report_goal as goal
 import hwahap_report_assemble as assemble
@@ -29,7 +30,7 @@ import hwahap_report_validate as validate
 security._module = credential
 modules = {
     "types": types, "assets": assets, "security": security, "clean": clean,
-    "unit": unit, "goal": goal, "assemble": assemble, "payload": payload,
+    "handoff": handoff, "unit": unit, "goal": goal, "assemble": assemble, "payload": payload,
     "canonical": canonical, "ledger": ledger, "view": view,
     "core_sections": core_sections, "review_sections": review_sections,
     "metrics": metrics, "changes": changes, "provenance": provenance,

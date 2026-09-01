@@ -4,6 +4,7 @@ import hashlib
 from typing import Any
 
 from hwahap_report_clean import pick, snapshot
+from hwahap_report_handoff import report_source_trace
 
 
 def command_receipts(value: Any, prefix: str) -> list[dict[str, str]]:
@@ -48,6 +49,8 @@ def unit(value: Any, workspace: str) -> dict[str, Any]:
         value = {}
     result = pick(value, ("unit_id", "title", "status", "writer", "allowed_paths",
                           "replan_count"), workspace)
+    if value.get("source_trace"):
+        result["source_trace"] = report_source_trace(value["source_trace"], workspace)
     result["acceptance_commands"] = command_receipts(
         value.get("acceptance_commands"), "acceptance-command")
     receipt_keys = ("test_id", "command_index", "command_sha256", "source",

@@ -1,6 +1,7 @@
 """Contract, agent, unit, and timeline report sections."""
 
 from hwahap_report_types import CONTRACT_LISTS, EVENT_FIELDS
+from hwahap_report_handoff import handoff_html
 
 LABELS = {
     "goals": "목표", "non_goals": "제외 범위", "allowed_paths": "허용 경로",
@@ -28,6 +29,7 @@ def core_sections(view):
         f'<article class="card md-card md-card-filled"><h3>{view.esc(LABELS[key])}</h3>'
         f'{view.commands(contract.get(key)) if key == "test_commands" else view.items(contract.get(key))}</article>'
         for key in CONTRACT_LISTS)
+    contract_html += handoff_html(view, spec)
     agents = payload.get("agents", {})
     role_html = "".join(
         f'<article class="card md-card md-card-filled"><h3>{view.esc(role)}</h3>'

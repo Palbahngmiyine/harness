@@ -4,6 +4,7 @@ import hashlib
 import json
 
 from hwahap_report_security import credential_bearing_text
+from hwahap_report_handoff import validate_report_handoff
 from hwahap_report_types import ABS_PATH, HwahapReportError
 
 DEVIATION_FIELDS = frozenset(("summary", "root_cause", "impact", "prevention",
@@ -68,6 +69,7 @@ def validate_report_data_bytes(data: bytes, expected_payload: dict,
         if not isinstance(data, bytes) or not isinstance(expected_payload, dict):
             raise ValueError
         actual = json.loads(data.decode("utf-8", errors="strict"))
+        validate_report_handoff(expected_payload)
         deviations = expected_payload.get("deviations", {}).get("items", [])
         validate_deviations(deviations)
         canonical = canonical_payload_bytes(expected_payload)
