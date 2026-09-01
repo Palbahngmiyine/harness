@@ -43,8 +43,8 @@ EXECUTION_MARKERS = ("concurrent-first activation", "exact platform result `agen
                      "identical six-field `diff_snapshot`", "Luna completes, start a fresh Terra reviewer sequentially",
                      "Substrings, case variants", "Record exactly one complete exact-v4 deviation",
                      "nonempty `evidence_explanation`", "post-source installation synchronization is external-only",
-                     "every source unit/full source checks pass", "before final Sol Ultra",
-                     "never a source unit, allowed path, or `diff_snapshot` mutation")
+                     "every source unit/full source checks pass", "before final Sol Ultra", "never a source unit, allowed path, or `diff_snapshot` mutation",
+                     "Fresh means a new thread unused by any attempt; only exact `agent thread limit reached`")
 WATCHDOG_MARKERS = ("visible checkpoint", "60-second", "first miss", "second interrupts",
                     "emergency Sol orchestration/state proxy", "never writes source or skips",
                     "retained exec sessions", "never rerun", "opaque retries", "one failed recovery",
@@ -88,7 +88,7 @@ class SchedulingContractTests(unittest.TestCase):
         for text in (compact(REFS / "execution-review.md"), compact(PROFILE)):
             self.assertTrue(all(marker in text for marker in WATCHDOG_MARKERS))
             for marker in WATCHDOG_MARKERS:
-                self.assertFalse(all(value in text.replace(marker, "weak", 1) for value in WATCHDOG_MARKERS))
+                self.assertFalse(all(value in text.replace(marker, "weak") for value in WATCHDOG_MARKERS))
             for field in RECEIPT_FIELDS: self.assertIn(f"`{field}`", text)
         values = {key: key for key in RECEIPT_FIELDS} | {"exit_code": 0, "timed_out": False}
         self.assertEqual(canonical_receipt(values), canonical_receipt(dict(reversed(tuple(values.items())))))

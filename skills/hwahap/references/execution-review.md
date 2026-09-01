@@ -81,7 +81,7 @@ command, and a matching latest Luna/Terra review pair.
 ### Review activation and fallback
 Each unit review starts with concurrent-first activation: start a fresh Luna
 reviewer and fresh Terra reviewer together on one identical six-field
-`diff_snapshot`, then wait for both. Fresh means a new thread unused by any attempt.
+`diff_snapshot`, then wait for both. Fresh means a new thread unused by any attempt; only exact `agent thread limit reached` may reuse a completed exact-role thread with a fresh turn and discarded evidence.
 Only the exact platform result `agent thread limit reached`
 permits fallback. End both children and discard all partial parallel-attempt
 envelopes, receipts, and review history. Then start a fresh Luna reviewer; after
