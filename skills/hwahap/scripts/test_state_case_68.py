@@ -1,72 +1,55 @@
 """Case 68: reject unsafe recovery parents before touching the journal."""
 from __future__ import annotations
-import argparse
-import hashlib
-import json
-import os
-import sys
-import tempfile
-import unittest
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))
-import hwahap_state as facade
+from contextlib import nullcontext
+try:
+    from .test_statekit_base import *
+    from .test_statekit_01 import *
+except ImportError:
+    from test_statekit_base import *
+    from test_statekit_01 import *
 
 
-class PrivateRecoveryBoundary(unittest.TestCase):
-    def _fixture(self):
-        root = Path(tempfile.mkdtemp(prefix="case68-"))
-        run = root / "run"
-        units = run / "units"
-        units.mkdir(mode=0o700, parents=True)
-        os.chmod(run, 0o700)
-        data = {name: (name + "\n").encode() for name in (
-            "contract.json", "run.json", "events.jsonl", "report-data.json", "report.html")}
-        for name, value in data.items():
-            (run / name).write_bytes(value)
-        journal = {"run_id": "run", "files": {
-            name: hashlib.sha256(value).hexdigest() for name, value in data.items()}}
-        journal_bytes = json.dumps(journal, sort_keys=True).encode()
-        (run / ".report-recovery.json").write_bytes(journal_bytes)
-        self.assertEqual(json.loads(journal_bytes), journal)
-        return root, run, {p: p.read_bytes() for p in run.iterdir() if p.is_file()}
+class HwahapStateCase68(StateFixtureMixin01, unittest.TestCase):
+    def _journal(self, run_dir: Path) -> None:
+        names = ("run.json", "report-data.json", "report.html", "events.jsonl")
+        for name in names[1:3]:
+            (run_dir / name).write_bytes(b"{}\n")
+        target = {name: (run_dir / name).read_bytes() for name in names}
+        originals = {name: (True, target[name]) for name in names}
+        journal, _ = hwahap_state._recovery_setup("goal_complete_sync", originals, target)
+        path = run_dir / ".report-recovery.json"
+        path.write_bytes(journal)
+        path.chmod(0o600)
+        self.assertIsNotNone(hwahap_state._read_report_recovery_journal(run_dir))
 
-    def _call(self, function, root, run):
-        old = facade.state_paths
-        facade.state_paths = lambda workspace, run_id: (root / "state", run)
-        try:
-            if function is facade.validate_run:
-                function(argparse.Namespace(workspace=str(root), run_id="run", quiet=True))
-            else:
-                function(str(root), "run")
-        except Exception as error:
-            self.assertEqual(getattr(error, "code", None), "HW_STATE_INVALID")
-            return 1, "HW_STATE_INVALID: state is invalid\n"
-        finally:
-            facade.state_paths = old
-        self.fail("unsafe recovery boundary was accepted")
+    def _public(self, command: str, run_dir: Path, owner: bool) -> tuple[int, str]:
+        args = [command, "--workspace", str(self.workspace), "--run-id", run_dir.name]
+        if command == "lock":
+            args += ["--actor", "sol-1", "--reason", "test", "--evidence-ref", "test"]
+        error = io.StringIO()
+        owner_os = hwahap_state.validate_state_directory.__globals__["os"]
+        owner_patch = patch.object(owner_os, "geteuid", return_value=os.geteuid() + 1)
+        with (owner_patch if owner else nullcontext()), patch.object(
+                hwahap_state, "_recover_report_transaction", side_effect=AssertionError), redirect_stderr(error):
+            status = hwahap_state.main(args)
+        return status, error.getvalue()
 
-    def test_invalid_private_parents_are_rejected_by_both_call_paths(self):
+    def test_private_recovery_boundary(self) -> None:
+        tracked = (".report-recovery.json", "contract.json", "run.json", "events.jsonl",
+                   "report-data.json", "report.html")
         for fault in ("mode", "symlink", "owner"):
-            for function in (facade.command_paths, facade.validate_run):
-                root, run, before = self._fixture()
+            for command in ("validate", "lock"):
+                run = self.init_run(f"case68-{fault}-{command}")
+                self._journal(run)
+                before = {name: (run / name).read_bytes() for name in tracked}
                 if fault == "mode":
                     os.chmod(run, 0o755)
                 elif fault == "symlink":
                     (run / "units").rmdir()
-                    (run / "units").symlink_to("elsewhere")
-                else:
-                    old = facade.validate_state_directory
-                    def reject_owner(path, label):
-                        if label == "run":
-                            raise facade.HwahapError("HW_STATE_INVALID", "owner")
-                        return old(path, label)
-                    facade.validate_state_directory = reject_owner
-                status, stderr = self._call(function, root, run)
-                if fault == "owner":
-                    facade.validate_state_directory = old
+                    (run / "units").symlink_to("missing")
+                status, stderr = self._public(command, run, fault == "owner")
                 self.assertEqual((status, stderr), (1, "HW_STATE_INVALID: state is invalid\n"))
-                self.assertEqual(before, {p: p.read_bytes() for p in run.iterdir() if p.is_file()})
+                self.assertEqual(before, {name: (run / name).read_bytes() for name in tracked})
 
 
 if __name__ == "__main__":
