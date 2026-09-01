@@ -34,7 +34,8 @@ def _init_input(args: argparse.Namespace) -> tuple[Path, Path, dict, str, dict[s
     except HwahapError:
         raise
     except (OSError, UnicodeError):
-        raise HwahapError(error_code, "input cannot be read as UTF-8")
+        message = "spec cannot be read as approved UTF-8" if input_kind == "spec" else "input cannot be read as UTF-8"
+        raise HwahapError(error_code, message)
     return (workspace, spec, meta, hashlib.sha256(spec_bytes).hexdigest(),
             verify_installed_agents(workspace), error_code)
 
