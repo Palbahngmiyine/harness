@@ -90,5 +90,6 @@ def load_goal_spec(path: Path) -> dict:
             "response_hash": handoff["response_ref"]["hash"]}
         return {"title": front["title"], "status": "align-goal",
                 "confirmed_at": handoff["confirmed_at"], "handoff": trace}
-    except (OSError, UnicodeError, KeyError, TypeError, ValueError, json.JSONDecodeError):
+    except (OSError, UnicodeError, AttributeError, KeyError, TypeError, ValueError,
+            json.JSONDecodeError):
         align_fail()

@@ -46,6 +46,18 @@ class HwahapStateCase69(StateFixtureMixin01, unittest.TestCase):
                 hwahap_state.load_goal_spec(write_goal_artifact(self.workspace, change))
             self.assertEqual(raised.exception.code, "HW_HANDOFF_UNCONFIRMED")
 
+    def test_malformed_reviewer_is_stable_public_cli_failure(self) -> None:
+        source = write_goal_artifact(self.workspace,
+            lambda contract: contract["reviews"].update(ambiguity_auditor=[]))
+        stderr = io.StringIO()
+        with redirect_stderr(stderr):
+            result = hwahap_state.main(["init-goal", "--workspace", str(self.workspace),
+                "--goal-id", "bad-handoff", "--goal-spec", str(source)])
+        self.assertEqual(result, 1)
+        self.assertEqual(stderr.getvalue(), "HW_HANDOFF_UNCONFIRMED: "
+            "align-goal handoff is unavailable or invalid\n")
+        self.assertFalse((self.workspace / ".hwahap" / "runs" / "bad-handoff").exists())
+
     def test_goal_handoff_rejects_every_unclosed_choice_status(self) -> None:
         def change(contract, status):
             contract["choices"][0]["status"] = status
