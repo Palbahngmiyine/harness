@@ -18,6 +18,8 @@ import hwahap_state_journal
 import hwahap_state_recovery
 import hwahap_state_command_paths
 import hwahap_state_agents
+import hwahap_state_align_trace
+import hwahap_state_align_goal
 import hwahap_state_init_data
 import hwahap_state_init_command
 import hwahap_state_report_gateway

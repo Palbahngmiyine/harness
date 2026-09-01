@@ -3,10 +3,7 @@ from __future__ import annotations
 from hwahap_state_runtime import *
 register(globals())
 def _init_input(args: argparse.Namespace) -> tuple[Path, Path, dict, str, dict[str, str], str]:
-    input_kind = "request" if getattr(args, "request", None) is not None else "spec"
-    input_arg = getattr(args, input_kind)
-    expected_status = "request" if input_kind == "request" else "prfaq"
-    error_code = "HW_REQUEST_UNCONFIRMED" if input_kind == "request" else "HW_SPEC_UNCONFIRMED"
+    input_kind, input_arg, expected_status, error_code = init_input_selection(args)
     workspace_arg = Path(args.workspace).expanduser()
     if lexical_path_has_symlink(workspace_arg):
         raise HwahapError("HW_STATE_INVALID", "workspace must not use symlink components")
@@ -31,12 +28,13 @@ def _init_input(args: argparse.Namespace) -> tuple[Path, Path, dict, str, dict[s
     except OSError:
         raise HwahapError(error_code, "input cannot be inspected") from None
     try:
-        meta = frontmatter(spec, expected_status=expected_status, error_code=error_code)
+        meta = load_goal_spec(spec) if input_kind == "goal_spec" else \
+            frontmatter(spec, expected_status=expected_status, error_code=error_code)
         spec_bytes = spec.read_bytes()
     except HwahapError:
         raise
     except (OSError, UnicodeError):
-        raise HwahapError(error_code, "spec cannot be read as approved UTF-8" if error_code == "HW_SPEC_UNCONFIRMED" else "request cannot be read as UTF-8")
+        raise HwahapError(error_code, "input cannot be read as UTF-8")
     return (workspace, spec, meta, hashlib.sha256(spec_bytes).hexdigest(),
             verify_installed_agents(workspace), error_code)
 
@@ -45,8 +43,7 @@ def _initial_state(goal_id: str, meta: dict, source: str, digest: str,
                    agent_profiles: dict[str, str], now: str) -> tuple[dict, dict]:
     contract = {
         "schema_version": 1, "goal_id": goal_id, "goal": meta["title"],
-        "spec": {"source": source, "sha256": digest,
-                 "confirmed_at": meta["confirmed_at"], "status": meta["status"]},
+        "spec": input_spec_record(meta, source, digest),
         "locked": False, "lock_sha256": None,
         **{field: [] for field in CONTRACT_LISTS},
     }

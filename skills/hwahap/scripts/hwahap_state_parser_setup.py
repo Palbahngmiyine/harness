@@ -16,6 +16,8 @@ def _parser_setup(commands) -> None:
              [required("workspace"), required("goal-id"), required("spec")])
     _command(commands, "init-request", "initialize a run from a confirmed implementation request",
              init_run, [required("workspace"), required("goal-id"), required("request")])
+    _command(commands, "init-goal", "initialize a run from a handoff-ready align-goal artifact",
+             init_run, [required("workspace"), required("goal-id"), required("goal-spec")])
     common = [required("workspace"), required("run-id")]
     _command(commands, "lock", "lock a filled contract and record its first transition",
              lock_contract, common + [required("actor"), required("reason"),

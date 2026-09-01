@@ -4,7 +4,7 @@
     [
       "hwahap_state_api",
       "hwahap_state_api.py",
-      "38c3de242f49413a08068b9c0de736eeab976e528da890731814efaf76d641da"
+      "5a23935c2ecd55c16309de43aab9e5191f899db6830d213d1e350f95ece0ca1b"
     ],
     [
       "hwahap_state_runtime",
@@ -34,7 +34,7 @@
     [
       "hwahap_state_config_report",
       "hwahap_state_config_report.py",
-      "2020af945b4dccfbb229b4f1e756d8d9b80d1f42a521820d474ac0417ba773aa"
+      "3a36209f84ae5cdb8970d4758e543e3e88e279c359c957f0412bf3aeae568bff"
     ],
     [
       "hwahap_state_config_schema",
@@ -82,6 +82,16 @@
       "713afd48155595d7625606cb05c9feb385cdd88e95e3317c1e6db52a85a8af62"
     ],
     [
+      "hwahap_state_align_trace",
+      "hwahap_state_align_trace.py",
+      "857a8fdeb90e22d3e02527932e1b576ecffa22c84016e26f43c50fa7da603334"
+    ],
+    [
+      "hwahap_state_align_goal",
+      "hwahap_state_align_goal.py",
+      "10a08125f4ba6dc80e02d363401f01420d1a7149a81850f4deef89d1dd060ed9"
+    ],
+    [
       "hwahap_state_init_command",
       "hwahap_state_init_command.py",
       "ba6943fd2538fba12ec933799c0521e07a8bdbeb5d8a23e5fae58b2df1e90700"
@@ -89,7 +99,7 @@
     [
       "hwahap_state_init_data",
       "hwahap_state_init_data.py",
-      "484b418d13fcf20c182c323eb45c865de45de898a72f7342d81f32057583691d"
+      "1863e4665ca924b0d5b3718ff498606307656a6fa82cef070f1590ebb739cd8f"
     ],
     [
       "hwahap_state_report_gateway",
@@ -204,7 +214,7 @@
     [
       "hwahap_state_spec_validation",
       "hwahap_state_spec_validation.py",
-      "c1d7c0c1dc656b11ce02ffc7b6a7de8b6dfaa1fec934b11acdb7cf169190f8d0"
+      "09aba71d83f4818c85ff9a3e998b0726c4ce52ef278f716e8063baaf2324e771"
     ],
     [
       "hwahap_state_metrics",
@@ -249,7 +259,7 @@
     [
       "hwahap_state_parser_setup",
       "hwahap_state_parser_setup.py",
-      "46a9dd310af2e5cc70b5ae6ca8c011de0a1e052ed014f17c7c70b87cd0186633"
+      "99394d2870d9099c0250a665aded08d84ed3371cdbec93366122951c4dd56f71"
     ],
     [
       "hwahap_state_parser_workflow",

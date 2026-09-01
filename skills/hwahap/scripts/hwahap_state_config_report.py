@@ -20,7 +20,7 @@ FAILURE_STATES = {"replan_required", "blocked", "failed", "awaiting_user"}
 RUN_FAILURE_STATES = {"blocked", "failed", "awaiting_user"}
 FAILURE_CODES = {
     "HW_AGENT_CONFIG_INVALID",
-    "HW_SPEC_UNCONFIRMED", "HW_REQUEST_UNCONFIRMED", "HW_GOAL_REQUIRED", "HW_SCOPE_DRIFT", "HW_IMPLEMENTATION_BLOCKED",
+    "HW_SPEC_UNCONFIRMED", "HW_REQUEST_UNCONFIRMED", "HW_HANDOFF_UNCONFIRMED", "HW_GOAL_REQUIRED", "HW_SCOPE_DRIFT", "HW_IMPLEMENTATION_BLOCKED",
     "HW_IMPLEMENTATION_FAILED", "HW_VERIFICATION_FAILED", "HW_REPLAN_REQUIRED",
     "HW_FINAL_REVIEW_FAILED", "HW_MODEL_UNAVAILABLE", "HW_USER_DECISION_REQUIRED",
     "HW_STATE_INVALID", "HW_REPORT_GENERATION_FAILED", "HW_TEST_EXECUTION_DISABLED",
@@ -30,6 +30,7 @@ PUBLIC_ERROR_MESSAGES = {
         "HW_AGENT_CONFIG_INVALID": "installed agent configuration is invalid",
         "HW_SPEC_UNCONFIRMED": "approved specification is unavailable or invalid",
         "HW_REQUEST_UNCONFIRMED": "implementation request is unavailable or invalid",
+        "HW_HANDOFF_UNCONFIRMED": "align-goal handoff is unavailable or invalid",
         "HW_GOAL_REQUIRED": "a bound Goal is required before locking a request run",
         "HW_SCOPE_DRIFT": "requested change is outside the locked scope",
         "HW_IMPLEMENTATION_BLOCKED": "implementation is blocked",
