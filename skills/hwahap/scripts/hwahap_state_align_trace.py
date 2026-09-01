@@ -62,7 +62,7 @@ def align_goal_trace(contract: dict, digest: str) -> dict:
         covered_specs.update(srefs); covered_checks.update(arefs)
     choices = contract.get("choices")
     if not isinstance(choices, list) or any(not isinstance(item, dict)
-            or item.get("status") in {"candidate", "asked", "reask"} for item in choices) \
+            or item.get("status") not in {"confirmed", "superseded"} for item in choices) \
             or covered_specs != spec_ids or covered_checks != check_ids \
             or any(not isinstance(item, dict) or item.get("status") == "open"
                    for item in contract.get("open_items", [])):

@@ -40,7 +40,7 @@ scope.
    record its code and bounded evidence, then stop unless a defined recovery is
    safe and in scope.
 3. Record the normalized bound Goal receipt with `goal-sync --mode bound`.
-   Neither input mode can lock before this succeeds. Spawn the read-only Sol
+   No input mode can lock before this succeeds. Spawn the read-only Sol
    planner, collect its six-list contract and atomic-unit proposal, and end the
    planner before any Luna writer starts. The Sol orchestrator fills every
    required list while it remains unlocked. Run

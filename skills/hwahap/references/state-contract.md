@@ -36,18 +36,18 @@ In a Git workspace, `.hwahap/` must be ignored before initialization. Hwahap
 creates state directories as `0700` and files as `0600`; wrong ownership,
 group/world access, symlinks, or hard links fail validation.
 
-Resolve `<skill-dir>` from the loaded Hwahap `SKILL.md`. Select exactly one
-input branch: approved-spec mode uses an approved PR/FAQ and
-`init --spec`; direct-request mode first writes a credential-free request
-capsule, then uses `init-request --request`. Neither branch is interchangeable.
-Handoff-ready align-goal mode is a third branch and uses
-`init-goal --goal-spec`; see [align-goal-handoff.md](align-goal-handoff.md).
+Resolve `<skill-dir>` from the loaded Hwahap `SKILL.md`. Select exactly one of
+three input branches: approved-spec mode uses an approved PR/FAQ and
+`init --spec`; direct-request mode writes a credential-free request capsule and
+uses `init-request --request`; handoff-ready align-goal mode uses
+`init-goal --goal-spec`. The branches are not interchangeable; see
+[align-goal-handoff.md](align-goal-handoff.md).
 
-The exact pre-lock Goal sequence for either branch is `get_goal` -> conditional
+The exact pre-lock Goal sequence for every branch is `get_goal` -> conditional
 `create_goal` (only when no active Goal exists) -> `get_goal` -> `goal-sync`
 (`--mode bound`) -> `lock`. A compatible Goal is reused; a conflict or failed
-Goal tool stops the run. The selected initializer remains the branch-specific
-`init --spec` or `init-request --request` described above and must complete
+Goal tool stops the run. The selected branch-specific initializer (`init
+--spec`, `init-request --request`, or `init-goal --goal-spec`) must complete
 before lock.
 
 ```text

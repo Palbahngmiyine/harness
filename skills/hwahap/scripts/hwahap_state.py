@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 _BOOT_PIN = "1e14dad517422e63a676f09cb973e6aef3aae7ae70a60c224cead8370ee3e5b4"
-_MANIFEST_PIN = "47e65bd986a9a3b9d8f759fa2494484d01edacdc639c50b343797082c2cdee06"
+_MANIFEST_PIN = "9c5cb99de7ce2e20b166c7e46619a7f1609bb343cb7c834ad6d612eb7427ad49"
 
 
 class HwahapError(Exception):
