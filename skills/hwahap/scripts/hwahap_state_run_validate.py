@@ -1,6 +1,7 @@
 """Verified Hwahap state responsibility module."""
 from __future__ import annotations
 from hwahap_state_runtime import *
+from hwahap_state_command_paths import validate_recovery_boundary
 register(globals())
 def validate_run(args: argparse.Namespace) -> None:
     workspace_arg = Path(args.workspace).expanduser()
@@ -8,8 +9,8 @@ def validate_run(args: argparse.Namespace) -> None:
         raise HwahapError("HW_STATE_INVALID", "workspace must not use symlink components")
     workspace = workspace_arg.resolve()
     hwahap, run_dir = state_paths(workspace, args.run_id)
-    if not getattr(args, "_skip_recovery", False):
-        _recover_report_transaction(run_dir)
+    validate_recovery_boundary(
+        run_dir, recover=not getattr(args, "_skip_recovery", False))
     units_dir = run_dir / "units"
     required = [run_dir / "contract.json", run_dir / "run.json", run_dir / "events.jsonl"]
     for label, path in ((".hwahap", hwahap), ("runs", hwahap / "runs"), ("run", run_dir), ("units", units_dir)):

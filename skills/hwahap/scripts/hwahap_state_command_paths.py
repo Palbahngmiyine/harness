@@ -12,5 +12,12 @@ def command_paths(
             "HW_STATE_INVALID", "workspace must not use symlink components")
     workspace = workspace_arg_path.resolve()
     _, run_dir = state_paths(workspace, run_id)
-    _recover_report_transaction(run_dir)
+    validate_recovery_boundary(run_dir, recover=True)
     return workspace, run_dir, run_dir / "contract.json", run_dir / "run.json"
+
+
+def validate_recovery_boundary(run_dir: Path, *, recover: bool) -> None:
+    validate_state_directory(run_dir, "run")
+    validate_state_directory(run_dir / "units", "units")
+    if recover:
+        _recover_report_transaction(run_dir)
