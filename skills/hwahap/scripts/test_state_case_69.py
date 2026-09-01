@@ -10,6 +10,17 @@ except ImportError:
 
 
 class HwahapStateCase69(StateFixtureMixin01, unittest.TestCase):
+    def _resign(self, contract):
+        digest = hwahap_state.align_digest({key: contract[key]
+            for key in hwahap_state.ALIGN_PROJECTION_KEYS})
+        reviews = contract["reviews"]
+        for review in reviews.values():
+            review["spec_digest"] = digest
+        handoff = contract["confirmations"]["handoff_document"]
+        handoff.update(spec_digest=digest,
+            ambiguity_receipt_digest=hwahap_state.align_digest(reviews["ambiguity_auditor"]),
+            cold_receipt_digest=hwahap_state.align_digest(reviews["cold_consumer"]))
+
     def test_goal_handoff_initializes_and_revalidates_sealed_projection(self) -> None:
         source = write_goal_artifact(self.workspace)
         with redirect_stdout(io.StringIO()):
@@ -38,16 +49,17 @@ class HwahapStateCase69(StateFixtureMixin01, unittest.TestCase):
     def test_goal_handoff_rejects_every_unclosed_choice_status(self) -> None:
         def change(contract, status):
             contract["choices"][0]["status"] = status
-            digest = hwahap_state.align_digest({key: contract[key]
-                for key in hwahap_state.ALIGN_PROJECTION_KEYS})
-            reviews = contract["reviews"]
-            for review in reviews.values():
-                review["spec_digest"] = digest
-            handoff = contract["confirmations"]["handoff_document"]
-            handoff.update(spec_digest=digest,
-                ambiguity_receipt_digest=hwahap_state.align_digest(reviews["ambiguity_auditor"]),
-                cold_receipt_digest=hwahap_state.align_digest(reviews["cold_consumer"]))
+            self._resign(contract)
         for status in ("candidate", "asked", "open", "unresolved", "unknown"):
+            with self.subTest(status=status), self.assertRaises(hwahap_state.HwahapError):
+                hwahap_state.load_goal_spec(write_goal_artifact(
+                    self.workspace, lambda contract: change(contract, status)))
+
+    def test_goal_handoff_rejects_every_unresolved_item_status(self) -> None:
+        def change(contract, status):
+            contract["open_items"] = [{"status": status}]
+            self._resign(contract)
+        for status in ("open", "unresolved", "unknown"):
             with self.subTest(status=status), self.assertRaises(hwahap_state.HwahapError):
                 hwahap_state.load_goal_spec(write_goal_artifact(
                     self.workspace, lambda contract: change(contract, status)))
