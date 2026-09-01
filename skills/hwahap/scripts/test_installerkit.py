@@ -28,7 +28,7 @@ installer = _load_installer()
 
 class InstallerFixture:
     def setUp(self):
-        self.tempdir = tempfile.TemporaryDirectory(dir="/private/tmp")
+        self.tempdir = tempfile.TemporaryDirectory(dir=Path(tempfile.gettempdir()).resolve())
         self.root = Path(self.tempdir.name)
 
     def tearDown(self):

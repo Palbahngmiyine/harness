@@ -11,7 +11,7 @@ from unittest.mock import patch
 class InstallerBoundaryTests(InstallerFixture, unittest.TestCase):
     def test_launcher_selects_supported_isolated_python(self):
         launcher = Path(installer.__file__).with_name("install-project-agents")
-        result = subprocess.run([str(launcher), "--workspace", str(self.root)], cwd="/private/tmp",
+        result = subprocess.run([str(launcher), "--workspace", str(self.root)], cwd=self.root,
                                 env={"PATH": "/usr/bin"}, capture_output=True, text=True, check=False)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("HW_OK: installed=6 skipped=0", result.stdout)
