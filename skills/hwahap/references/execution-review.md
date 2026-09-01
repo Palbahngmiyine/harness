@@ -43,6 +43,21 @@ The exact profile metadata and installation-preservation rules are defined in
 [state-contract.md](state-contract.md); do not infer a
 role from a similarly named user agent.
 
+### Progress watchdog and emergency recovery
+Every active child/orchestrator needs a visible checkpoint within each 60-second interval; the first miss gets one bounded status request without duplicate work;
+the second interrupts the stall, preserves identifiers, and diagnoses directly.
+The root is only an emergency Sol orchestration/state proxy: it records a complete deviation, never writes source or skips planner/Luna/Terra/Sol Ultra,
+and never expands authority/scope. Poll retained exec sessions; never rerun a
+healthy session or use nested opaque retries, and stop after one failed recovery.
+Only exact `agent thread limit reached` permits reusing a completed exact-role thread with a fresh turn; discard partial evidence, preserve distinct Luna/Terra
+IDs and their same snapshot. Require one official long/full suite per snapshot;
+reviewers reconcile receipts and run focused checks only. A local canonical
+execution receipt has exactly `command_sha256`, `diff_digest`, `ended_at`,
+`exit_code`, `observer_thread_id`, `output_sha256`, `source`, `started_at`, and
+`timed_out`; validate complete raw values before hashing one sorted-key,
+whitespace-free UTF-8 JSON object with SHA-256. `exit_code` is null iff
+`timed_out` is true; missing data stops and is never invented.
+
 After Goal binding and initialization, wait for the planner proposal before any
 Luna writer; this staged lifecycle cannot be skipped. Split the locked goal into
 atomic units, each exactly one user-observable change with `allowed_paths` and
@@ -55,7 +70,6 @@ passes; the same unit may resume from `recovery` or `replan_required`.
 Unsafe IDs, paths, or sensitive commands remain `HW_STATE_INVALID` with no
 write. A safe non-member records `HW_SCOPE_DRIFT`, moves to `awaiting_user`,
 creates no unit, and stores only a command digest; failed writes restore state.
-
 For each unit, Sol records `planned` then `implementing`, gives Luna only that
 contract, and records a compact summary. After Luna finishes, compute one full
 `diff_snapshot`; start the separate Luna and Terra reviewers with the same
@@ -65,7 +79,6 @@ tests. `final_review` requires every unit passed, a latest pass receipt for each
 command, and a matching latest Luna/Terra review pair.
 
 ### Review activation and fallback
-
 Each unit review starts with concurrent-first activation: start a fresh Luna
 reviewer and fresh Terra reviewer together on one identical six-field
 `diff_snapshot`, then wait for both. Fresh means a new thread unused by any attempt.
@@ -81,12 +94,9 @@ nonempty `evidence_explanation` connecting the exact result, discarded evidence,
 and sequential proof. The post-source installation synchronization is external-only:
 record it only after every source unit/full source checks pass and before final Sol Ultra; it is never a source unit, allowed path, or `diff_snapshot` mutation.
 
-Record each status change with the bundled `transition` command. Sol records
-structured review history, failure evidence, metrics, and final-review
-attempts in the state contract; where no dedicated record command exists, use
-a bounded structured state update, never prose or raw logs. The transition
-command appends the event, updates the state, validates it, and rolls both
-files back if validation fails.
+Record each status change with `transition`; Sol stores bounded structured
+history/evidence, never prose or raw logs, and the command validates and rolls
+back both files on failure.
 
 Run states `completed`, `blocked`, `failed`, `awaiting_user`, and `cancelled`
 are terminal. After any such run state, no unit can be added, mutated,
@@ -95,7 +105,6 @@ rejects any later unit successor event after a terminal run, including an
 `awaiting_user` gate.
 
 ### Acceptance evidence
-
 `test_commands` and `acceptance_commands` are test definitions, not execution
 permission. The compatibility command below always returns
 `HW_TEST_EXECUTION_DISABLED` before reading state, parsing the locked test
@@ -134,17 +143,11 @@ For every nonempty final-review snapshot, each changed path must match the
 locked contract, the union of passed-unit paths, and no forbidden-change rule;
 scope failure requires correcting the scope or approving a new Goal/contract.
 
-Every nested JSON state string in the contract, run, units, and event history
-is checked for sensitive assignment/header/flag text, curl user,
-proxy-user, or OAuth bearer options, credential URLs, and PEM headers. The validator rejects
-these with a secret-free
-`HW_STATE_INVALID` message; it does not echo the offending value. Harmless
-prose such as `secret handling` or `token usage unavailable` remains allowed.
-The report builder defensively redacts credentials and validates the rendered
-report before recording its source/file digests.
+Every nested JSON state string is checked for credential-bearing text and
+rejected as secret-free `HW_STATE_INVALID`; reports are defensively redacted
+and validated before their digests are recorded.
 
 ## Review failures and recursive improvement
-
 One review round may contain both verifier and scope-review failures. After each
 failed round, Sol records a `record-improvement` entry before continuing. The
 first entry has kind `terra_recovery` and uses Terra's cause, evidence, and
@@ -161,13 +164,10 @@ repeated blocker without a new hypothesis, or any scope/authority/cost change,
 waits at `awaiting_user` and does not complete the Goal. Post-completion
 candidates are report-only and never execute automatically.
 
-Use the bundled command with `--actor`, `--after-round`, `--kind`,
-`--failure-signature`, `--root-cause`, `--hypothesis`, `--action`,
-`--strategy-digest`, `--scope-status within_contract`, and one or more
-`--evidence-ref` values. It atomically appends the improvement and event,
-transitions the unit from `reviewing` to `recovery` on the first failure or
-`replan_required` thereafter, records required failure evidence, validates,
-and restores both files on failure.
+Use `record-improvement` with the required failure signature, new strategy,
+testable hypothesis, bounded action, and evidence. It atomically records the
+improvement/event and transitions `reviewing` to `recovery`, then
+`replan_required`; invalid writes restore both files.
 
 Out-of-scope features never get implemented: use `HW_SCOPE_DRIFT` or
 `HW_USER_DECISION_REQUIRED`, record evidence, and await the user. A critical
