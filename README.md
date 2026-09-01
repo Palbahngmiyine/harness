@@ -94,8 +94,9 @@ Automate PR creation from a forked repo to upstream:
 
 Resolve every implementation-direction choice with the user before implementation planning:
 - Inspects repository and runtime evidence before mapping the complete decision surface
-- Records facts, exact user-confirmed choices, specification clauses, acceptance checks, units, and open items with stable IDs
-- Rejects delegated or vague answers and recursively returns new ambiguity findings to explicit choices
+- Binds every confirmation to a hash-chained response log the user appends themselves (`record_response.py`), with a strict `C<n>=<answer>` grammar — free-form or delegated replies can never confirm
+- Records facts, log-bound choices, specification clauses, acceptance checks, units, and open items with stable IDs, and keeps LLM recommendations flowing on every choice
+- Re-observes `git_head`/`file` repository context at gates to block drift, and computes `aligned`/`handoff-ready` status itself (`--stamp`) instead of trusting claimed flags
 - Requires digest-bound ambiguity and cold-consumer reviews before `aligned` or `handoff-ready`
 - Includes deterministic gate tests and target/oracle-separated forward-evaluation cases
 
@@ -103,6 +104,7 @@ Validate the skill from the repository root:
 
 ```bash
 python3 skills/align-goal/scripts/test_validate_goal_spec.py
+python3 skills/align-goal/scripts/test_record_response.py
 python3 skills/align-goal/scripts/test_validate_behavioral_evals.py
 python3 skills/align-goal/scripts/validate_goal_spec.py --help
 ```

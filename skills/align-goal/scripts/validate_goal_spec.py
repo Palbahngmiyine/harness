@@ -1,23 +1,38 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import argparse, hashlib, json, re
+import argparse, hashlib, json, re, subprocess, unicodedata
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+try:
+    import record_response as response_log
+except Exception:  # a truncated copy that omits the sibling script must fail cleanly, not traceback
+    response_log=None
 
 SCHEMA="align-goal/v1"
-ACTIONS=("research_facts","map_choices","ask_choices","compile_spec","run_ambiguity_audit","run_cold_consumer","resolve_findings","request_final_confirmation","complete","pause")
-FM={"schema","title","target","session_status","alignment_status","handoff_status","revision","created","updated"}
+ACTIONS=("research_facts","map_choices","ask_choices","compile_spec","run_ambiguity_audit","run_cold_consumer","resolve_findings","request_final_confirmation","stamp_status","complete","pause")
+FM={"schema","title","target","session_status","alignment_status","handoff_status","revision","created","updated","response_log"}
 TOP={"contract_version","revision","target","goal","repository_context","facts","choices","question_rounds","decision_surfaces","specifications","acceptance_checks","implementation_units","open_items","reviews","confirmations"}
 ENUM={"target":{"decision","implementation"},"session_status":{"active","waiting","paused","complete"},"alignment_status":{"exploring","aligned","rejected"},"handoff_status":{"not_requested","draft","ready"}}
 KIND={"behavior","error","name","format","contract","data","state","structure","dependency","compatibility","security","performance","operation","verification"}
 SURFACES=("goal_success_failure_non_goal","user_behavior_defaults_order_atomicity_idempotency","errors_partial_failure_recovery_rollback","commands_flags_routes_events_config_types_fields_paths_formats","data_state_ownership_lifecycle_persistence","api_event_file_internal_contract_versioning","architecture_modules_components_dependencies_stack","concurrency_timing_resource_policy","compatibility_migration_rollout","security_privacy_authorization_destructive_side_effect","performance_observability_operation","verification_acceptance")
 SOURCE_KIND={"path","url","command","runtime"}
 REPO_KIND={"git_head","file","command","runtime"}
-VAGUE=re.compile(r"(?:^|[^\w])(?:looks\s+good|you\s+choose|best\s+judgment|follow\s+(?:the\s+)?repo(?:sitory)?|알아서\s*해(?:줘|주세요)?)(?:$|[^\w])",re.I)
 RFC=re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$")
+FRACTION=re.compile(r"^(.*T\d\d:\d\d:\d\d)\.(\d+)(.*)$")
 SHA=re.compile(r"^sha256:[0-9a-f]{64}$")
-PH=re.compile(r"(?:<[^>]+>|\[\s*(?:todo|tbd|placeholder|fill|결정)\s*\]|\b(?:TODO|TBD|FIXME|PLACEHOLDER)\b)",re.I)
-ASSUMPTION=re.compile(r"\b(?:assumption|assumptions|assume|assumes|assuming)\b|가정",re.I)
+# Placeholders are a narrow, collision-resistant reserved sentinel only:
+# a {{KEYWORD ...}} slot or a [KEYWORD] bracket. This is a cheap lint, not the
+# real guard: unfilled slots that avoid the sentinel are caught semantically by
+# the cold consumer (underspecified_clauses/required_user_choices), and a word
+# regex would both miss paraphrases and flag honest content ("create a TODO
+# item", a `{{username}}` template, "assumes nothing"). No code-span stripping,
+# so a real {{TODO}} cannot hide inside backticks.
+PH=re.compile(r"\{\{\s*(?:todo|tbd|fixme|fill|decide|placeholder|결정)(?=[\s:_}\-])[^{}]*\}\}|\[\s*(?:todo|tbd|fixme|placeholder|fill|결정)\s*\]",re.I)
+SEGMENT=re.compile(r"^(C[0-9]+)\s*=\s*(.+)$",re.S)
+GIT_LOCATOR=re.compile(r"^(?:HEAD|[0-9a-f]{40}|[0-9a-f]{64})$")
+ALIGN_PREFIX="CONFIRM ALIGNMENT:"
+HANDOFF_PREFIX="CONFIRM HANDOFF:"
 FENCE="\x60"*3
 
 def dup(pairs):
@@ -27,8 +42,14 @@ def dup(pairs):
         out[k]=v
     return out
 def constant(x):raise ValueError("non-standard JSON constant: "+x)
-def canon(x):return json.dumps(x,sort_keys=True,ensure_ascii=False,separators=(",",":")).encode()
+def nfc(x):
+    if isinstance(x,str):return unicodedata.normalize("NFC",x)
+    if isinstance(x,list):return [nfc(v) for v in x]
+    if isinstance(x,dict):return {nfc(k):nfc(v) for k,v in x.items()}
+    return x
+def canon(x):return json.dumps(nfc(x),sort_keys=True,ensure_ascii=False,separators=(",",":")).encode("utf-8")
 def dg(x):return "sha256:"+hashlib.sha256(canon(x)).hexdigest()
+def same_text(a,b):return isinstance(a,str) and isinstance(b,str) and unicodedata.normalize("NFC",a)==unicodedata.normalize("NFC",b)
 def text(x,label,e,nullable=False):
     if x is None and nullable:return
     if not isinstance(x,str) or not x.strip():e.append(label+" must be nonempty string")
@@ -36,7 +57,14 @@ def stamp(x,label,e,nullable=False):
     if x is None and nullable:return
     if not isinstance(x,str) or not RFC.fullmatch(x):e.append(label+" must be RFC3339")
 def instant(x):
-    try:return datetime.fromisoformat(x.replace("Z","+00:00"))
+    # Normalize the fractional second to 6 digits so every RFC-regex-valid
+    # timestamp parses identically on Python 3.9-3.14; otherwise an odd fraction
+    # width silently parses to None on older runtimes and skips ordering checks.
+    if not isinstance(x,str):return None
+    s=x.replace("Z","+00:00")
+    m=FRACTION.match(s)
+    if m:s=m.group(1)+"."+(m.group(2)+"000000")[:6]+m.group(3)
+    try:return datetime.fromisoformat(s)
     except (TypeError,ValueError):return None
 def sha(x,label,e,nullable=False):
     if x is None and nullable:return
@@ -49,6 +77,10 @@ def strings(x,label,e,empty=True,required=False):
 def list_value(x):return x if isinstance(x,list) else []
 def dict_value(x):return x if isinstance(x,dict) else {}
 def string_values(x):return [v for v in list_value(x) if isinstance(v,str)]
+def safe_relative(x):
+    if not isinstance(x,str) or not x.strip() or "\\" in x:return False
+    p=PurePosixPath(x)
+    return not p.is_absolute() and ".." not in p.parts and "." not in p.parts
 def exact(x,keys,label,e):
     if not isinstance(x,dict):e.append(label+" must be object");return False
     if set(x)-set(keys):e.append(label+" unexpected keys: "+", ".join(sorted(set(x)-set(keys))))
@@ -93,10 +125,61 @@ def contract(body):
     except (ValueError,json.JSONDecodeError) as ex:return None,["contract JSON is invalid: "+str(ex)]
     return (x,[]) if isinstance(x,dict) else (None,["contract root must be object"])
 
+def observe_context(c,doc_dir,repo_root):
+    """Re-observe git_head/file repository_context entries against the actual repository.
+
+    Returns (drift, unobserved): drift entries are gate-blocking strings; command/runtime
+    kinds cannot be deterministically re-observed and are reported, not blocked."""
+    drift=[];unobserved=[]
+    entries=list_value(dict_value(c.get("repository_context")).get("entries"))
+    if not any(isinstance(r,dict) and r.get("kind") in {"git_head","file"} for r in entries):
+        # A context with only command/runtime entries is unverifiable; block the
+        # gate rather than let a planner opt the whole document out of observation.
+        drift.append("repository context has no observable git_head or file entry to re-verify (add one or use --no-observe)")
+        return drift,[f"entries[{i}] {dict_value(r).get('kind')}" for i,r in enumerate(entries) if isinstance(r,dict) and r.get("kind") in {"command","runtime"}]
+    root=repo_root
+    if root is None:
+        try:
+            probe=subprocess.run(["git","-C",str(doc_dir),"rev-parse","--show-toplevel"],capture_output=True,text=True,timeout=10)
+            root=probe.stdout.strip() if probe.returncode==0 and probe.stdout.strip() else None
+        except (OSError,subprocess.SubprocessError):root=None
+    if root is None:
+        drift.append("repository context unobservable: no git repository found for the goal document (pass --repo-root or --no-observe)")
+        return drift,unobserved
+    for i,r in enumerate(entries):
+        if not isinstance(r,dict):continue
+        kind=r.get("kind");locator=r.get("locator");recorded=r.get("digest")
+        label=f"repository_context.entries[{i}]"
+        if not isinstance(recorded,str):continue
+        if kind=="git_head":
+            if not isinstance(locator,str) or not GIT_LOCATOR.fullmatch(locator):
+                drift.append(label+" git_head locator must be HEAD or a full commit hash");continue
+            try:run=subprocess.run(["git","-C",root,"rev-parse",locator],capture_output=True,text=True,timeout=10)
+            except (OSError,subprocess.SubprocessError) as ex:
+                drift.append(label+" unobservable: "+type(ex).__name__);continue
+            if run.returncode!=0:
+                drift.append(label+" unobservable: git rev-parse failed for "+locator);continue
+            expected="sha256:"+hashlib.sha256(run.stdout.strip().lower().encode("ascii","ignore")).hexdigest()
+            if expected!=recorded:drift.append(f"repository context drift: {label} git_head {locator}")
+        elif kind=="file":
+            if not safe_relative(locator):
+                drift.append(label+" file locator must be a safe relative path");continue
+            target=Path(root)/locator
+            try:content=target.read_bytes()
+            except OSError:
+                drift.append(f"repository context drift: {label} file {locator} is missing");continue
+            if "sha256:"+hashlib.sha256(content).hexdigest()!=recorded:drift.append(f"repository context drift: {label} file {locator}")
+        elif kind in {"command","runtime"}:
+            unobserved.append(f"entries[{i}] {kind}")
+    return drift,unobserved
+
 class V:
-    def __init__(self,raw,f,c):
+    def __init__(self,raw,f,c,log_entries=None,log_declared=None):
         self.raw,self.f,self.c=raw,f,c;self.e=[];self.unresolved=[];self.uncovered=[];self.untraced=[];self.unverified=[];self.orphans=[];self.cycles=[];self.stale=[]
         self.fact_invalid=False;self.context_invalid=False;self.surface_invalid=False;self.choice_invalid=False;self.compile_invalid=False;self.planner_blockers=[]
+        self.drift=[];self.unobserved=[];self.observation="not-required"
+        self.log={e["seq"]:e for e in (log_entries or []) if isinstance(e,dict) and isinstance(e.get("seq"),int)}
+        self.log_declared=log_declared;self.log_count=len(log_entries or [])
         self.F=self.C=self.S=self.A=self.U=self.O={}
     def fail(self,x):self.e.append(x)
     def front(self):
@@ -107,6 +190,7 @@ class V:
             if self.f.get(k) not in vals:self.fail("frontmatter."+k+" has invalid value")
         if not re.fullmatch(r"[1-9][0-9]*",str(self.f.get("revision",""))):self.fail("frontmatter.revision must be positive integer")
         stamp(self.f.get("created"),"frontmatter.created",self.e);stamp(self.f.get("updated"),"frontmatter.updated",self.e)
+        if "response_log" in self.f and not safe_relative(self.f.get("response_log")):self.fail("frontmatter.response_log must be a safe relative path")
     def top(self):
         if set(self.c)!=TOP:
             if set(self.c)-TOP:self.fail("unexpected top-level keys: "+", ".join(sorted(set(self.c)-TOP)))
@@ -132,6 +216,9 @@ class V:
             if exact(r,{"kind","locator","digest"},l,self.e):
                 if not isinstance(r.get("kind"),str) or r.get("kind") not in REPO_KIND:self.fail(l+".kind invalid");self.context_invalid=True
                 text(r.get("locator"),l+".locator",self.e);sha(r.get("digest"),l+".digest",self.e,True)
+                # Enforce locator shape structurally so it holds even under --no-observe.
+                if r.get("kind")=="git_head" and (not isinstance(r.get("locator"),str) or not GIT_LOCATOR.fullmatch(r["locator"])):self.fail(l+".locator must be HEAD or a full commit hash")
+                if r.get("kind")=="file" and not safe_relative(r.get("locator")):self.fail(l+".locator must be a safe relative path")
                 if r.get("digest") is None:self.context_invalid=True
         if len(self.e)>start:self.context_invalid=True
     def facts(self):
@@ -153,9 +240,78 @@ class V:
                     text(s.get("value"),sl+".value",self.e);sha(s.get("digest"),sl+".digest",self.e,True)
                     if r.get("stability")=="immutable_for_scope" and s.get("digest") is None and not r.get("limits"):self.fail(l+" immutable basis needs nonempty limits when source digest is null")
         if len(self.e)>start:self.fact_invalid=True
+    def bind(self,ref,confirmed_at,label):
+        """Resolve a response_ref against the hash-chained log; returns the entry or None."""
+        if not exact(ref,{"seq","hash"},label+".response_ref",self.e):return None
+        seq=ref.get("seq")
+        if type(seq) is not int or seq<1:self.fail(label+".response_ref.seq must be a positive integer");return None
+        sha(ref.get("hash"),label+".response_ref.hash",self.e)
+        entry=self.log.get(seq)
+        if entry is None:self.fail(label+" response log entry missing for seq "+str(seq));return None
+        if ref.get("hash")!=entry.get("hash"):self.fail(label+" response_ref hash mismatch for seq "+str(seq));return None
+        if confirmed_at!=entry.get("at"):self.fail(label+".confirmed_at must equal response log entry time")
+        return entry
+    def entry_segments(self,entry):
+        raw=entry.get("text") if isinstance(entry.get("text"),str) else ""
+        parts=[p.strip() for p in raw.split(";") if p.strip()]
+        full=raw.strip()
+        return ([full] if full else [])+[p for p in parts if p!=full]
+    def latest_earlier_explicit(self,cid,before_seq):
+        """The rhs of the most recent explicit (non-SAME) logged answer for cid before before_seq, or None."""
+        best=None
+        for seq,entry in sorted(self.log.items()):
+            if seq>=before_seq:continue
+            for segment in self.entry_segments(entry):
+                m=SEGMENT.fullmatch(segment)
+                if m and m.group(1)==cid and m.group(2).strip()!="SAME":best=m.group(2).strip()
+        return best
+    def other_introduced(self,cid,value,upto_seq):
+        for seq,entry in self.log.items():
+            if seq>upto_seq:continue
+            for segment in self.entry_segments(entry):
+                m=SEGMENT.fullmatch(segment)
+                if m and m.group(1)==cid and m.group(2).strip().startswith("OTHER:") and same_text(m.group(2).strip()[6:].strip(),value):return True
+        return False
+    def selects_confirmed(self,rhs,r,cid,upto_seq):
+        """Whether a logged rhs answer selects r's confirmed alternative/value (excludes SAME)."""
+        alt_id=r.get("confirmed_alternative_id");value=r.get("confirmed_value")
+        if rhs.startswith("OTHER:"):return same_text(rhs[6:].strip(),value)
+        if rhs==alt_id or same_text(rhs,value):
+            # A user-origin value must have been introduced via an earlier OTHER answer.
+            selected=next((a for a in list_value(r.get("alternatives")) if isinstance(a,dict) and a.get("id")==alt_id),None)
+            if dict_value(selected).get("origin")=="user":return self.other_introduced(cid,value,upto_seq)
+            return True
+        return False
+    def check_choice_binding(self,u,r,cid,selected,l):
+        entry=self.bind(u.get("response_ref"),u.get("confirmed_at"),l+".user_response")
+        if entry is None:return
+        exact_text=u.get("exact")
+        if not isinstance(exact_text,str):return
+        segment=next((s for s in self.entry_segments(entry) if same_text(s,exact_text.strip())),None)
+        if segment is None:self.fail(l+" exact response does not match any response log segment");return
+        m=SEGMENT.fullmatch(segment)
+        if not m:self.fail(l+" response segment must use the C<n>=<answer> grammar");return
+        if m.group(1)!=cid:self.fail(l+" response segment must target choice "+cid);return
+        rhs=m.group(2).strip()
+        seq=dict_value(u.get("response_ref")).get("seq") or 0
+        origin=dict_value(selected).get("origin")
+        if rhs=="SAME":
+            antecedent=self.latest_earlier_explicit(cid,seq)
+            if antecedent is None:self.fail(l+" SAME requires an earlier explicit logged response for "+cid)
+            # SAME must re-affirm the SAME alternative the antecedent chose; changing
+            # the value has to go through supersession, not a silent SAME rebinding.
+            elif not self.selects_confirmed(antecedent,r,cid,seq):self.fail(l+" SAME must re-affirm the same alternative previously chosen for "+cid)
+        elif rhs.startswith("OTHER:"):
+            if origin!="user":self.fail(l+" OTHER response requires a user-origin alternative")
+            if not same_text(rhs[6:].strip(),r.get("confirmed_value")):self.fail(l+" OTHER response value must equal the confirmed value")
+        elif rhs==r.get("confirmed_alternative_id") or same_text(rhs,r.get("confirmed_value")):
+            if origin=="user" and not self.other_introduced(cid,r.get("confirmed_value"),seq):self.fail(l+" user-origin alternative requires an earlier OTHER response introducing its value")
+        else:self.fail(l+" response does not select the confirmed alternative exactly")
     def choices(self):
-        start=len(self.e);self.C=table(self.c.get("choices"),"C","choices",self.e);keys={"id","question","alternatives","recommendation","depends_on_choice_ids","choice_kind","policy_targets","user_response","confirmed_alternative_id","confirmed_value","scope","consequences","affected_spec_ids","affected_acceptance_ids","affected_unit_ids","status","supersession"}
-        ak={"id","value","outcome_delta"};rk={"alternative_id","rationale","evidence_fact_ids"};sk={"exact_user_response","turn_id","confirmed_at","basis_choice_ids","basis_fact_ids","derivation"}
+        start=len(self.e);self.C=table(self.c.get("choices"),"C","choices",self.e);keys={"id","question","alternatives","recommendation","depends_on_choice_ids","choice_kind","policy_targets","user_response","confirmed_alternative_id","confirmed_value","scope","consequences","affected_spec_ids","affected_acceptance_ids","affected_unit_ids","status","reask_reason","supersession"}
+        ak={"id","value","outcome_delta","origin"};rk={"alternative_id","rationale","evidence_fact_ids"};sk={"exact_user_response","response_ref","confirmed_at","basis_choice_ids","basis_fact_ids","derivation"}
+        uk={"exact","response_ref","confirmed_at"}
+        supersede_seq={}
         for i,r in self.C.items():
             l="choices."+i
             if not exact(r,keys,l,self.e):continue
@@ -171,6 +327,7 @@ class V:
                         if aid in alts:self.fail(al+".id duplicated")
                         alts.add(aid)
                     text(a.get("value"),al+".value",self.e);text(a.get("outcome_delta"),al+".outcome_delta",self.e)
+                    if a.get("origin") not in {"llm","user"}:self.fail(al+".origin must be llm or user")
             rec=r.get("recommendation")
             if not exact(rec,rk,l+".recommendation",self.e):continue
             if not isinstance(rec.get("alternative_id"),str) or rec.get("alternative_id") not in alts:self.fail(l+".recommendation alternative unknown")
@@ -188,40 +345,45 @@ class V:
                 if isinstance(value,list) and all(isinstance(x,str) for x in value) and len(value)!=len(set(value)):self.fail(l+"."+key+" must be unique")
             refs(r,"affected_spec_ids",self.S,l,self.e);refs(r,"affected_acceptance_ids",self.A,l,self.e);refs(r,"affected_unit_ids",self.U,l,self.e)
             st=r.get("status")
-            if not isinstance(st,str) or st not in {"candidate","asked","confirmed","superseded"}:self.fail(l+".status invalid")
+            if not isinstance(st,str) or st not in {"candidate","asked","confirmed","superseded","reask"}:self.fail(l+".status invalid")
             if st in {"candidate","asked"}:
-                if any(r.get(k) is not None for k in ("user_response","confirmed_alternative_id","confirmed_value","supersession")):self.fail(l+" candidate/asked confirmation fields must be null")
+                if any(r.get(k) is not None for k in ("user_response","confirmed_alternative_id","confirmed_value","reask_reason","supersession")):self.fail(l+" candidate/asked confirmation fields must be null")
                 self.unresolved.append(i)
-            if st=="confirmed":
-                if r.get("supersession") is not None:self.fail(l+".supersession must be null for confirmed")
+            if st=="confirmed" and r.get("reask_reason") is not None:self.fail(l+".reask_reason must be null for confirmed")
+            if st=="superseded" and r.get("reask_reason") is not None:self.fail(l+".reask_reason must be null for superseded")
+            if st=="reask":
+                text(r.get("reask_reason"),l+".reask_reason",self.e)
+                if r.get("supersession") is not None:self.fail(l+".supersession must be null for reask")
+                self.unresolved.append(i)
+            if st in {"confirmed","reask","superseded"}:
                 u=r.get("user_response")
-                if not exact(u,{"exact","turn_id","confirmed_at"},l+".user_response",self.e):self.fail(l+".user_response required")
+                if not exact(u,uk,l+".user_response",self.e):self.fail(l+".user_response required")
                 else:
-                    text(u.get("exact"),l+".user_response.exact",self.e);text(u.get("turn_id"),l+".user_response.turn_id",self.e,True);stamp(u.get("confirmed_at"),l+".user_response.confirmed_at",self.e,True)
-                    if u.get("turn_id") is None and u.get("confirmed_at") is None:self.fail(l+".user_response needs turn_id or confirmed_at")
-                selected=next((a for a in als if isinstance(a,dict) and a.get("id")==r.get("confirmed_alternative_id")),None)
-                if not isinstance(r.get("confirmed_alternative_id"),str) or r.get("confirmed_alternative_id") not in alts:self.fail(l+".confirmed_alternative_id unknown")
-                if r.get("confirmed_value")!=(selected or {}).get("value"):self.fail(l+".confirmed_value must equal selected alternative.value")
+                    text(u.get("exact"),l+".user_response.exact",self.e);stamp(u.get("confirmed_at"),l+".user_response.confirmed_at",self.e)
+                    selected=next((a for a in als if isinstance(a,dict) and a.get("id")==r.get("confirmed_alternative_id")),None)
+                    if not isinstance(r.get("confirmed_alternative_id"),str) or r.get("confirmed_alternative_id") not in alts:self.fail(l+".confirmed_alternative_id unknown")
+                    if r.get("confirmed_value")!=(selected or {}).get("value"):self.fail(l+".confirmed_value must equal selected alternative.value")
+                    self.check_choice_binding(u,r,i,selected,l)
+            if st=="confirmed" and r.get("supersession") is not None:self.fail(l+".supersession must be null for confirmed")
             if st=="superseded":
-                u=r.get("user_response")
-                if not exact(u,{"exact","turn_id","confirmed_at"},l+".user_response",self.e):self.fail(l+" superseded choice must preserve original user_response")
-                elif not isinstance(u.get("exact"),str) or not u.get("exact").strip():self.fail(l+" superseded original exact response must be nonempty")
-                else:
-                    text(u.get("turn_id"),l+".user_response.turn_id",self.e,True);stamp(u.get("confirmed_at"),l+".user_response.confirmed_at",self.e,True)
-                    if u.get("turn_id") is None and u.get("confirmed_at") is None:self.fail(l+" superseded original response needs turn_id or confirmed_at")
-                selected=next((a for a in als if isinstance(a,dict) and a.get("id")==r.get("confirmed_alternative_id")),None)
-                if not isinstance(r.get("confirmed_alternative_id"),str) or r.get("confirmed_alternative_id") not in alts:self.fail(l+" superseded confirmed_alternative_id unknown")
-                if r.get("confirmed_value")!=(selected or {}).get("value"):self.fail(l+" superseded confirmed_value must equal selected alternative.value")
                 s=r.get("supersession")
                 if not exact(s,sk,l+".supersession",self.e):continue
-                text(s.get("exact_user_response"),l+".supersession.exact_user_response",self.e);text(s.get("derivation"),l+".supersession.derivation",self.e);text(s.get("turn_id"),l+".supersession.turn_id",self.e,True);stamp(s.get("confirmed_at"),l+".supersession.confirmed_at",self.e,True)
-                if s.get("turn_id") is None and s.get("confirmed_at") is None:self.fail(l+".supersession needs turn_id or confirmed_at")
+                text(s.get("exact_user_response"),l+".supersession.exact_user_response",self.e);text(s.get("derivation"),l+".supersession.derivation",self.e);stamp(s.get("confirmed_at"),l+".supersession.confirmed_at",self.e)
+                entry=self.bind(s.get("response_ref"),s.get("confirmed_at"),l+".supersession")
+                if entry is not None:
+                    if not same_text(s.get("exact_user_response"),entry.get("text")):self.fail(l+".supersession exact_user_response must equal the full logged entry text")
+                    if isinstance(entry.get("text"),str) and not re.search(r"(?<![A-Za-z0-9])"+re.escape(i)+r"(?![0-9])",entry["text"]):self.fail(l+".supersession logged response must name "+i)
+                    seq=dict_value(s.get("response_ref")).get("seq")
+                    if type(seq) is int:supersede_seq[i]=seq
                 bc=refs(s,"basis_choice_ids",self.C,l+".supersession",self.e);bf=refs(s,"basis_fact_ids",self.F,l+".supersession",self.e)
                 if not bc and not bf:self.fail(l+".supersession needs basis")
                 if any(self.C.get(x,{}).get("status")!="confirmed" for x in bc):self.fail(l+".supersession choice basis must be confirmed")
                 if any(self.F.get(x,{}).get("stability")!="immutable_for_scope" for x in bf):self.fail(l+".supersession fact basis must be immutable")
-                if VAGUE.search(str(s.get("exact_user_response"))):self.fail(l+" contains vague supersession response")
-            if st in {"confirmed","superseded"} and (VAGUE.search(json.dumps(r.get("user_response"),ensure_ascii=False)) or VAGUE.search(str(r.get("confirmed_value")))):self.fail(l+" contains vague response/value")
+        for cid,seq in supersede_seq.items():
+            for other,row in self.C.items():
+                if cid in string_values(row.get("depends_on_choice_ids")) and row.get("status")=="confirmed":
+                    ref=dict_value(dict_value(row.get("user_response")).get("response_ref"))
+                    if type(ref.get("seq")) is not int or ref["seq"]<=seq:self.fail("choices."+other+" must be re-confirmed after the supersession of "+cid+" or set to reask")
         if len(self.e)>start:self.choice_invalid=True
     def rounds(self):
         rows=arr(self.c.get("question_rounds"),"question_rounds",self.e);rounds={}
@@ -246,12 +408,12 @@ class V:
                 if self.C.get(x,{}).get("status")=="candidate":self.fail(x+" candidate choice cannot be in a round")
         if rounds and set(rounds)!=set(range(1,max(rounds)+1)):self.fail("question rounds must be contiguous from 1 to N")
         for x,r in self.C.items():
-            if r.get("status") in {"asked","confirmed","superseded"} and sum(x in list_value(q.get("choice_ids")) for q in rounds.values())!=1:self.fail(x+" must occur in exactly one round")
+            if r.get("status") in {"asked","confirmed","superseded","reask"} and sum(x in list_value(q.get("choice_ids")) for q in rounds.values())!=1:self.fail(x+" must occur in exactly one round")
         for n,r in rounds.items():
             for x in string_values(r.get("choice_ids")):
                 for d in string_values(self.C.get(x,{}).get("depends_on_choice_ids")):
                     dn=next((z for z,q in rounds.items() if d in list_value(q.get("choice_ids"))),None)
-                    if dn is None or dn>=n or self.C.get(d,{}).get("status")!="confirmed":self.fail(x+" dependency must be earlier confirmed choice")
+                    if dn is None or dn>=n or self.C.get(d,{}).get("status") not in {"confirmed","superseded","reask"}:self.fail(x+" dependency must be earlier confirmed choice")
     def surfaces(self):
         start=len(self.e);rows=arr(self.c.get("decision_surfaces"),"decision_surfaces",self.e);found={}
         if len(rows)!=12:self.fail("decision_surfaces must contain exactly 12 entries")
@@ -270,7 +432,7 @@ class V:
                 cs=refs(q,"choice_ids",self.C,l+".resolution",self.e);fs=refs(q,"fact_ids",self.F,l+".resolution",self.e)
                 if q.get("mode")=="choice":
                     if not cs or fs or q.get("derivation") is not None:self.fail(l+" choice resolution requires C only and null derivation")
-                    if any(self.C.get(x,{}).get("status") not in {"candidate","asked","confirmed","superseded"} for x in cs):self.fail(l+" governing choice invalid")
+                    if any(self.C.get(x,{}).get("status") not in {"candidate","asked","confirmed","superseded","reask"} for x in cs):self.fail(l+" governing choice invalid")
                     if any(self.C.get(x,{}).get("status") in {"candidate","asked"} for x in cs) and isinstance(name,str):self.uncovered.append(name)
                     if any(self.C.get(x,{}).get("status")=="superseded" for x in cs):
                         self.fail(l+" superseded choice cannot govern current surface")
@@ -311,7 +473,10 @@ class V:
             cs=refs(p,"choice_ids",self.C,l+".provenance",self.e);fs=refs(p,"fact_ids",self.F,l+".provenance",self.e)
             if p.get("mode")=="choice":
                 if not cs or fs or p.get("derivation") is not None:self.fail(l+" choice provenance requires C only")
-                if any(self.C.get(x,{}).get("status")!="confirmed" for x in cs):self.untraced.append(i);self.fail(l+" provenance choice must be confirmed")
+                # reask is a transitional state: it blocks gates through untraced
+                # without making the mid-transition document structurally invalid.
+                if any(self.C.get(x,{}).get("status") not in {"confirmed","reask"} for x in cs):self.untraced.append(i);self.fail(l+" provenance choice must be confirmed")
+                elif any(self.C.get(x,{}).get("status")=="reask" for x in cs):self.untraced.append(i)
             elif p.get("mode")=="forced":
                 if not cs and not fs:self.fail(l+" forced provenance needs basis")
                 if any(self.C.get(x,{}).get("status")!="confirmed" for x in cs):self.fail(l+" forced choice basis must be confirmed")
@@ -438,13 +603,13 @@ class V:
                 add(f"open_items[{i}].description",row.get("description"));add(f"open_items[{i}].resolution.note",dict_value(row.get("resolution")).get("note"))
         def walk(label,x):
             if isinstance(x,str):
-                if PH.search(x) or ASSUMPTION.search(x):self.planner_blockers.append(label)
+                if PH.search(x):self.planner_blockers.append(label)
             elif isinstance(x,list):
                 for y in x:walk(label,y)
         for label,value in values:walk(label,value)
-        for label in sorted(set(self.planner_blockers)):self.fail("planner-authored placeholder or assumption: "+label)
+        for label in sorted(set(self.planner_blockers)):self.fail("planner-authored placeholder: "+label)
     def receipts(self):
-        rv=self.c.get("reviews");
+        rv=self.c.get("reviews")
         if not exact(rv,{"ambiguity_auditor","cold_consumer"},"reviews",self.e):return
         rk={"review_id","reviewer","status","spec_digest","repository_context_digest","generated_at","output"}
         review_ids=set()
@@ -475,7 +640,7 @@ class V:
         for kind in ("alignment_summary","handoff_document"):
             r=cf.get(kind)
             if r is None:continue
-            keys={"confirmation_id","exact_response","turn_id","confirmed_at","spec_digest","repository_context_digest","ambiguity_review_id","ambiguity_receipt_digest"}
+            keys={"confirmation_id","exact_response","response_ref","confirmed_at","spec_digest","repository_context_digest","ambiguity_review_id","ambiguity_receipt_digest"}
             if kind=="handoff_document":keys|={"cold_review_id","cold_receipt_digest"}
             l="confirmations."+kind
             if not exact(r,keys,l,self.e):continue
@@ -483,13 +648,19 @@ class V:
             if not isinstance(cid,str) or not re.fullmatch(r"UC[1-9][0-9]*",cid):self.fail(l+".confirmation_id must match UCN")
             elif cid in confirmation_ids:self.fail("duplicate confirmation ID: "+cid)
             else:confirmation_ids.add(cid)
-            text(r.get("exact_response"),l+".exact_response",self.e);text(r.get("turn_id"),l+".turn_id",self.e,True);stamp(r.get("confirmed_at"),l+".confirmed_at",self.e,True);sha(r.get("spec_digest"),l+".spec_digest",self.e);sha(r.get("repository_context_digest"),l+".repository_context_digest",self.e);text(r.get("ambiguity_review_id"),l+".ambiguity_review_id",self.e);sha(r.get("ambiguity_receipt_digest"),l+".ambiguity_receipt_digest",self.e)
-            if r.get("turn_id") is None and r.get("confirmed_at") is None:self.fail(l+" needs turn_id or confirmed_at")
+            text(r.get("exact_response"),l+".exact_response",self.e);stamp(r.get("confirmed_at"),l+".confirmed_at",self.e);sha(r.get("spec_digest"),l+".spec_digest",self.e);sha(r.get("repository_context_digest"),l+".repository_context_digest",self.e);text(r.get("ambiguity_review_id"),l+".ambiguity_review_id",self.e);sha(r.get("ambiguity_receipt_digest"),l+".ambiguity_receipt_digest",self.e)
+            entry=self.bind(r.get("response_ref"),r.get("confirmed_at"),l)
+            prefix=ALIGN_PREFIX if kind=="alignment_summary" else HANDOFF_PREFIX
+            if entry is not None:
+                if not same_text(r.get("exact_response"),entry.get("text")):self.fail(l+".exact_response must equal the full logged entry text")
+                logged=(entry.get("text") if isinstance(entry.get("text"),str) else "").lstrip()
+                if not logged.startswith(prefix) or not logged[len(prefix):].strip():self.fail(l+" logged response must start with "+prefix)
             if r.get("spec_digest")!=self.spec_digest() or r.get("repository_context_digest")!=dg(self.c.get("repository_context")):self.stale.append(kind+":digest")
             a=self.c.get("reviews",{}).get("ambiguity_auditor") if isinstance(self.c.get("reviews"),dict) else None
             if not isinstance(a,dict) or r.get("ambiguity_review_id")!=a.get("review_id"):self.fail(l+" ambiguity review mismatch")
             if isinstance(a,dict) and r.get("ambiguity_receipt_digest")!=dg(a):self.stale.append(kind+":ambiguity_receipt_digest")
-            confirmation_time=instant(r.get("confirmed_at"));ambiguity_time=instant(a.get("generated_at")) if isinstance(a,dict) else None
+            confirmation_time=instant(r.get("confirmed_at")) if isinstance(r.get("confirmed_at"),str) else None
+            ambiguity_time=instant(a.get("generated_at")) if isinstance(a,dict) and isinstance(a.get("generated_at"),str) else None
             if confirmation_time is not None and ambiguity_time is not None and confirmation_time<=ambiguity_time:self.fail(l+" must be confirmed after ambiguity_auditor receipt")
             if kind=="handoff_document":
                 c=self.c.get("reviews",{}).get("cold_consumer") if isinstance(self.c.get("reviews"),dict) else None
@@ -498,10 +669,12 @@ class V:
         if "alignment_summary" in valid_confirmations and "handoff_document" in valid_confirmations:
             alignment=valid_confirmations["alignment_summary"];handoff=valid_confirmations["handoff_document"]
             a_time=alignment.get("confirmed_at");h_time=handoff.get("confirmed_at");cold=self.c.get("reviews",{}).get("cold_consumer") if isinstance(self.c.get("reviews"),dict) else None
+            a_seq=dict_value(alignment.get("response_ref")).get("seq");h_seq=dict_value(handoff.get("response_ref")).get("seq")
+            if type(a_seq) is int and type(h_seq) is int and h_seq<=a_seq:self.fail("handoff_document must be logged after alignment_summary")
             if not a_time or not h_time:self.fail("handoff_document requires timestamps for ordering")
             elif instant(h_time) is None or instant(a_time) is None:self.fail("handoff_document ordering timestamps must be valid instants")
             elif instant(h_time)<=instant(a_time):self.fail("handoff_document must be confirmed after alignment_summary")
-            elif isinstance(cold,dict) and (instant(cold.get("generated_at")) is None or instant(h_time)<=instant(cold.get("generated_at"))):self.fail("handoff_document must follow cold_consumer receipt")
+            elif isinstance(cold,dict) and (not isinstance(cold.get("generated_at"),str) or instant(cold.get("generated_at")) is None or instant(h_time)<=instant(cold.get("generated_at"))):self.fail("handoff_document must follow cold_consumer receipt")
     def cold(self,out,l):
         ss=set();aa=set();uu=set()
         for i,s in enumerate(list_value(out.get("steps"))):
@@ -542,42 +715,52 @@ class V:
         self.A=table(self.c.get("acceptance_checks"),"A","acceptance_checks",self.e)
         self.U=table(self.c.get("implementation_units"),"U","implementation_units",self.e)
         self.choices();self.rounds();self.surfaces();self.specs();self.au();self.reverse_affected();self.final();self.planner_text_check()
-        if re.search(r"\b(?:assumption|assumes|가정)\b",json.dumps(self.c.get("goal",{}),ensure_ascii=False),re.I):self.fail("canonical goal contains assumption")
+    def aligned_issues(self):
+        out=[]
+        if self.context_invalid or self.fact_invalid or not self.F:out.append("aligned requires usable repository context and observed facts")
+        if self.drift:out.extend(self.drift)
+        if not self.current_surfaces_closed():out.append("all decision surfaces must have current confirmed closure")
+        if self.unresolved:out.append("unresolved choices remain")
+        if any(x.get("status")=="open" for x in self.O.values()):out.append("open items remain")
+        if self.planner_blockers:out.append("planner-authored placeholder remains")
+        a=self.c.get("reviews",{}).get("ambiguity_auditor") if isinstance(self.c.get("reviews"),dict) else None
+        if not isinstance(a,dict) or a.get("status")!="pass" or any(x.startswith("ambiguity_auditor") for x in self.stale):out.append("fresh ambiguity auditor PASS required")
+        x=self.c.get("confirmations",{}).get("alignment_summary") if isinstance(self.c.get("confirmations"),dict) else None
+        if not isinstance(x,dict) or any(y.startswith("alignment_summary") for y in self.stale):out.append("fresh alignment summary confirmation required")
+        return out
+    def ready_issues(self):
+        out=[]
+        if self.f.get("target")!="implementation":out.append("handoff-ready requires implementation target")
+        if self.f.get("session_status")!="complete":out.append("handoff-ready requires complete session")
+        if not self.S or not self.A or not self.U:out.append("handoff-ready requires nonempty S/A/U registers")
+        if self.planner_blockers:out.append("planner-authored placeholder remains")
+        c=self.c.get("reviews",{}).get("cold_consumer") if isinstance(self.c.get("reviews"),dict) else None
+        if not isinstance(c,dict) or c.get("status")!="pass" or any(x.startswith("cold_consumer") for x in self.stale):out.append("fresh cold consumer PASS required")
+        if isinstance(c,dict):
+            for k in ("required_user_choices","implicit_assumptions","contradictions","underspecified_clauses","unmapped_spec_ids"):
+                if dict_value(c.get("output")).get(k):out.append("cold consumer blocker: "+k)
+        if self.orphans:out.append("graph orphan remains")
+        if self.cycles:out.append("dependency cycle remains")
+        if self.untraced or self.unverified:out.append("untraced/unverified specification remains")
+        h=self.c.get("confirmations",{}).get("handoff_document") if isinstance(self.c.get("confirmations"),dict) else None
+        if not isinstance(h,dict) or any(x.startswith("handoff_document") for x in self.stale):out.append("fresh handoff confirmation required")
+        return out
+    def substance_aligned(self):return not self.e and not self.aligned_issues()
+    def substance_ready(self):return self.substance_aligned() and not self.ready_issues()
     def gate(self,require):
         out=list(self.e);aligned=self.f.get("alignment_status")=="aligned" or require in {"aligned","handoff-ready"} or self.f.get("handoff_status")=="ready";ready=self.f.get("handoff_status")=="ready" or require=="handoff-ready"
         if require=="aligned" and self.f.get("alignment_status")!="aligned":out.append("--require aligned requires front alignment_status aligned")
         if aligned:
             if self.f.get("alignment_status")!="aligned":out.append("aligned gate requires front alignment_status aligned")
-            if self.context_invalid or self.fact_invalid or not self.F:out.append("aligned requires usable repository context and observed facts")
-            if not self.current_surfaces_closed():out.append("all decision surfaces must have current confirmed closure")
-            if self.unresolved:out.append("unresolved choices remain")
-            if any(x.get("status")=="open" for x in self.O.values()):out.append("open items remain")
-            if self.planner_blockers:out.append("planner-authored placeholder or assumption remains")
-            a=self.c.get("reviews",{}).get("ambiguity_auditor") if isinstance(self.c.get("reviews"),dict) else None
-            if not isinstance(a,dict) or a.get("status")!="pass" or any(x.startswith("ambiguity_auditor") for x in self.stale):out.append("fresh ambiguity auditor PASS required")
-            x=self.c.get("confirmations",{}).get("alignment_summary") if isinstance(self.c.get("confirmations"),dict) else None
-            if not isinstance(x,dict) or any(y.startswith("alignment_summary") for y in self.stale):out.append("fresh alignment summary confirmation required")
+            out+=self.aligned_issues()
         if ready:
             if self.f.get("alignment_status")!="aligned":out.append("handoff-ready requires front alignment_status aligned")
             if self.f.get("handoff_status")!="ready":out.append("handoff-ready requires front handoff_status ready")
-            if self.f.get("target")!="implementation":out.append("handoff-ready requires implementation target")
-            if self.f.get("session_status")!="complete":out.append("handoff-ready requires complete session")
-            if not self.S or not self.A or not self.U:out.append("handoff-ready requires nonempty S/A/U registers")
-            if self.planner_blockers:out.append("planner-authored placeholder or assumption remains")
-            c=self.c.get("reviews",{}).get("cold_consumer") if isinstance(self.c.get("reviews"),dict) else None
-            if not isinstance(c,dict) or c.get("status")!="pass" or any(x.startswith("cold_consumer") for x in self.stale):out.append("fresh cold consumer PASS required")
-            if isinstance(c,dict):
-                for k in ("required_user_choices","implicit_assumptions","contradictions","underspecified_clauses","unmapped_spec_ids"):
-                    if dict_value(c.get("output")).get(k):out.append("cold consumer blocker: "+k)
-            if self.orphans:out.append("graph orphan remains")
-            if self.cycles:out.append("dependency cycle remains")
-            if self.untraced or self.unverified:out.append("untraced/unverified specification remains")
-            h=self.c.get("confirmations",{}).get("handoff_document") if isinstance(self.c.get("confirmations"),dict) else None
-            if not isinstance(h,dict) or any(x.startswith("handoff_document") for x in self.stale):out.append("fresh handoff confirmation required")
+            out+=self.ready_issues()
         return list(dict.fromkeys(out))
     def action(self):
         if self.f.get("session_status")=="paused":return "pause"
-        if self.context_invalid or self.fact_invalid or not self.F or any(x.get("status")=="open" and x.get("kind")=="research" for x in self.O.values()):return "research_facts"
+        if self.context_invalid or self.fact_invalid or not self.F or self.drift or any(x.get("status")=="open" and x.get("kind")=="research" for x in self.O.values()):return "research_facts"
         if any(x.get("status")=="open" and x.get("kind")=="external_dependency" for x in self.O.values()):return "pause"
         if self.surface_invalid or self.uncovered:return "map_choices"
         if self.choice_invalid or self.unresolved or any(x.get("status")=="open" and x.get("kind")=="choice" for x in self.O.values()):return "ask_choices"
@@ -588,12 +771,15 @@ class V:
         if isinstance(a,dict) and (a.get("status")=="findings" or any(x.get("kind")=="conflict" and x.get("status")=="open" for x in self.O.values())):return "resolve_findings"
         x=self.c.get("confirmations",{}).get("alignment_summary") if isinstance(self.c.get("confirmations"),dict) else None
         if not isinstance(x,dict) or any(y.startswith("alignment_summary") for y in self.stale):return "request_final_confirmation"
-        if self.f.get("target")=="decision":return "complete" if self.gate_passes("aligned") else "resolve_findings"
+        if self.f.get("target")=="decision":
+            if self.substance_aligned() and self.f.get("alignment_status")!="aligned":return "stamp_status"
+            return "complete" if self.gate_passes("aligned") else "resolve_findings"
         c=self.c.get("reviews",{}).get("cold_consumer") if isinstance(self.c.get("reviews"),dict) else None
         if not isinstance(c,dict) or any(x.startswith("cold_consumer") for x in self.stale):return "run_cold_consumer"
         if isinstance(c,dict) and any(dict_value(c.get("output")).get(k) for k in ("required_user_choices","implicit_assumptions","contradictions","underspecified_clauses","unmapped_spec_ids")):return "resolve_findings"
         h=self.c.get("confirmations",{}).get("handoff_document") if isinstance(self.c.get("confirmations"),dict) else None
         if not isinstance(h,dict) or any(x.startswith("handoff_document") for x in self.stale):return "request_final_confirmation"
+        if self.substance_ready() and (self.f.get("alignment_status")!="aligned" or self.f.get("handoff_status")!="ready"):return "stamp_status"
         return "complete" if self.gate_passes("handoff-ready") else "resolve_findings"
     def gate_passes(self,require):
         """Return whether the target gate is fully satisfied."""
@@ -605,22 +791,59 @@ class V:
         # Completion is an assertion about the target gate, even for a
         # structural invocation whose requested gate is weaker.
         if next_action=="complete" and not self.gate_passes(relevant):next_action="resolve_findings"
-        return {"valid":not f,"require":require,"next_action":next_action,"errors":f,"unresolved_choice_ids":sorted(set(self.unresolved)),"uncovered_surfaces":sorted(set(self.uncovered)),"untraced_spec_ids":sorted(set(self.untraced)),"unverified_spec_ids":sorted(set(self.unverified)),"graph_cycles":self.cycles,"graph_orphans":sorted(set(x for x in self.orphans if isinstance(x,str) and x)),"stale_receipts":sorted(set(self.stale)),"spec_digest":self.spec_digest(),"repository_context_digest":dg(self.c.get("repository_context"))}
+        return {"valid":not f,"require":require,"next_action":next_action,"errors":f,"unresolved_choice_ids":sorted(set(self.unresolved)),"uncovered_surfaces":sorted(set(self.uncovered)),"untraced_spec_ids":sorted(set(self.untraced)),"unverified_spec_ids":sorted(set(self.unverified)),"graph_cycles":self.cycles,"graph_orphans":sorted(set(x for x in self.orphans if isinstance(x,str) and x)),"stale_receipts":sorted(set(self.stale)),"spec_digest":self.spec_digest(),"repository_context_digest":dg(self.c.get("repository_context")),"substance":{"aligned":self.substance_aligned(),"handoff_ready":self.substance_ready()},"observation":self.observation,"context_drift":list(self.drift),"unobserved_context":list(self.unobserved),"response_log":{"path":self.log_declared,"entries":self.log_count},"stamped":False}
 
 def diagnostic(require,next_action,errors,*,spec_digest=None,repository_context_digest=None):
-    return {"valid":False,"require":require,"next_action":next_action,"errors":list(errors),"unresolved_choice_ids":[],"uncovered_surfaces":[],"untraced_spec_ids":[],"unverified_spec_ids":[],"graph_cycles":[],"graph_orphans":[],"stale_receipts":[],"spec_digest":spec_digest,"repository_context_digest":repository_context_digest}
+    return {"valid":False,"require":require,"next_action":next_action,"errors":list(errors),"unresolved_choice_ids":[],"uncovered_surfaces":[],"untraced_spec_ids":[],"unverified_spec_ids":[],"graph_cycles":[],"graph_orphans":[],"stale_receipts":[],"spec_digest":spec_digest,"repository_context_digest":repository_context_digest,"substance":{"aligned":False,"handoff_ready":False},"observation":"not-required","context_drift":[],"unobserved_context":[],"response_log":{"path":None,"entries":0},"stamped":False}
 
-def validate(path,require):
+def apply_stamp(raw,updates):
+    end=raw.find("\n---",4)
+    head=raw[4:end]
+    lines=head.splitlines()
+    for index,line in enumerate(lines):
+        key=line.split(":",1)[0].strip() if ":" in line else None
+        if key in updates:lines[index]=f"{key}: {updates[key]}"
+    return raw[:4]+"\n".join(lines)+raw[end:]
+
+def validate(path,require,*,repo_root=None,observe=True,stamp_file=False):
+    if response_log is None:return 2,diagnostic(require,"research_facts",["record_response.py must sit beside validate_goal_spec.py"])
     try:raw=Path(path).read_text(encoding="utf-8")
     except (OSError,UnicodeError) as ex:return 2,diagnostic(require,"research_facts",[str(ex)])
     f,b,e=front(raw);c,x=contract(b);e+=x
     if c is None:return 1,diagnostic(require,"research_facts",e)
-    v=V(raw,f,c);v.e+=e
+    log_entries=[];log_declared=None
+    rl=f.get("response_log")
+    if safe_relative(rl):
+        log_declared=rl
+        log_path=Path(path).parent/rl
+        if log_path.exists() and not log_path.is_file():return 2,diagnostic(require,"research_facts",["response log path is not a regular file"])
+        try:entries,errors=response_log.load_entries(log_path)
+        except (OSError,UnicodeError) as ex:return 2,diagnostic(require,"research_facts",["response log I/O failure: "+str(ex)])
+        errors+=response_log.verify_entries(entries)
+        if errors:e+=["response log: "+error for error in errors]
+        else:log_entries=entries
+    v=V(raw,f,c,log_entries,log_declared);v.e+=e
+    claimed=f.get("alignment_status")=="aligned" or f.get("handoff_status")=="ready"
+    if require in {"aligned","handoff-ready"} or claimed or stamp_file:
+        if observe:
+            drift,unobserved=observe_context(c,Path(path).parent,repo_root)
+            v.drift=drift;v.unobserved=unobserved;v.observation="enabled"
+        else:v.observation="skipped"
     try:
         v.run();o=v.output(require)
     except Exception as ex:
         # Any parseable JSON shape must fail validation without leaking a traceback.
         return 1,diagnostic(require,"resolve_findings",["malformed contract structure: "+type(ex).__name__+": "+str(ex)])
+    if stamp_file and o["next_action"]=="stamp_status":
+        updates={}
+        if v.substance_aligned() and f.get("alignment_status")!="aligned":updates["alignment_status"]="aligned"
+        if f.get("target")=="implementation" and v.substance_ready() and f.get("handoff_status")!="ready":updates["handoff_status"]="ready"
+        if updates:
+            try:Path(path).write_text(apply_stamp(raw,updates),encoding="utf-8")
+            except (OSError,UnicodeError) as ex:return 2,diagnostic(require,"stamp_status",["stamp write failed: "+str(ex)])
+            code,o=validate(path,require,repo_root=repo_root,observe=observe,stamp_file=False)
+            o["stamped"]=True
+            return code,o
     return (0 if o["valid"] else 1),o
 
 class UsageError(Exception):pass
@@ -630,13 +853,16 @@ class Parser(argparse.ArgumentParser):
 def main(argv=None):
     args=list(argv) if argv is not None else None;want_json="--json" in (args if args is not None else __import__("sys").argv[1:])
     p=Parser(prog="validate_goal_spec.py");p.add_argument("path",nargs="?");p.add_argument("--require",choices=("structural","aligned","handoff-ready"),default="structural");p.add_argument("--json",action="store_true")
+    p.add_argument("--repo-root",default=None,help="repository root for re-observing git_head/file context entries")
+    p.add_argument("--no-observe",action="store_true",help="skip repository re-observation (weakens gates; for cross-machine review only)")
+    p.add_argument("--stamp",action="store_true",help="write computed alignment/handoff status into frontmatter when the substance gates pass")
     try:
         a=p.parse_args(args)
         if not a.path:raise UsageError("PATH is required")
     except UsageError as ex:
         o=diagnostic("structural","research_facts",["usage error: "+str(ex)])
         print(json.dumps(o,ensure_ascii=False,indent=2,sort_keys=True) if want_json else "FAIL\nnext_action: research_facts\nusage error: "+str(ex));return 2
-    code,o=validate(a.path,a.require)
+    code,o=validate(a.path,a.require,repo_root=a.repo_root,observe=not a.no_observe,stamp_file=a.stamp)
     if a.json:print(json.dumps(o,ensure_ascii=False,indent=2,sort_keys=True))
     else:
         print("PASS" if code==0 else "FAIL");print("next_action: "+o["next_action"])

@@ -39,7 +39,7 @@
           "The recommendation is copied into confirmed_value before the user response."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --no-observe --json"
         ]
       }
     },
@@ -85,8 +85,8 @@
           "The original C is silently replaced with a new ID merely because the answer was vague."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{artifact_after_vague_answer}} --require structural --json",
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{artifact_after_vague_answer}} --require structural --no-observe --json",
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --no-observe --json"
         ]
       }
     },
@@ -143,7 +143,7 @@
           "The original cold receipt is reused after the canonical spec changes."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{revised_goal_artifact}} --require handoff-ready --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{revised_goal_artifact}} --require handoff-ready --no-observe --json"
         ]
       }
     },
@@ -184,7 +184,7 @@
           "Unrelated choices are collapsed into one policy choice merely to stay under the limit."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --no-observe --json"
         ]
       }
     },
@@ -225,7 +225,7 @@
           "Unrelated error or timeout choices are silently absorbed into the retry policy."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --no-observe --json"
         ]
       }
     },
@@ -265,7 +265,7 @@
           "The idempotency difference is treated as local coding."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require structural --no-observe --json"
         ]
       }
     },
@@ -318,7 +318,7 @@
           "A whole-spec receipt is claimed to remain fresh after its bound spec digest changes."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{post_change_goal_artifact}} --require handoff-ready --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{post_change_goal_artifact}} --require handoff-ready --no-observe --json"
         ]
       }
     },
@@ -368,7 +368,7 @@
           "Any proof field is missing, false, or justified only with preference."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --no-observe --json"
         ]
       }
     },
@@ -406,7 +406,7 @@
       "oracle": {
         "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
         "must_not_observe": ["The cold consumer invents a flag, default, output contract, or destructive behavior not fixed by the canonical contract."],
-        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --no-observe --json"]
       }
     },
     {
@@ -443,7 +443,7 @@
       "oracle": {
         "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
         "must_not_observe": ["The cold consumer invents an HTTP contract, auth rule, idempotency behavior, or timeout not fixed by the canonical contract."],
-        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --no-observe --json"]
       }
     },
     {
@@ -480,7 +480,7 @@
       "oracle": {
         "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
         "must_not_observe": ["The cold consumer invents a visible state, save behavior, recovery path, or accessibility rule not fixed by the canonical contract."],
-        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --no-observe --json"]
       }
     },
     {
@@ -517,7 +517,7 @@
       "oracle": {
         "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
         "must_not_observe": ["The cold consumer invents a transition, retry, cancellation, concurrency, or recovery rule not fixed by the canonical contract."],
-        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --no-observe --json"]
       }
     },
     {
@@ -554,7 +554,7 @@
       "oracle": {
         "must_observe": ["The final cold plan maps every step to S/A/U and has no blocker arrays."],
         "must_not_observe": ["The cold consumer invents schema, compatibility, backfill, rollout, rollback, deletion, or performance behavior not fixed by the canonical contract."],
-        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --json"]
+        "mechanical_checks": ["python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{goal_artifact}} --require handoff-ready --no-observe --json"]
       }
     },
     {
@@ -610,8 +610,8 @@
           "Resume renumbers prior IDs, loses an answer, or silently changes a confirmed value."
         ],
         "mechanical_checks": [
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{paused_goal_artifact}} --require structural --json",
-          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{resumed_goal_artifact}} --require structural --json"
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{paused_goal_artifact}} --require structural --no-observe --json",
+          "python3 -B {{skill_path}}/scripts/validate_goal_spec.py {{resumed_goal_artifact}} --require structural --no-observe --json"
         ]
       }
     }
