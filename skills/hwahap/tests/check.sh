@@ -30,6 +30,9 @@ jq -e -f "$check" "$valid" >/dev/null
 jq -r -f "$render" "$valid" >"$tmp/render-a"
 jq -r -f "$render" "$valid" >"$tmp/render-b"
 cmp "$tmp/render-a" "$tmp/render-b"
+jq '.rounds += [range(2;9) | . as $n | {n:$n,choice_ids:[],new_choice_ids:[],checkpoint:(if $n==4 then {same_as_recommendation:[],answer:{text:"CP1=OK",ts:"now",hash:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}} elif $n==8 then {same_as_recommendation:[],answer:{text:"CP2=OK",ts:"now",hash:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}} else null end)}]' "$valid" >"$tmp/round-eight.json"
+jq -e -f "$check" "$tmp/round-eight.json" >/dev/null
+jq '(.rounds[]|select(.n==8).checkpoint)=null' "$tmp/round-eight.json" | if jq -e -f "$check" >/dev/null 2>&1; then exit 1; else :; fi
 
 bad schema '.schema="bad"' 'schema must be'
 bad goal_id '.goal_id="../bad"' 'unsafe goal_id'

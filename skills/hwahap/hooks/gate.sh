@@ -68,7 +68,9 @@ jq -n --arg id "$goal_id" --arg base "$base" --argjson revision "$revision" --ar
     unit_usage=$(jq -s '{tokens:([.[].input_tokens+.[].output_tokens]|add//0),input:([.[].input_tokens]|add//0),cached:([.[].cached_input_tokens]|add//0),cost:([.[].cost_usd]|add//0),seconds:([.[].seconds]|add//0)}' .hwahap/out/"$unit".usage.[0-9]*.json 2>/dev/null || printf '{"tokens":0,"input":0,"cached":0,"cost":0,"seconds":0}')
     printf '| %s | %s | %s | %s | %s | out/%s.patch | %s | %s | %s | %s |\n' "$unit" "$attempt" "$cached_unit" "$(tail -n 1 ".hwahap/out/$unit.test.txt" 2>/dev/null)" "$(head -n 1 ".hwahap/out/review/$unit.md" 2>/dev/null)" "$unit" "$(printf '%s' "$unit_usage"|jq '.tokens')" "$(printf '%s' "$unit_usage"|jq 'if .input==0 then 0 else .cached/.input end')" "$(printf '%s' "$unit_usage"|jq '.cost')" "$(printf '%s' "$unit_usage"|jq '.seconds')"
   done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
-  printf '## 확인 과정\nGoal, 답변 원장, hash chain, unit 범위, unit test/review, 통합 test/review, human turn을 확인했다.\n## 한계\nReviewer와 fact worker token은 비 JSONL 템플릿이라 측정하지 못했다. diary의 Deviations와 Open questions는 별도 확인 대상이다.\n## 비용\nworker tokens=%s, cache_hit_ratio=%s, cost_usd=%s, seconds=%s. 오케스트레이터 tokens=%s.\n' "$tokens" "$cache" "$cost" "$seconds" "$orchestrator_note"
+  printf '## 확인 과정\nGoal, 답변 원장, hash chain, unit 범위, unit test/review, 통합 test/review, human turn을 확인했다.\n## 한계\nReviewer와 fact worker token은 비 JSONL 템플릿이라 측정하지 못했다.\n'
+  if [ -f .hwahap/diary.md ]; then awk '/^## (Deviations|Open questions)$/{show=1; sub(/^## /,"### "); print; next} /^## /{show=0} show' .hwahap/diary.md; else printf 'diary 없음.\n'; fi
+  printf '## 비용\nworker tokens=%s, cache_hit_ratio=%s, cost_usd=%s, seconds=%s. 오케스트레이터 tokens=%s.\n' "$tokens" "$cache" "$cost" "$seconds" "$orchestrator_note"
 } >.hwahap/report.md
 "$skill/hooks/lib/deliver.sh"
 run_dir="${CODEX_HOME:-$HOME/.codex}/hwahap/$repo_id/runs/$goal_id"; mkdir -p "$run_dir"; cp "$goal" .hwahap/summary.json .hwahap/report.md "$run_dir/"

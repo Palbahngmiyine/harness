@@ -26,10 +26,12 @@ run_case() {
     large) dd if=/dev/zero bs=1024 count=1024 2>/dev/null | tr '\0' b >"$repo/.hwahap/wt/U1/$path" ;;
     empty) ;;
   esac
-  git -C "$repo/.hwahap/wt/U1" diff --binary HEAD >"$repo/.hwahap/out/U1.patch"
   jq --arg path "$path" '.units[0].paths=[$path] | .units[0].test="true" | .full_suite="true"' \
     "$root/tests/fixtures/check/valid/goal.json" >"$repo/.hwahap/goal.json"
-  printf 'exit 0\n' >"$repo/.hwahap/out/U1.test.txt"
+  if [ "$name" = binary ]; then
+    cp "$root/tests/fixtures/usage/good/events.jsonl" "$repo/.hwahap/out/U1.events.jsonl"; printf 'brief\ndone\n' >"$repo/.hwahap/out/U1.brief.md"; cp "$repo/.hwahap/out/U1.brief.md" "$repo/.hwahap/out/U1.last.md"
+    (cd "$repo" && HWAHAP_NOW=now "$root/hooks/lib/capture.sh" U1) >/dev/null; grep -Fq 'GIT binary patch' "$repo/.hwahap/out/U1.patch"
+  else git -C "$repo/.hwahap/wt/U1" diff --binary HEAD >"$repo/.hwahap/out/U1.patch"; printf 'exit 0\n' >"$repo/.hwahap/out/U1.test.txt"; fi
   printf 'verdict: pass\n' >"$repo/.hwahap/out/review/U1.md"
   (cd "$repo" && "$root/hooks/lib/integrate.sh")
   test "$(tail -n 1 "$repo/.hwahap/out/integration.test.txt")" = 'exit 0'

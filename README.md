@@ -126,8 +126,11 @@ Validate from the repository root:
 
 ```bash
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/hwahap
-for test in skills/hwahap/tests/*.sh; do bash "$test"; done
+skills/hwahap/tests/all.sh
 ```
+
+The Linux CI job additionally runs Bats, kcov, ShellCheck, resource-leak checks,
+and mutation tests; the macOS job runs the deterministic, Bats, and ShellCheck suites.
 
 Target repositories keep ignored run state under `.hwahap/`. Durable summaries
 and human answer ledgers live under `~/.codex/hwahap/<repo-id>/`; Hwahap never
