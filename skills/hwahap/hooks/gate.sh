@@ -47,6 +47,7 @@ done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
 while IFS= read -r path; do allowed=$(jq -r --arg path "$path" 'any(.units[] | select(.probe|not) | .paths[]; . as $p | $path==$p or ($path|startswith($p+"/")))' "$goal"); [ "$allowed" = true ] || fail "integration escaped scope: $path"; done < <(git -C .hwahap/wt/integration diff --name-only HEAD)
 [ -f .hwahap/human.turn ] || fail 'human turn marker is missing'
 confirm_ts=$(jq -r '.confirm.ts' "$goal"); [[ "$(<.hwahap/human.turn)" < "$confirm_ts" ]] && fail 'build predates human confirmation'
+git -C .hwahap/wt/integration diff HEAD | grep -E -f "$skill/data/secrets.regex" >/dev/null && fail 'integration diff contains a secret pattern'
 units_total=$(jq '[.units[] | select(.probe|not)] | length' "$goal"); passed=0; cached=0; first_try=0
 while IFS= read -r unit; do [ -f ".hwahap/out/$unit.skipped" ] && continue; passed=$((passed+1)); [ ! -f ".hwahap/out/$unit.cached" ] || cached=$((cached+1)); [ "$(<".hwahap/out/$unit.attempt")" -ne 1 ] || first_try=$((first_try+1)); done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
 receipts='[]'; usage_files=(.hwahap/out/*.usage.[0-9]*.json); if [ -e "${usage_files[0]}" ]; then receipts=$(jq -s . "${usage_files[@]}"); fi
@@ -59,4 +60,5 @@ jq -n --arg id "$goal_id" --arg base "$base" --argjson revision "$revision" --ar
   printf '| unit | attempt | cached | test | verdict | patch | tokens |\n|---|---:|---|---|---|---|---:|\n'; while IFS= read -r unit; do printf '| %s | %s | %s | %s | %s | out/%s.patch | %s |\n' "$unit" "$(<".hwahap/out/$unit.attempt" 2>/dev/null || printf 0)" "$([ -f ".hwahap/out/$unit.cached" ] && printf yes || printf no)" "$(tail -n 1 ".hwahap/out/$unit.test.txt" 2>/dev/null)" "$(head -n 1 ".hwahap/out/review/$unit.md" 2>/dev/null)" "$unit" "$(jq '.input_tokens+.output_tokens' ".hwahap/out/$unit.usage.json" 2>/dev/null || printf 0)"; done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
   printf '## 확인 과정\nGoal, 답변 원장, hash chain, unit 범위, unit test/review, 통합 test/review, human turn을 확인했다.\n## 한계\nReviewer와 fact worker token은 비 JSONL 템플릿이라 측정하지 못했다. diary의 Deviations와 Open questions는 별도 확인 대상이다.\n## 비용\nworker tokens=%s, cache_hit_ratio=%s, cost_usd=%s, seconds=%s. 오케스트레이터 token은 측정 불가.\n' "$tokens" "$cache" "$cost" "$seconds"
 } >.hwahap/report.md
+"$skill/hooks/lib/deliver.sh"
 run_dir="${CODEX_HOME:-$HOME/.codex}/hwahap/$repo_id/runs/$goal_id"; mkdir -p "$run_dir"; cp "$goal" .hwahap/summary.json .hwahap/report.md "$run_dir/"
