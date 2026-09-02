@@ -19,6 +19,11 @@ jq '.goal_id="e2e" | .goal.statement="e2e fixture" | .units[0].test="grep -q shi
 prompt() { jq -nc --arg cwd "$repo" --arg prompt "$1" '{cwd:$cwd,prompt:$prompt}' | CODEX_HOME="$codex_home" HWAHAP_NOW=2026-09-02T00:00:00Z "$root/hooks/prompt.sh"; }
 prompt 'C1=ALT1 C2=ALT1 S2=NA S3=NA S4=NA S5=NA S6=NA S7=NA S8=NA S9=NA S10=NA S11=NA S12=NA'
 jq --slurpfile a "$repo/.hwahap/answers.jsonl" '.choices |= map(. as $c | .answer.choice_sha256=([$a[]|select(.key==$c.id)][-1].bound_sha256)) | .surfaces.not_applicable |= with_entries(.key as $k | .value.answer.hash=([$a[]|select(.key==$k)][-1].bound_sha256))' "$repo/.hwahap/goal.json" >"$tmp/goal"; mv "$tmp/goal" "$repo/.hwahap/goal.json"
+jq -r --rawfile head "$root/data/brief.head.md" --arg mode cold --arg unit '' --arg patch '' --arg question '' -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/review/cold.brief.md"
+cold='codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/out/review/cold.md'
+payload=$(jq -nc --arg cwd "$repo" --arg command "$cold" '{cwd:$cwd,tool_input:{command:$command}}'); test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
+(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/out/review/cold.md <.hwahap/out/review/cold.brief.md)
+test "$(cd "$repo" && HWAHAP_NOW=2026-09-02T00:00:00Z "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review pass'
 jq -r -f "$root/jq/render.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/align.md"; prompt 'CONFIRM ALIGN'
 jq --slurpfile a "$repo/.hwahap/answers.jsonl" '([$a[]|select(.key=="CONFIRM")][-1]) as $c | .confirm={text:$c.text,ts:$c.ts,revision:.revision,goal_sha256:$c.bound_sha256,render_sha256:$c.render_sha256}' "$repo/.hwahap/goal.json" >"$tmp/goal"; mv "$tmp/goal" "$repo/.hwahap/goal.json"
 
@@ -48,6 +53,6 @@ test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'integration r
 payload=$(jq -nc --arg cwd "$repo" '{cwd:$cwd,stop_hook_active:false}')
 test -z "$(cd "$repo" && PATH="$shim:$PATH" CODEX_HOME="$codex_home" GH_MODE=success "$root/hooks/gate.sh" <<<"$payload")"
 jq -e '.deliver=="done" and .pr_url=="https://example.test/new" and .units_passed==1' "$repo/.hwahap/summary.json" >/dev/null
-test "$(wc -l <"$tmp/codex.log")" -eq 3
+test "$(wc -l <"$tmp/codex.log")" -eq 4
 git --git-dir="$remote" show-ref --verify --quiet refs/heads/hwahap/e2e
 printf 'e2e align worker review integrate gate deliver\n'

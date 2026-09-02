@@ -79,6 +79,7 @@ bad budget '.budget.tokens=-1' 'invalid budget'
 bad parallel '.budget.max_parallel=0' 'invalid budget'
 bad review '.final_review="ultra"' 'invalid final review'
 bad full_suite '.full_suite=""' 'invalid final review'
+bad cold_lists '.review.cold.underspecified=["missing"]' 'cold review is incomplete'
 
 test "$count" -ge 30
 printf 'check fixtures=%s render=stable\n' "$count"

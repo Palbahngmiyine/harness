@@ -23,6 +23,10 @@ jq --slurpfile a "$repo/.hwahap/answers.jsonl" '
   .choices |= map(. as $c | .answer.choice_sha256=([$a[] | select(.key==$c.id)][-1].bound_sha256)) |
   .surfaces.not_applicable |= with_entries(.key as $k | .value.answer.hash=([$a[] | select(.key==$k)][-1].bound_sha256))' \
   "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"
+printf 'verdict: pass\n' >"$repo/.hwahap/out/review/cold.md"
+cold='codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/out/review/cold.md'
+payload=$(jq -nc --arg cwd "$repo" --arg command "$cold" '{cwd:$cwd,tool_input:{command:$command}}')
+test "$(cd "$repo" && HWAHAP_NOW=2026-09-02T00:00:00Z "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review pass'
 jq -r -f "$root/jq/render.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/align.md"
 prompt 'CONFIRM ALIGN'
 jq --slurpfile a "$repo/.hwahap/answers.jsonl" '([$a[] | select(.key=="CONFIRM")][-1]) as $c |
@@ -90,7 +94,6 @@ test "$(jq -r '.facts[0].sha256' "$repo/.hwahap/goal.json")" != 'sha256:00000000
 test -z "$(run_pretool "$fact")"
 
 printf 'bad\n' >"$repo/.hwahap/out/review/cold.md"
-cold=${fact/.hwahap\/facts\/F1.md/.hwahap\/out\/review\/cold.md}
 payload=$(jq -nc --arg cwd "$repo" --arg command "$cold" '{cwd:$cwd,tool_input:{command:$command}}')
 test -z "$(run_pretool "$cold")"
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review fail verdict_invalid=1'
