@@ -65,6 +65,10 @@ while IFS= read -r token; do
       if [[ "$alt" =~ ^ALT[0-9]+$ ]]; then
         jq -e --arg id "$key" --arg alt "$alt" 'any(.choices[]; .id==$id and any(.alternatives[]; .id==$alt))' "$goal" >/dev/null || { printf 'hwahap prompt: unknown alternative %s\n' "$token" >&2; continue; }
       fi
+      if [[ "$alt" == OTHER:\ * ]]; then
+        value=${alt#OTHER: }
+        if ! jq -e --arg id "$key" --arg value "$value" 'any(.choices[]|select(.id==$id).alternatives[]; .value==$value and .origin=="user")' "$goal" >/dev/null; then tmp=$(mktemp .hwahap/goal.XXXXXX); jq --arg id "$key" --arg value "$value" '(.choices[]|select(.id==$id).alternatives) |= (. as $a | .+[{id:("ALT"+(([ $a[].id[3:]|tonumber ]|max+1)|tostring)),value:$value,origin:"user"}])' "$goal" >"$tmp"; mv "$tmp" "$goal"; fi
+      fi
       bound=$(jq -e -S -c --arg id "$key" '.choices[] | select(.id==$id) | {id,question,alternatives}' "$goal") || { printf 'hwahap prompt: unknown choice %s\n' "$key" >&2; continue; }
       ;;
     S*) bound=$(jq -e -S -c --arg id "$key" '.surfaces.not_applicable[$id] | select(. != null) | {id:$id,reason}' "$goal") || { printf 'hwahap prompt: unknown surface %s\n' "$key" >&2; continue; } ;;

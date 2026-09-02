@@ -25,7 +25,7 @@ if [ "$workdir" = . ]; then
   case "$output" in .hwahap/facts/F*.md|.hwahap/out/review/cold.md) ;; *) deny 'fact or cold review output path is invalid' ;; esac
   exit 0
 fi
-case "$workdir" in .hwahap/wt/U*|.hwahap/wt/integration) ;; *) deny 'unknown worktree path' ;; esac; unit=${workdir##*/}
+case "$workdir" in .hwahap/wt/U*|.hwahap/wt/P*|.hwahap/wt/integration) ;; *) deny 'unknown worktree path' ;; esac; unit=${workdir##*/}
 if [ "$sandbox" = read-only ]; then
   [ "$output" = ".hwahap/out/review/$unit.md" ] || deny 'reviewer output path is invalid'; rounds=0; [ ! -f ".hwahap/out/review/$unit.attempt" ] || rounds=$(<".hwahap/out/review/$unit.attempt")
   [ "$rounds" -lt 2 ] || deny 'reviewer retry limit reached'; exit 0

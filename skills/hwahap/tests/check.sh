@@ -80,6 +80,11 @@ bad parallel '.budget.max_parallel=0' 'invalid budget'
 bad review '.final_review="ultra"' 'invalid final review'
 bad full_suite '.full_suite=""' 'invalid final review'
 bad cold_lists '.review.cold.underspecified=["missing"]' 'cold review is incomplete'
+bad unknown_open '.choices[0].answer.text="C1=UNKNOWN"' 'UNKNOWN answer is not open'
+bad other_origin '.choices[0].answer.text="C1=OTHER: custom"' 'OTHER answer is not an alternative'
+bad unit_id '.units[0].id="P1"' 'invalid unit id'
+bad surface_unknown '.surfaces.applicable += ["S99"]' 'invalid applicable surface'
+bad surface_overlap '.surfaces.not_applicable.S1={reason:"duplicate",answer:{text:"S1=NA",ts:"now",hash:"sha256:0000000000000000000000000000000000000000000000000000000000000000"}}' 'invalid applicable surface'
 
 test "$count" -ge 30
 printf 'check fixtures=%s render=stable\n' "$count"

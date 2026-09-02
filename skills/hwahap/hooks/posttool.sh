@@ -36,7 +36,7 @@ if [ "$workdir" = . ]; then
   esac
   exit 0
 fi
-case "$workdir" in .hwahap/wt/U*|.hwahap/wt/integration) ;; *) exit 0 ;; esac
+case "$workdir" in .hwahap/wt/U*|.hwahap/wt/P*|.hwahap/wt/integration) ;; *) exit 0 ;; esac
 unit=${workdir##*/}
 case "$command" in *' -s read-only '*)
   attempt_file=".hwahap/out/review/$unit.attempt"
