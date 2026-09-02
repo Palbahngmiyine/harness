@@ -19,8 +19,8 @@ if [ "$workdir" = . ]; then
     .hwahap/facts/F*.md)
       fact=${output##*/}; fact=${fact%.md}
       jq -e --arg path "$output" 'any(.facts[]; .path==$path)' .hwahap/goal.json >/dev/null || { printf '%s fact fail\n' "$fact"; exit 0; }
-      digest=$(sha <"$output")
-      tmp=$(mktemp .hwahap/goal.XXXXXX)
+      [ -f "$output" ] || { printf '%s fact fail\n' "$fact"; exit 0; }
+      digest=$(sha <"$output"); tmp=$(mktemp .hwahap/goal.XXXXXX)
       jq --arg path "$output" --arg digest "$digest" '(.facts[] | select(.path==$path) | .sha256)=$digest' .hwahap/goal.json >"$tmp"
       mv "$tmp" .hwahap/goal.json
       printf '%s fact pass\n' "$fact"

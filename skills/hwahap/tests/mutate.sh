@@ -26,7 +26,7 @@ while IFS=: read -r file line _; do
   survived=0
   for test_file in $(target_tests "${file##*/}"); do if bash "$tmp/skill/tests/$test_file" >/dev/null 2>&1; then :; else survived=1; break; fi; done
   total=$((total+1)); if [ "$survived" -eq 1 ]; then killed=$((killed+1)); else printf 'survived shell mutant: %s:%s\n' "$relative" "$line" >&2; exit 1; fi
-done < <(grep -nH -E '(^|[;{][[:space:]]*)if[[:space:]]+(![[:space:]]+)?(\[|\[\[|command|git|jq|grep)' "$root"/hooks/*.sh "$root"/hooks/lib/*.sh)
+done < <(grep -nH -E '(^[[:space:]]*|[;{][[:space:]]*)if[[:space:]]+(![[:space:]]+)?(\[|\[\[|command|git|jq|grep)' "$root"/hooks/*.sh "$root"/hooks/lib/*.sh)
 while IFS=: read -r file line _; do
   rm -rf "$tmp/skill"; cp -R "$root" "$tmp/skill"
   mutant="$tmp/skill/jq/check.jq"; sed "${line}d" "$mutant" >"$tmp/file"; mv "$tmp/file" "$mutant"

@@ -49,6 +49,7 @@ git -C "$repo" worktree add -q --detach .hwahap/wt/integration HEAD
 git -C "$repo/.hwahap/wt/integration" apply ../../out/U1.patch
 printf 'exit 0\n' >"$repo/.hwahap/out/integration.test.txt"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/integration.md"
+printf '%s\n' '## Interpretations' 'not reported' '## Deviations' '- kept deviation' '## Tradeoffs' 'not reported' '## Open questions' '- kept question' >"$repo/.hwahap/diary.md"
 session_id=11111111-2222-3333-4444-555555555555
 mkdir -p "$codex_home/sessions/2026/09/02"
 printf '%s\n' '{"payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":4321}}}}' >"$codex_home/sessions/2026/09/02/rollout-fixture-$session_id.jsonl"
@@ -106,6 +107,8 @@ printf 'unit1\nAKIA1234567890ABCDEF\n' >"$repo/.hwahap/wt/integration/src/check.
 test -z "$(run_gate)"
 jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .tokens.orchestrator==4321 and .units[0].cache_hit_ratio==0.4 and .units[0].reasoning_ratio==(1/3) and .cache_hit_ratio==0.4 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
 test -f "$repo/.hwahap/report.md"
+grep -Fq -- '- kept deviation' "$repo/.hwahap/report.md"; grep -Fq -- '- kept question' "$repo/.hwahap/report.md"
+if grep -Fq 'not reported' "$repo/.hwahap/report.md"; then exit 1; fi
 test -f "$codex_home/hwahap/$repo_id/runs/2026-09-02-test/summary.json"
 headings=$(grep '^## ' "$repo/.hwahap/report.md" | tr '\n' '|')
 test "$headings" = '## 결론|## 근거|## 확인 과정|## 한계|## 비용|'

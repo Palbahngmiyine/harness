@@ -22,7 +22,7 @@ if [[ "$first" == NEEDS_DECISION:* ]]; then
 else
   base=HEAD
   [ ! -f "$out.base-tree" ] || base=$(<"$out.base-tree")
-  git -C "$wt" diff "$base" >"$out.patch"
+  git -C "$wt" diff --binary "$base" >"$out.patch"
   : >"$out.test.txt"
   while IFS= read -r changed; do
     allowed=$(jq -r --arg unit "$unit" --arg path "$changed" 'any(.units[] | select(.id==$unit) | .paths[]; . as $allowed | $path==$allowed or ($path | startswith($allowed + "/")))' "$goal")

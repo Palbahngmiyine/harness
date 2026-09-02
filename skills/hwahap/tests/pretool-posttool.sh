@@ -89,6 +89,7 @@ mkdir -p "$repo/.hwahap/facts"
 printf 'observed\n' >"$repo/.hwahap/facts/F1.md"
 fact='codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/facts/F1.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$fact" '{cwd:$cwd,tool_input:{command:$command}}')
+rm "$repo/.hwahap/facts/F1.md"; test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'F1 fact fail'; printf 'observed\n' >"$repo/.hwahap/facts/F1.md"
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'F1 fact pass'
 test "$(jq -r '.facts[0].sha256' "$repo/.hwahap/goal.json")" != 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
 test -z "$(run_pretool "$fact")"
