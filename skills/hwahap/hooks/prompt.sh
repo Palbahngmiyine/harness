@@ -19,7 +19,7 @@ mkdir -p .hwahap/out
 printf '%s\n' "$now" >.hwahap/human.turn
 
 sha() {
-  if command -v sha256sum >/dev/null 2>&1; then
+  if command -v sha256sum >/dev/null 2>&1; then # MUTATION-IGNORE equivalent digest providers
     sha256sum | awk '{print "sha256:" $1}'
   else
     shasum -a 256 | awk '{print "sha256:" $1}'
@@ -56,7 +56,7 @@ if [ "$prompt" = "CONFIRM ALIGN" ]; then
   exit 0
 fi
 
-printf '%s\n' "$prompt" | grep -Eo 'C[0-9]+=OTHER: .*$|C[0-9]+=(ALT[0-9]+|UNKNOWN)|S[0-9]+=NA|CP[0-9]+=OK' | while IFS= read -r token; do
+while IFS= read -r token; do
   key=${token%%=*}
   case "$key" in
     CP*) round=$((${key#CP} * 4)); bound=$(jq -e -S -c --argjson n "$round" '.rounds[] | select(.n==$n) | .checkpoint.same_as_recommendation' "$goal") || { printf 'hwahap prompt: unknown checkpoint %s\n' "$key" >&2; continue; } ;;
@@ -71,4 +71,4 @@ printf '%s\n' "$prompt" | grep -Eo 'C[0-9]+=OTHER: .*$|C[0-9]+=(ALT[0-9]+|UNKNOW
     *) continue ;;
   esac
   append_answer "$token" "$key" "$(printf '%s' "$bound" | sha)"
-done || true
+done < <(printf '%s\n' "$prompt" | awk '{for(i=1;i<=NF;i++){if($i~/^(C[0-9]+=(ALT[0-9]+|UNKNOWN)|S[0-9]+=NA|CP[0-9]+=OK)$/)print $i;else if($i~/^C[0-9]+=OTHER:$/){v=$i;for(j=i+1;j<=NF;j++)v=v" "$j;if(i<NF)print v;break}}}')

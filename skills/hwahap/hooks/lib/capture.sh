@@ -53,7 +53,7 @@ if ! jq -s --slurpfile prices "$skill/data/prices.json" --arg unit "$unit" --arg
   exit 2
 fi
 cp "$receipt" "$out.usage.json"
-if command -v sha256sum >/dev/null 2>&1; then
+if command -v sha256sum >/dev/null 2>&1; then # MUTATION-IGNORE equivalent digest providers
   sha256sum "$out.brief.md" | awk '{print "sha256:" $1}' >"$out.brief.sha256"
 else
   shasum -a 256 "$out.brief.md" | awk '{print "sha256:" $1}' >"$out.brief.sha256"

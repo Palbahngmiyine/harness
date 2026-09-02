@@ -18,14 +18,14 @@ finish() {
   mv "$tmp" "$report"
 }
 if [ -f "$out" ]; then
-  if [ "$(head -n 1 "$out")" = done ]; then finish done "$(sed -n '2p' "$out")"; exit 0; fi
+  if [ "$(head -n 1 "$out")" = "done" ]; then finish "done" "$(sed -n '2p' "$out")"; exit 0; fi
 fi
 if [ "${HWAHAP_UNATTENDED:-}" = 1 ]; then finish 'skipped:unattended'; exit 0; fi
 goal_id=$(jq -r '.goal_id' "$goal"); base=$(jq -r '.base_branch' "$goal"); head="hwahap/$goal_id"
 case "$goal_id" in main|master|develop|release/*) finish 'failed:protected branch'; exit 0 ;; esac
 case "$head" in "$base"|main|master|develop|release/*) finish 'failed:protected branch'; exit 0 ;; esac
 set +e
-remote=$(git ls-remote --exit-code --heads origin "$head" 2>"$out.stderr"); remote_rc=$?
+git ls-remote --exit-code --heads origin "$head" >/dev/null 2>"$out.stderr"; remote_rc=$?
 set -e
 if [ "$remote_rc" -eq 0 ]; then finish 'skipped:exists'; exit 0; fi
 if [ "$remote_rc" -ne 2 ]; then finish 'failed:git ls-remote'; exit 0; fi
@@ -53,4 +53,4 @@ set +e
 url=$(gh pr create --draft --base "$base" --head "$head" --title "$title" --body-file "$report" 2>>"$out.stderr"); gh_rc=$?
 set -e
 if [ "$gh_rc" -ne 0 ]; then finish 'failed:gh pr create'; exit 0; fi
-finish done "$url"
+finish "done" "$url"

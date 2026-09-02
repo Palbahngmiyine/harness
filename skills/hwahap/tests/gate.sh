@@ -47,7 +47,10 @@ git -C "$repo" worktree add -q --detach .hwahap/wt/integration HEAD
 git -C "$repo/.hwahap/wt/integration" apply ../../out/U1.patch
 printf 'exit 0\n' >"$repo/.hwahap/out/integration.test.txt"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/integration.md"
-payload=$(jq -nc --arg cwd "$repo" '{cwd:$cwd,stop_hook_active:false}')
+session_id=11111111-2222-3333-4444-555555555555
+mkdir -p "$codex_home/sessions/2026/09/02"
+printf '%s\n' '{"payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":4321}}}}' >"$codex_home/sessions/2026/09/02/rollout-fixture-$session_id.jsonl"
+payload=$(jq -nc --arg cwd "$repo" --arg session_id "$session_id" '{cwd:$cwd,session_id:$session_id,stop_hook_active:false}')
 
 run_gate() { (cd "$repo" && CODEX_HOME="$codex_home" HWAHAP_UNATTENDED=1 "$root/hooks/gate.sh" <<<"$payload") 2>"$tmp/gate.err"; }
 expect_block() {
@@ -99,7 +102,7 @@ expect_block 'fact hash changed'; restore_goal
 printf 'unit1\nAKIA1234567890ABCDEF\n' >"$repo/.hwahap/wt/integration/src/check.sh"; expect_block 'secret pattern'; printf 'unit1\n' >"$repo/.hwahap/wt/integration/src/check.sh"
 
 test -z "$(run_gate)"
-jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .cache_hit_ratio==0.4 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
+jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .tokens.orchestrator==4321 and .units[0].cache_hit_ratio==0.4 and .units[0].reasoning_ratio==(1/3) and .cache_hit_ratio==0.4 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
 test -f "$repo/.hwahap/report.md"
 test -f "$codex_home/hwahap/$repo_id/runs/2026-09-02-test/summary.json"
 headings=$(grep '^## ' "$repo/.hwahap/report.md" | tr '\n' '|')

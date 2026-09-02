@@ -30,6 +30,7 @@ test "$(<"$repo/.hwahap/out/U1.attempt")" -eq 1
 test "$(tail -n 1 "$repo/.hwahap/out/U1.test.txt")" = 'exit 0'
 test -s "$repo/.hwahap/out/U1.patch"
 test -s "$repo/.hwahap/out/U1.brief.sha256"
+test ! -e "$repo/.hwahap/out/budget.warn"
 
 jq '.budget.tokens=4500' "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"
 summary=$(cd "$repo" && HWAHAP_NOW=now "$root/hooks/posttool.sh" <<<"$payload")
@@ -44,6 +45,9 @@ git -C "$repo/.hwahap/wt/U1" add -N outside.txt
 summary=$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")
 case "$summary" in 'U1 fail '* ) ;; *) exit 1 ;; esac
 case "$(<"$repo/.hwahap/out/U1.test.txt")" in 'path outside unit scope: outside.txt'*'exit 1') ;; *) exit 1 ;; esac
+printf 'network connection failed\n' >"$repo/.hwahap/out/U1.last.md"
+summary=$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")
+case "$summary" in *'fail '*'network=1'*) ;; *) exit 1 ;; esac
 
 printf 'NEEDS_DECISION: choose behavior\n' >"$repo/.hwahap/out/U1.last.md"
 summary=$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")

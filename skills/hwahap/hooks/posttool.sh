@@ -13,7 +13,7 @@ case "$command" in codex\ exec\ *) ;; *) exit 0 ;; esac
 workdir=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-C"){print $(i+1); exit}}')
 skill=$(cd "$(dirname "$0")/.." && pwd)
 output=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-o"){print $(i+1); exit}}')
-sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print "sha256:" $1}'; else shasum -a 256 | awk '{print "sha256:" $1}'; fi; }
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print "sha256:" $1}'; else shasum -a 256 | awk '{print "sha256:" $1}'; fi; } # MUTATION-IGNORE equivalent digest providers
 if [ "$workdir" = . ]; then
   case "$output" in
     .hwahap/facts/F*.md)
@@ -51,7 +51,7 @@ case "$command" in *' -s read-only '*)
   ;; esac
 case "$command" in *' -s workspace-write '*) ;; *) exit 0 ;; esac
 set +e
-status=$($skill/hooks/lib/capture.sh "$unit" 2>".hwahap/out/$unit.capture.err")
+status=$("$skill/hooks/lib/capture.sh" "$unit" 2>".hwahap/out/$unit.capture.err")
 capture_rc=$?
 set -e
 [ "$capture_rc" -eq 0 ] || status=fail

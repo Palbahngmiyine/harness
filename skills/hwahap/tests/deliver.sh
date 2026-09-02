@@ -37,7 +37,7 @@ test "$(git -C "$current_repo/.hwahap/wt/integration" branch --show-current)" = 
 
 setup_repo success
 run_deliver success
-test "$(head -n 1 "$current_repo/.hwahap/out/deliver.txt")" = done
+test "$(head -n 1 "$current_repo/.hwahap/out/deliver.txt")" = "done"
 test "$(sed -n '2p' "$current_repo/.hwahap/out/deliver.txt")" = 'https://example.test/new'
 jq -e '.deliver=="done" and .pr_url=="https://example.test/new"' "$current_repo/.hwahap/summary.json" >/dev/null
 git --git-dir="$current_remote" show-ref --verify --quiet refs/heads/hwahap/deliver-test
@@ -45,6 +45,7 @@ case "$(git -C "$current_repo/.hwahap/wt/integration" log -1 --format=%B)" in *'
 commits=$(git -C "$current_repo/.hwahap/wt/integration" rev-list --count HEAD)
 : >"$tmp/gh.log"; run_deliver create_fail
 test ! -s "$tmp/gh.log"
+test "$(head -n 1 "$current_repo/.hwahap/out/deliver.txt")" = "done"
 test "$(git -C "$current_repo/.hwahap/wt/integration" rev-list --count HEAD)" -eq "$commits"
 
 setup_repo remote_exists
