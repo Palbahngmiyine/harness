@@ -86,10 +86,12 @@ fact='codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model
 payload=$(jq -nc --arg cwd "$repo" --arg command "$fact" '{cwd:$cwd,tool_input:{command:$command}}')
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'F1 fact pass'
 test "$(jq -r '.facts[0].sha256' "$repo/.hwahap/goal.json")" != 'sha256:0000000000000000000000000000000000000000000000000000000000000000'
+test -z "$(run_pretool "$fact")"
 
 printf 'bad\n' >"$repo/.hwahap/out/review/cold.md"
 cold=${fact/.hwahap\/facts\/F1.md/.hwahap\/out\/review\/cold.md}
 payload=$(jq -nc --arg cwd "$repo" --arg command "$cold" '{cwd:$cwd,tool_input:{command:$command}}')
+test -z "$(run_pretool "$cold")"
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review fail verdict_invalid=1'
 printf 'bad\n' >"$repo/.hwahap/out/review/U1.md"
 review='codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/U1.md'
