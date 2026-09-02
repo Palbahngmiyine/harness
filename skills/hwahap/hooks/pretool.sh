@@ -4,8 +4,7 @@ set -euo pipefail
 digest() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; } # MUTATION-IGNORE equivalent digest providers
 [ "${HWAHAP_DISABLE_HOOKS:-}" = 1 ] && exit 0; template='codex exec -C <path> -s <mode> --ignore-user-config -m <model> -c model_reasoning_effort=<effort> --ephemeral; worker also requires --json -o <file> and the three fixed -c flags'
 deny() {
-  reason=$1
-  printf 'hwahap pretool: %s\ncorrect template: %s\n' "$reason" "$template" >&2
+  reason=$1; printf 'hwahap pretool: %s\ncorrect template: %s\n' "$reason" "$template" >&2
   jq -nc --arg reason "$reason. Correct template: $template" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
   exit 0
 }
@@ -60,7 +59,7 @@ brief_hash=$(digest "$brief" | awk '{print "sha256:" $1}')
 if [ "${HWAHAP_NO_CACHE:-}" != 1 ]; then if [ -f ".hwahap/out/$unit.patch" ]; then
   if [ "$(tail -n 1 ".hwahap/out/$unit.test.txt" 2>/dev/null)" = 'exit 0' ]; then
     if [ "$(head -n 1 ".hwahap/out/review/$unit.md" 2>/dev/null)" = 'verdict: pass' ]; then
-      if [ "$(<".hwahap/out/$unit.brief.sha256")" = "$brief_hash" ]; then : >".hwahap/out/$unit.cached"; deny 'cached'; fi
+      if [ -f ".hwahap/out/$unit.brief.sha256" ]; then if [ "$(<".hwahap/out/$unit.brief.sha256")" = "$brief_hash" ]; then : >".hwahap/out/$unit.cached"; deny 'cached'; fi; fi
     fi
   fi
 fi; fi

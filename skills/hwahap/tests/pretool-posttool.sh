@@ -55,6 +55,7 @@ cp "$tmp/base-brief" "$repo/.hwahap/out/U1.brief.md"
 printf 'patch\n' >"$repo/.hwahap/out/U1.patch"
 printf 'exit 0\n' >"$repo/.hwahap/out/U1.test.txt"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/U1.md"
+test -z "$(run_pretool "$worker")"
 shasum -a 256 "$repo/.hwahap/out/U1.brief.md" | awk '{print "sha256:" $1}' >"$repo/.hwahap/out/U1.brief.sha256"
 expect_deny "$worker" cached
 rm "$repo/.hwahap/out/U1.patch" "$repo/.hwahap/out/U1.test.txt" "$repo/.hwahap/out/review/U1.md" "$repo/.hwahap/out/U1.brief.sha256"
