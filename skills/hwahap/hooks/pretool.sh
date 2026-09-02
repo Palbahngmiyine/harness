@@ -46,6 +46,7 @@ if [ "$probe" = false ]; then
   while IFS= read -r line; do grep -Fqx "$line" "$outside" || deny 'answer ledger copies differ'; done <.hwahap/answers.jsonl
   jq -e --slurpfile a .hwahap/answers.jsonl 'all(.choices[] | select(.answer!=null); . as $c | any($a[]; .key==$c.id and .text==$c.answer.text and .bound_sha256==$c.answer.choice_sha256)) and all(.surfaces.not_applicable | to_entries[]; . as $s | any($a[]; .key==$s.key and .text==$s.value.answer.text and .bound_sha256==$s.value.answer.hash)) and all(.rounds[] | select((.n%4)==0); . as $r | any($a[]; .key==("CP"+(($r.n/4)|tostring)) and .text==$r.checkpoint.answer.text and .bound_sha256==$r.checkpoint.answer.hash)) and (.confirm as $c | any($a[]; .key=="CONFIRM" and .bound_sha256==$c.goal_sha256 and .render_sha256==$c.render_sha256))' .hwahap/goal.json >/dev/null || deny 'goal answers are not bound to the user ledger'
   goal_hash=$(jq -S -c 'del(.review,.confirm)' .hwahap/goal.json | digest | awk '{print "sha256:" $1}')
+  [ "$(jq -r '.review.cold.goal_sha256 // empty' .hwahap/goal.json)" = "$goal_hash" ] || deny 'cold review is stale'
   [ "$(jq -r '.confirm.goal_sha256 // empty' .hwahap/goal.json)" = "$goal_hash" ] || deny 'confirmation goal hash is stale'
   jq -e '.confirm.revision==.revision' .hwahap/goal.json >/dev/null || deny 'confirmation revision is stale'
   render_hash=$(jq -r -f "$skill/jq/render.jq" .hwahap/goal.json | digest | awk '{print "sha256:" $1}')

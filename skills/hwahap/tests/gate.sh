@@ -23,6 +23,8 @@ jq --slurpfile a "$repo/.hwahap/answers.jsonl" '
   .choices |= map(. as $c | .answer.choice_sha256=([$a[] | select(.key==$c.id)][-1].bound_sha256)) |
   .surfaces.not_applicable |= with_entries(.key as $k | .value.answer.hash=([$a[] | select(.key==$k)][-1].bound_sha256))' \
   "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"
+cold_hash=$(jq -S -c 'del(.review,.confirm)' "$repo/.hwahap/goal.json" | digest)
+jq --arg hash "$cold_hash" '.review.cold.goal_sha256=$hash' "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"
 jq -r -f "$root/jq/render.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/align.md"
 prompt 'CONFIRM ALIGN'
 jq --slurpfile a "$repo/.hwahap/answers.jsonl" '([$a[] | select(.key=="CONFIRM")][-1]) as $c |
@@ -67,7 +69,7 @@ rewrite_confirm() {
 }
 rebind_goal() {
   bound=$(jq -S -c 'del(.review,.confirm)' "$repo/.hwahap/goal.json" | digest)
-  jq --arg bound "$bound" '.confirm.goal_sha256=$bound' "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"
+  jq --arg bound "$bound" '.confirm.goal_sha256=$bound | .review.cold.goal_sha256=$bound' "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"
   rewrite_confirm
 }
 

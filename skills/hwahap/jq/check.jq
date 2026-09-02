@@ -66,6 +66,8 @@ def cyclic($g; $id; $seen):
 | req(all(.open_items[] | select(.status == "open"); .choice_id as $c |
     any($g.choices[]; .id == $c and .answer.text == (.id + "=UNKNOWN"))); "invalid open item")
 | req(if any(.open_items[]; .status == "open") then .confirm == null else true end; "open item cannot be confirmed")
+| req((.review.cold | type == "object") and (.review.cold.ts | type == "string") and (.review.cold.goal_sha256 | digest)
+    and ([.review.cold.required_user_choices,.review.cold.underspecified,.review.cold.unmapped_spec_ids] | all(type == "array" and length == 0)); "cold review is incomplete")
 | req(if .confirm == null then true else (.confirm.goal_sha256 | digest)
     and (.confirm.render_sha256 | digest) and .confirm.revision == .revision end; "invalid confirmation")
 | req((.budget.tokens | type == "number") and .budget.tokens >= 0 and (.budget.max_parallel | type == "number") and .budget.max_parallel >= 1; "invalid budget")

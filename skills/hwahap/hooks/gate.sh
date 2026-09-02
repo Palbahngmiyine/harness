@@ -13,6 +13,7 @@ building=0; compgen -G '.hwahap/out/U*.attempt' >/dev/null && building=1
 fail() { printf 'hwahap gate: %s\n' "$1" >&2; if [ "$building" -eq 1 ]; then jq -nc --arg reason "$1" '{decision:"block",reason:$reason}'; fi; exit 0; }
 sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print "sha256:" $1}'; else shasum -a 256 | awk '{print "sha256:" $1}'; fi; } # MUTATION-IGNORE equivalent digest providers
 goal_hash=$(jq -S -c 'del(.review,.confirm)' "$goal" | sha)
+[ "$(jq -r '.review.cold.goal_sha256 // empty' "$goal")" = "$goal_hash" ] || fail 'cold review is stale'
 [ "$(jq -r '.confirm.goal_sha256 // empty' "$goal")" = "$goal_hash" ] || fail 'confirmation goal hash is stale'
 jq -e '.confirm.revision==.revision' "$goal" >/dev/null || fail 'confirmation revision is stale'
 repo=$(git rev-parse --show-toplevel); repo_id=$(printf '%s' "$repo" | sha | cut -c8-23)
