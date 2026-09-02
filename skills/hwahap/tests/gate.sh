@@ -49,7 +49,7 @@ printf 'exit 0\n' >"$repo/.hwahap/out/integration.test.txt"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/integration.md"
 payload=$(jq -nc --arg cwd "$repo" '{cwd:$cwd,stop_hook_active:false}')
 
-run_gate() { (cd "$repo" && CODEX_HOME="$codex_home" "$root/hooks/gate.sh" <<<"$payload") 2>"$tmp/gate.err"; }
+run_gate() { (cd "$repo" && CODEX_HOME="$codex_home" HWAHAP_UNATTENDED=1 "$root/hooks/gate.sh" <<<"$payload") 2>"$tmp/gate.err"; }
 expect_block() {
   output=$(run_gate)
   printf '%s' "$output" | jq -e --arg reason "$1" '.decision=="block" and (.reason | contains($reason))' >/dev/null
@@ -96,9 +96,10 @@ expect_block 'goal contract'; restore_goal
 mkdir -p "$repo/.hwahap/facts"; printf 'fact\n' >"$repo/.hwahap/facts/F1.md"; fact_hash=$(digest <"$repo/.hwahap/facts/F1.md")
 jq --arg hash "$fact_hash" '.facts=[{id:"F1",path:".hwahap/facts/F1.md",sha256:$hash}]' "$repo/.hwahap/goal.json" >"$tmp/goal" && mv "$tmp/goal" "$repo/.hwahap/goal.json"; rebind_goal; printf 'changed\n' >"$repo/.hwahap/facts/F1.md"
 expect_block 'fact hash changed'; restore_goal
+printf 'unit1\nAKIA1234567890ABCDEF\n' >"$repo/.hwahap/wt/integration/src/check.sh"; expect_block 'secret pattern'; printf 'unit1\n' >"$repo/.hwahap/wt/integration/src/check.sh"
 
 test -z "$(run_gate)"
-jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .cache_hit_ratio==0.4 and .deliver=="skipped:pending"' "$repo/.hwahap/summary.json" >/dev/null
+jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .cache_hit_ratio==0.4 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
 test -f "$repo/.hwahap/report.md"
 test -f "$codex_home/hwahap/$repo_id/runs/2026-09-02-test/summary.json"
 headings=$(grep '^## ' "$repo/.hwahap/report.md" | tr '\n' '|')
