@@ -1,0 +1,39 @@
+{
+  "schema": "hwahap/v2",
+  "goal_id": "2026-09-02-test",
+  "revision": 1,
+  "base_branch": "main",
+  "goal": {"statement": "검증기를 시험한다", "success": ["검증 통과"], "non_goals": ["인도하지 않음"]},
+  "surfaces": {
+    "applicable": ["S1"],
+    "not_applicable": {
+      "S2": {"reason": "fixture", "answer": {"text": "S2=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S3": {"reason": "fixture", "answer": {"text": "S3=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S4": {"reason": "fixture", "answer": {"text": "S4=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S5": {"reason": "fixture", "answer": {"text": "S5=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S6": {"reason": "fixture", "answer": {"text": "S6=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S7": {"reason": "fixture", "answer": {"text": "S7=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S8": {"reason": "fixture", "answer": {"text": "S8=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S9": {"reason": "fixture", "answer": {"text": "S9=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S10": {"reason": "fixture", "answer": {"text": "S10=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S11": {"reason": "fixture", "answer": {"text": "S11=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+      "S12": {"reason": "fixture", "answer": {"text": "S12=NA", "ts": "2026-09-02T00:00:00Z", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}}
+    }
+  },
+  "terms": [],
+  "facts": [],
+  "choices": [
+    {"id": "C1", "surface": "S1", "kind": "decision", "derived_from": [], "question": "성공은?", "alternatives": [{"id": "ALT1", "value": "통과"}, {"id": "ALT2", "value": "실패"}], "recommendation": "ALT1", "evidence": [], "answer": {"text": "C1=ALT1", "ts": "2026-09-02T00:00:00Z", "choice_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}},
+    {"id": "C2", "surface": "S1", "kind": "scenario", "derived_from": [], "question": "실패하면?", "alternatives": [{"id": "ALT1", "value": "중단"}, {"id": "ALT2", "value": "계속"}], "recommendation": "ALT1", "evidence": [], "answer": {"text": "C2=ALT1", "ts": "2026-09-02T00:00:00Z", "choice_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}}
+  ],
+  "rounds": [{"n": 1, "choice_ids": ["C1", "C2"], "new_choice_ids": [], "checkpoint": null}],
+  "specs": [{"id": "SP1", "statement": "검증 계약", "choice_ids": ["C1", "C2"]}],
+  "acceptance": [{"id": "A1", "spec_ids": ["SP1"], "test": "./test.sh"}],
+  "units": [{"id": "U1", "title": "검증", "paths": ["src/check.sh"], "test": "./test.sh", "acceptance_ids": ["A1"], "depends_on": [], "probe": false, "model": null, "effort": null}],
+  "open_items": [],
+  "review": {"cold": {"ts": "2026-09-02T00:00:00Z", "goal_sha256": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "required_user_choices": [], "underspecified": [], "unmapped_spec_ids": []}},
+  "confirm": null,
+  "budget": {"tokens": 500000, "max_parallel": 1},
+  "final_review": "terra",
+  "full_suite": "./test.sh"
+}
