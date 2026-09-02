@@ -74,12 +74,12 @@ printf '2\n' >"$repo/.hwahap/out/U1.attempt"
 expect_deny "$worker" 'retry limit'
 rm "$repo/.hwahap/out/U1.attempt"
 
-jq '.units += [{id:"U2",title:"probe",paths:["src/other.sh"],test:"true",acceptance_ids:[],depends_on:["U1"],probe:true,model:null,effort:null}]' \
+jq '.units += [{id:"P1",title:"probe",paths:["src/other.sh"],test:"true",acceptance_ids:[],depends_on:["U1"],probe:true,model:null,effort:null}]' \
   "$tmp/base-goal" >"$repo/.hwahap/goal.json"
-git -C "$repo" worktree add -q --detach .hwahap/wt/U2 HEAD
-jq -r --rawfile head "$root/data/brief.head.md" --arg mode worker --arg unit U2 --arg patch '' --arg question '' \
-  -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/U2.brief.md"
-worker2=${worker//U1/U2}
+git -C "$repo" worktree add -q --detach .hwahap/wt/P1 HEAD
+jq -r --rawfile head "$root/data/brief.head.md" --arg mode worker --arg unit P1 --arg patch '' --arg question '' \
+  -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/P1.brief.md"
+worker2=${worker//U1/P1}
 expect_deny "$worker2" 'dependency U1'
 
 cp "$tmp/base-goal" "$repo/.hwahap/goal.json"

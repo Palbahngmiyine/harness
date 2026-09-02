@@ -23,6 +23,7 @@ def cyclic($g; $id; $seen):
 | req((.goal.statement | type == "string") and (.goal.statement | length > 0); "goal statement is required")
 | req((.goal.success | length) > 0 and (.goal.non_goals | length) > 0; "goal outcomes are incomplete")
 | req(unique_ids(.surfaces.applicable); "duplicate applicable surface")
+| req(all(.surfaces.applicable[]; . as $s | ($surfaces | index($s)) != null) and all(.surfaces.applicable[]; . as $s | $g.surfaces.not_applicable[$s] == null); "invalid applicable surface")
 | req(all($surfaces[]; . as $s | (($g.surfaces.applicable | index($s)) != null) or ($g.surfaces.not_applicable[$s] != null)); "surface is unclassified")
 | req(all(.surfaces.not_applicable | keys[]; . as $s | $surfaces | index($s) != null); "unknown surface")
 | req(all(.surfaces.not_applicable | to_entries[]; .key as $id |
@@ -32,13 +33,16 @@ def cyclic($g; $id; $seen):
 | req(all(.facts[]; (.path | fact_path) and (.sha256 | digest)); "invalid fact")
 | req(unique_ids([.choices[].id]); "duplicate choice id")
 | req(all(.choices[]; . as $c | (.alternatives | length) >= 2
-    and unique_ids([.alternatives[].id]) and unique_ids([.alternatives[].value])
+    and unique_ids([.alternatives[].id]) and all(.alternatives[].id; test("^ALT[0-9]+$")) and unique_ids([.alternatives[].value])
+    and ($g.surfaces.applicable | index($c.surface) != null)
     and (["decision","scenario","term"] | index($c.kind) != null)
     and any(.alternatives[]; .id == $c.recommendation)
     and all(.evidence[]?; . as $f | any($g.facts[]; .id == $f))); "invalid choice")
 | req(all(.choices[] | select(.answer != null); . as $c | (.answer | stamped)
     and (.answer.choice_sha256 | digest) and (.answer.text | startswith($c.id + "="))
     and (.answer.text | test("=(ALT[0-9]+|UNKNOWN|OTHER: .+)$"))); "invalid choice answer")
+| req(all(.choices[] | select(.answer.text? | test("=OTHER: ")); . as $c | (.answer.text | split("=OTHER: ")[1]) as $v | any(.alternatives[]; .value==$v and .origin=="user")); "OTHER answer is not an alternative")
+| req(all(.choices[] | select(.answer.text? | endswith("=UNKNOWN")); .id as $id | any($g.open_items[]; .choice_id==$id and .status=="open")); "UNKNOWN answer is not open")
 | req(all(.surfaces.applicable[]; . as $s |
     any($g.choices[]; .surface == $s and .kind == "decision" and .answer != null)
     and any($g.choices[]; .surface == $s and .kind == "scenario" and .answer != null)); "applicable surface is incomplete")
@@ -59,6 +63,7 @@ def cyclic($g; $id; $seen):
     and all(.spec_ids[]; . as $s | any($g.specs[]; .id == $s))
     and any($g.units[]; (.probe | not) and (.acceptance_ids | index($a.id) != null))); "unmapped acceptance")
 | req((.units | length) > 0 and (.units | length) < 10000; "invalid unit count")
+| req(all(.units[]; if .probe then (.id | test("^P[0-9]+$")) else (.id | test("^U[0-9]+$")) end); "invalid unit id")
 | req(all(.units[]; . as $u | (.test | length) > 0 and (.paths | length) > 0 and all(.paths[]; safe_path)
     and all(.acceptance_ids[]; . as $a | any($g.acceptance[]; .id == $a))
     and all(.depends_on[]?; . as $d | any($g.units[]; .id == $d and (.probe | not)))); "invalid unit")

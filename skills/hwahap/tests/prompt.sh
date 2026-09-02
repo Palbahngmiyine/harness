@@ -36,6 +36,9 @@ run_prompt 'C2=UNKNOWN'
 test "$(lines)" -eq 3
 run_prompt 'C1=OTHER: 사용자 지정 값'
 test "$(lines)" -eq 4
+test "$(jq -r '.choices[]|select(.id=="C1")|.alternatives[-1]|select(.origin=="user")|.value' "$workspace/.hwahap/goal.json")" = '사용자 지정 값'
+choice=$(jq -S -c '.choices[]|select(.id=="C1")|{id,question,alternatives}' "$workspace/.hwahap/goal.json")
+test "$(tail -n 1 "$workspace/.hwahap/answers.jsonl" | jq -r '.bound_sha256')" = "$(printf '%s' "$choice" | digest)"
 run_prompt 'CP1=OK'
 test "$(lines)" -eq 5
 test "$(jq -r 'select(.key=="C1") | .text' "$workspace/.hwahap/answers.jsonl" | tail -n 1)" = 'C1=OTHER: 사용자 지정 값'
