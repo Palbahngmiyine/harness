@@ -13,7 +13,7 @@ git -C "$repo" config user.email fixture@example.com
 git -C "$repo" config user.name Fixture
 printf 'base\n' >"$repo/src/check.sh"; git -C "$repo" add src; git -C "$repo" commit -qm base
 git -C "$repo" remote add origin "$remote"; git -C "$repo" push -q -u origin main
-jq '.goal_id="e2e" | .goal.statement="e2e fixture" | .units[0].test="grep -q shim src/check.sh" | .full_suite="grep -q shim src/check.sh"' \
+jq --arg parallel "${HWAHAP_E2E_MAX_PARALLEL:-3}" '.goal_id="e2e" | .goal.statement="e2e fixture" | .units[0].test="grep -q shim src/check.sh" | .full_suite="grep -q shim src/check.sh" | .budget.max_parallel=($parallel|tonumber)' \
   "$root/tests/fixtures/check/valid/goal.json" >"$repo/.hwahap/goal.json"
 
 prompt() { jq -nc --arg cwd "$repo" --arg prompt "$1" '{cwd:$cwd,prompt:$prompt}' | CODEX_HOME="$codex_home" HWAHAP_NOW=2026-09-02T00:00:00Z "$root/hooks/prompt.sh"; }
@@ -55,4 +55,5 @@ test -z "$(cd "$repo" && PATH="$shim:$PATH" CODEX_HOME="$codex_home" GH_MODE=suc
 jq -e '.deliver=="done" and .pr_url=="https://example.test/new" and .units_passed==1' "$repo/.hwahap/summary.json" >/dev/null
 test "$(wc -l <"$tmp/codex.log")" -eq 4
 git --git-dir="$remote" show-ref --verify --quiet refs/heads/hwahap/e2e
+if [ -n "${HWAHAP_E2E_RESULT:-}" ]; then { for file in U1.patch U1.test.txt integration.test.txt review/U1.md review/integration.md; do shasum -a 256 "$repo/.hwahap/out/$file" | awk -v file="$file" '{print file, $1}'; done; jq -S 'del(.config.max_parallel)' "$repo/.hwahap/summary.json"; } >"$HWAHAP_E2E_RESULT"; fi
 printf 'e2e align worker review integrate gate deliver\n'

@@ -35,10 +35,14 @@ printf 'done\n' >"$repo/.hwahap/out/U2.last.md"
 (cd "$repo" && HWAHAP_NOW=now "$root/hooks/lib/capture.sh" U2) >/dev/null
 case "$(<"$repo/.hwahap/out/U2.patch")" in *'src/check.sh'*) exit 1 ;; *) ;; esac
 jq '(.units[] | select(.id=="U2") | .probe)=false |
-  .units += [{id:"U3",title:"excluded probe",paths:["src/probe.sh"],test:"false",acceptance_ids:[],depends_on:[],probe:true,model:null,effort:null}]' \
+  .units += [{id:"P1",title:"excluded probe",paths:["src/probe.sh"],test:"false",acceptance_ids:[],depends_on:[],probe:true,model:null,effort:null}]' \
   "$repo/.hwahap/goal.json" >"$tmp/goal"
 mv "$tmp/goal" "$repo/.hwahap/goal.json"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/U2.md"
+printf 'blocked\n' >"$repo/.hwahap/wt/integration"
+set +e; (cd "$repo" && "$root/hooks/lib/integrate.sh"); rc=$?; set -e
+test "$rc" -ne 0; case "$(tail -n 1 "$repo/.hwahap/out/integration.test.txt")" in 'exit '[1-9]*) ;; *) exit 1 ;; esac
+rm "$repo/.hwahap/wt/integration" "$repo/.hwahap/out/integration.test.txt"
 review='codex exec -C .hwahap/wt/U2 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/U2.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$review" '{cwd:$cwd,tool_input:{command:$command}}')
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'U2 review pass integration=pass'

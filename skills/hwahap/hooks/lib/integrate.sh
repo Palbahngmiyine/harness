@@ -14,7 +14,8 @@ done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
 : >"$out"
 mkdir -p .hwahap/wt
 if [ ! -d .hwahap/wt/integration ]; then
-  git worktree add --detach .hwahap/wt/integration HEAD >>"$out" 2>&1
+  set +e; git worktree add -q --detach .hwahap/wt/integration HEAD >>"$out" 2>&1; rc=$?; set -e
+  if [ "$rc" -ne 0 ]; then printf 'exit %s\n' "$rc" >>"$out"; exit "$rc"; fi
 fi
 order=$(jq -r '
   def topo($left;$done):
