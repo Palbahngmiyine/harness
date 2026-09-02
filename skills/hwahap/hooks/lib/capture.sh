@@ -20,9 +20,9 @@ if [[ "$first" == NEEDS_DECISION:* ]]; then
   rm -f "$out.patch" "$out.test.txt"
   status=needs_decision
 else
-  base=HEAD
-  [ ! -f "$out.base-tree" ] || base=$(<"$out.base-tree")
-  git -C "$wt" diff --binary "$base" >"$out.patch"
+  base_index="$(pwd)/$out.base-index"
+  diff_base() { if [ -f "$base_index" ]; then GIT_INDEX_FILE="$base_index" git -C "$wt" diff "$@"; else git -C "$wt" diff "$@" HEAD; fi; }
+  diff_base --binary >"$out.patch"
   : >"$out.test.txt"
   while IFS= read -r changed; do
     allowed=$(jq -r --arg unit "$unit" --arg path "$changed" 'any(.units[] | select(.id==$unit) | .paths[]; . as $allowed | $path==$allowed or ($path | startswith($allowed + "/")))' "$goal")
@@ -31,7 +31,7 @@ else
       status=fail
       break
     fi
-  done < <(git -C "$wt" diff --name-only "$base")
+  done < <(diff_base --name-only)
   if [ ! -s "$out.test.txt" ]; then
     test_command=$(jq -er --arg unit "$unit" '.units[] | select(.id==$unit) | .test' "$goal")
     set +e

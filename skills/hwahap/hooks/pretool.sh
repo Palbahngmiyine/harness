@@ -72,9 +72,9 @@ if [ "$budget" -eq 0 ]; then deny 'token budget is exhausted'; fi
 [ "$used" -lt "$budget" ] || deny 'token budget is exhausted'
 attempt=0; [ ! -f ".hwahap/out/$unit.attempt" ] || attempt=$(<".hwahap/out/$unit.attempt")
 [ "$attempt" -lt 2 ] || deny 'worker retry limit reached'
-if [ "$attempt" -eq 0 ]; then while IFS= read -r dep; do
+if [ "$attempt" -eq 0 ]; then base_index="$(pwd)/.hwahap/out/$unit.base-index"; cp "$(git -C "$workdir" rev-parse --git-path index)" "$base_index"; while IFS= read -r dep; do
     git -C "$workdir" apply --check "../../out/$dep.patch" || deny "dependency $dep does not apply"
     git -C "$workdir" apply "../../out/$dep.patch"
+    GIT_INDEX_FILE="$base_index" git -C "$workdir" apply --cached "../../out/$dep.patch"
   done < <(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .depends_on[]' .hwahap/goal.json)
-  git -C "$workdir" add -A; git -C "$workdir" write-tree >".hwahap/out/$unit.base-tree"; git -C "$workdir" reset >/dev/null
 fi

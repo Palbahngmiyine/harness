@@ -28,7 +28,7 @@ worker='codex exec -C .hwahap/wt/U2 -s workspace-write --ignore-user-config -m g
 payload=$(jq -nc --arg cwd "$repo" --arg command "$worker" '{cwd:$cwd,tool_input:{command:$command}}')
 test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
 test "$(<"$repo/.hwahap/wt/U2/src/check.sh")" = unit1
-test -s "$repo/.hwahap/out/U2.base-tree"
+test -s "$repo/.hwahap/out/U2.base-index"
 printf 'unit2\n' >"$repo/.hwahap/wt/U2/src/other.sh"
 cp "$root/tests/fixtures/usage/good/events.jsonl" "$repo/.hwahap/out/U2.events.jsonl"
 printf 'done\n' >"$repo/.hwahap/out/U2.last.md"
