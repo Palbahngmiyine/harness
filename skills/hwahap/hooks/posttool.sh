@@ -39,7 +39,14 @@ case "$command" in *' -s read-only '*)
   attempts=0; [ ! -f "$attempt_file" ] || attempts=$(<"$attempt_file"); printf '%s\n' "$((attempts + 1))" >"$attempt_file"
   first=$(head -n 1 "$output" 2>/dev/null || true)
   case "$first" in 'verdict: pass') status=pass ;; 'verdict: fail') status=fail ;; *) status=fail; invalid=' verdict_invalid=1' ;; esac
-  printf '%s review %s%s\n' "$unit" "$status" "${invalid:-}"
+  integration=""
+  if [ "$status" = pass ]; then
+    if [ "$unit" != integration ]; then
+      set +e; "$skill/hooks/lib/integrate.sh" >/dev/null; integrate_rc=$?; set -e
+      case "$integrate_rc" in 0) integration=' integration=pass' ;; 3) ;; *) integration=' integration=fail' ;; esac
+    fi
+  fi
+  printf '%s review %s%s%s\n' "$unit" "$status" "${invalid:-}" "$integration"
   exit 0
   ;; esac
 case "$command" in *' -s workspace-write '*) ;; *) exit 0 ;; esac

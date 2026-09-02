@@ -12,6 +12,7 @@ attempt=0
 [ ! -f "$out.attempt" ] || attempt=$(<"$out.attempt")
 attempt=$((attempt + 1))
 printf '%s\n' "$attempt" >"$out.attempt"
+rm -f "$out.cached"
 first=""
 [ ! -f "$out.last.md" ] || first=$(head -n 1 "$out.last.md")
 if [[ "$first" == NEEDS_DECISION:* ]]; then
@@ -19,7 +20,9 @@ if [[ "$first" == NEEDS_DECISION:* ]]; then
   rm -f "$out.patch" "$out.test.txt"
   status=needs_decision
 else
-  git -C "$wt" diff HEAD >"$out.patch"
+  base=HEAD
+  [ ! -f "$out.base-tree" ] || base=$(<"$out.base-tree")
+  git -C "$wt" diff "$base" >"$out.patch"
   : >"$out.test.txt"
   while IFS= read -r changed; do
     allowed=$(jq -r --arg unit "$unit" --arg path "$changed" 'any(.units[] | select(.id==$unit) | .paths[]; . as $allowed | $path==$allowed or ($path | startswith($allowed + "/")))' "$goal")
@@ -28,7 +31,7 @@ else
       status=fail
       break
     fi
-  done < <(git -C "$wt" diff --name-only HEAD)
+  done < <(git -C "$wt" diff --name-only "$base")
   if [ ! -s "$out.test.txt" ]; then
     test_command=$(jq -er --arg unit "$unit" '.units[] | select(.id==$unit) | .test' "$goal")
     set +e
