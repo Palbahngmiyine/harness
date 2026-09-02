@@ -1,4 +1,4 @@
 interface:
-  display_name: "Hwahap Orchestrator"
-  short_description: "확정 스펙을 작은 구현과 독립 검증으로 끝까지 전달"
-  default_prompt: "Use $hwahap to execute this approved specification with Sol planning, atomic Luna implementation, independent Luna and Terra review, and structured .hwahap evidence."
+  display_name: "Hwahap"
+  short_description: "요청을 확정 계약으로 정렬하고 격리 구현과 검토를 거쳐 draft PR로 전달"
+  default_prompt: "Use $hwahap to align this implementation request, execute atomic isolated workers and independent reviews, integrate the evidence, and deliver a draft pull request."

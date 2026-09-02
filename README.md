@@ -12,7 +12,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
 | [grill-prfaq](skills/grill-prfaq/) | Pressure-test an idea before writing a Working Backwards PR/FAQ | KO |
-| [hwahap](skills/hwahap/) | Execute an approved PR/FAQ with Sol planning, atomic Luna implementation, and independent Luna/Terra review | KO/EN |
+| [hwahap](skills/hwahap/) | Align an implementation contract, run isolated Codex workers/reviews, and deliver a draft PR | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
 
@@ -107,44 +107,31 @@ python3 skills/grill-prfaq/scripts/validate_prfaq.py --help
 
 ### hwahap
 
-Execute a confirmed `status: prfaq` specification through a fixed implementation and review loop:
-- Sol Extra High plans and owns structured state in the target workspace's `.hwahap`
-- one Luna High implementer writes one mechanically verifiable unit at a time
-- a separate Luna Extra High verifier and Terra Extra High scope reviewer inspect the same diff in parallel
-- the first failed review gets one bounded recovery; the second returns to Sol for one replan
-- final Sol review attempts Ultra and records an Extra High fallback only when Ultra is unavailable or unsupported
-- elapsed time and observable run counters are always reported; exact tokens are reported only when surfaced by the runtime
+Hwahap v2 keeps alignment and implementation in one Codex session:
 
-Hwahap requires no login credential, API key, or access token. Here, “exact
-tokens” means a numeric model-usage receipt. The approved PR/FAQ is read as an
-input path and is not copied into this repository's `docs/prfaq`.
+- inspect twelve decision surfaces and bind only explicit user answers
+- render the exact `goal.json` contract before `CONFIRM ALIGN`
+- run atomic Luna workers and independent Terra reviews in isolated worktrees
+- capture scoped patches, tests, token/cost receipts, and cache evidence through four hooks
+- integrate passing units once, run the full suite, and open a draft PR after the Stop gate
+- optionally improve the harness only under signal, cadence, benchmark, and hard-budget gates
 
-The Sol profile requests Fast, but this platform exposes no verifiable runtime
-receipt. Hwahap therefore records local `fast_status: unknown`; it never infers
-`enabled` or `disabled` from profile metadata.
+It requires Bash, `jq`, Git, `gh`, and Codex CLI 0.151 or newer. It uses no
+Python runtime, separate Hwahap CLI, session profile, or project agent install.
+Copy the skill to the Codex skills directory, then merge
+[`hooks/hooks.json`](skills/hwahap/hooks/hooks.json) into `~/.codex/hooks.json`
+without removing existing hooks. Restart Codex after hook registration.
 
-Validate the skill and its state contract from the repository root:
+Validate from the repository root:
 
 ```bash
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/hwahap
-python3 skills/hwahap/scripts/test_repository_security.py
-python3 skills/hwahap/scripts/test_install_project_agents.py
-python3 skills/hwahap/scripts/test_hwahap_dependency_integrity.py
-python3 skills/hwahap/scripts/test_hwahap_report.py
-python3 skills/hwahap/scripts/test_hwahap_state.py
-"$PWD/skills/hwahap/scripts/hwahap" --help
+for test in skills/hwahap/tests/*.sh; do bash "$test"; done
 ```
 
-Use the absolute `"$PWD/skills/hwahap/scripts/hwahap"` launcher. It isolates the
-state program; copied, linked, replaced, or direct `hwahap_state.py` execution
-is outside the boundary. The launcher, adjacent state script, `/bin/sh`, kernel,
-selected Python, and standard library remain trust roots; same-UID races and a
-native signed bootstrap are outside this scope.
-
-Completed runs use a v4 receipt: canonical `report-data.json` and validated
-`report.html` are single-link files with separate digests. The visible ledger
-has no history cap. Recovery is best-effort, not crash/power-loss durable; v3
-and earlier receipts are rejected without silent migration.
+Target repositories keep ignored run state under `.hwahap/`. Durable summaries
+and human answer ledgers live under `~/.codex/hwahap/<repo-id>/`; Hwahap never
+marks a PR ready, merges it, or enables auto-merge.
 
 ### korean-spell-check
 
