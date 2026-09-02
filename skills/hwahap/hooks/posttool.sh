@@ -11,10 +11,38 @@ cd "$cwd" || exit 0
 [ -f .hwahap/goal.json ] || exit 0
 case "$command" in codex\ exec\ *) ;; *) exit 0 ;; esac
 workdir=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-C"){print $(i+1); exit}}')
-case "$workdir" in .hwahap/wt/U*) ;; *) exit 0 ;; esac
-case "$command" in *' -s workspace-write '*) ;; *) exit 0 ;; esac
-unit=${workdir##*/}
 skill=$(cd "$(dirname "$0")/.." && pwd)
+output=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-o"){print $(i+1); exit}}')
+sha() { if command -v sha256sum >/dev/null 2>&1; then sha256sum | awk '{print "sha256:" $1}'; else shasum -a 256 | awk '{print "sha256:" $1}'; fi; }
+if [ "$workdir" = . ]; then
+  case "$output" in
+    .hwahap/facts/F*.md)
+      fact=${output##*/}; fact=${fact%.md}
+      jq -e --arg path "$output" 'any(.facts[]; .path==$path)' .hwahap/goal.json >/dev/null || { printf '%s fact fail\n' "$fact"; exit 0; }
+      digest=$(sha <"$output")
+      tmp=$(mktemp .hwahap/goal.XXXXXX)
+      jq --arg path "$output" --arg digest "$digest" '(.facts[] | select(.path==$path) | .sha256)=$digest' .hwahap/goal.json >"$tmp"
+      mv "$tmp" .hwahap/goal.json
+      printf '%s fact pass\n' "$fact"
+      ;;
+    .hwahap/out/review/cold.md)
+      first=$(head -n 1 "$output" 2>/dev/null || true)
+      case "$first" in 'verdict: pass') printf 'cold review pass\n' ;; 'verdict: fail') printf 'cold review fail\n' ;; *) printf 'cold review fail verdict_invalid=1\n' ;; esac
+      ;;
+  esac
+  exit 0
+fi
+case "$workdir" in .hwahap/wt/U*|.hwahap/wt/integration) ;; *) exit 0 ;; esac
+unit=${workdir##*/}
+case "$command" in *' -s read-only '*)
+  attempt_file=".hwahap/out/review/$unit.attempt"
+  attempts=0; [ ! -f "$attempt_file" ] || attempts=$(<"$attempt_file"); printf '%s\n' "$((attempts + 1))" >"$attempt_file"
+  first=$(head -n 1 "$output" 2>/dev/null || true)
+  case "$first" in 'verdict: pass') status=pass ;; 'verdict: fail') status=fail ;; *) status=fail; invalid=' verdict_invalid=1' ;; esac
+  printf '%s review %s%s\n' "$unit" "$status" "${invalid:-}"
+  exit 0
+  ;; esac
+case "$command" in *' -s workspace-write '*) ;; *) exit 0 ;; esac
 set +e
 status=$($skill/hooks/lib/capture.sh "$unit" 2>".hwahap/out/$unit.capture.err")
 capture_rc=$?
