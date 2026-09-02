@@ -15,5 +15,5 @@ kcov --merge "$out/merged" "${inputs[@]}" >/dev/null
 json=$(find "$out/merged" -name coverage.json -print | head -n 1)
 [ -n "$json" ] || { printf 'kcov coverage.json is missing\n' >&2; exit 1; }
 percent=$(jq -r '.percent_covered' "$json")
-[ "$percent" = 100 ] || { printf 'kcov executable-line coverage is %s, expected 100\n' "$percent" >&2; exit 1; }
+jq -e '(.percent_covered | tonumber) == 100' "$json" >/dev/null || { printf 'kcov executable-line coverage is %s, expected 100\n' "$percent" >&2; exit 1; }
 printf 'kcov executable-line coverage=100\n'
