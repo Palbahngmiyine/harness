@@ -10,6 +10,7 @@ setup() { root=$(cd "$BATS_TEST_DIRNAME" && pwd); }
 @test "stop gate" { run bash "$root/gate.sh"; [ "$status" -eq 0 ]; }
 @test "delivery" { run bash "$root/deliver.sh"; [ "$status" -eq 0 ]; }
 @test "API-free lifecycle" { run bash "$root/e2e.sh"; [ "$status" -eq 0 ]; }
+@test "parallel boundaries" { run bash "$root/boundary.sh"; [ "$status" -eq 0 ]; }
 @test "goal fuzz" { run bash "$root/fuzz/goal.sh"; [ "$status" -eq 0 ]; }
 @test "answer fuzz" { run bash "$root/fuzz/answers.sh"; [ "$status" -eq 0 ]; }
 @test "command fuzz" { run bash "$root/fuzz/command.sh"; [ "$status" -eq 0 ]; }
