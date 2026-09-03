@@ -1,0 +1,30 @@
+#!/bin/bash
+# Deterministic codex exec shim for the API-free lifecycle test.
+set -euo pipefail
+[ "$1" = exec ] || exit 2
+shift
+workdir='' output='' sandbox=''
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -C) workdir=$2; shift 2 ;;
+    -o) output=$2; shift 2 ;;
+    -s) sandbox=$2; shift 2 ;;
+    -m|-c) shift 2 ;;
+    --ignore-user-config|--ephemeral|--json) shift ;;
+    *) shift ;;
+  esac
+done
+cat >/dev/null
+[ -z "${CODEX_SHIM_LOG:-}" ] || printf '%s %s %s\n' "$workdir" "$sandbox" "$output" >>"$CODEX_SHIM_LOG"
+if [ "$sandbox" = workspace-write ]; then
+  printf 'shim worker\n' >"$workdir/${CODEX_SHIM_PATH:?}"
+  printf 'done\n' >"$output"
+  printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":500,"output_tokens":200,"reasoning_output_tokens":50}}'
+  exit 0
+fi
+case "$output" in
+  .hwahap/out/review/*.md) printf 'verdict: pass\n' >"$output" ;;
+  .hwahap/facts/F*.md) printf 'observed fixture\n' >"$output" ;;
+  *) exit 2 ;;
+esac
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":500,"output_tokens":200,"reasoning_output_tokens":50}}'

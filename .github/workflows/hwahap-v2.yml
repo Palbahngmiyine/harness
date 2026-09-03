@@ -1,0 +1,74 @@
+name: Hwahap v2
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hwahap-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Check out the exact revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Linux test tools
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats binutils-dev cmake curl g++ libcurl4-openssl-dev libdw-dev libelf-dev libiberty-dev libssl-dev libstdc++-12-dev pkg-config ripgrep shellcheck zlib1g-dev
+          curl -L -o "$RUNNER_TEMP/kcov-v43.tar.gz" https://github.com/SimonKagstrom/kcov/archive/refs/tags/v43.tar.gz
+          echo "4cbba86af11f72de0c7514e09d59c7927ed25df7cebdad087f6d3623213b95bf  $RUNNER_TEMP/kcov-v43.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/kcov-src"
+          tar -xzf "$RUNNER_TEMP/kcov-v43.tar.gz" -C "$RUNNER_TEMP/kcov-src" --strip-components=1
+          cmake -S "$RUNNER_TEMP/kcov-src" -B "$RUNNER_TEMP/kcov-build" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$RUNNER_TEMP/kcov-install"
+          cmake --build "$RUNNER_TEMP/kcov-build" --parallel 2
+          cmake --install "$RUNNER_TEMP/kcov-build"
+          echo "$RUNNER_TEMP/kcov-install/bin" >> "$GITHUB_PATH"
+
+      - name: Install macOS test tools
+        if: runner.os == 'macOS'
+        run: brew install bats-core ripgrep shellcheck
+
+      - name: Run deterministic shell harnesses
+        run: skills/hwahap/tests/all.sh
+
+      - name: Run Bats fixture harness
+        run: bats skills/hwahap/tests/all.bats
+
+      - name: Enforce static shell and jq checks
+        run: |
+          shellcheck skills/hwahap/hooks/*.sh skills/hwahap/hooks/lib/*.sh skills/hwahap/tests/*.sh skills/hwahap/tests/fuzz/*.sh skills/hwahap/tests/fixtures/bin/*
+          for program in skills/hwahap/jq/*.jq; do jq -n --arg head x --arg mode worker --arg unit U1 --arg patch x --arg question x --arg attempt 1 --arg model x --arg effort x --arg started x --arg ended x --arg seconds 0 --argjson r '[]' --slurpfile prices skills/hwahap/data/prices.json -f "$program" >/dev/null 2>&1 || test $? -ne 3; done
+          skills/hwahap/tests/lint-conditions.sh
+          skills/hwahap/tests/lint-messages.sh
+          skills/hwahap/tests/templates.sh
+
+      - name: Detect resource leaks
+        run: skills/hwahap/tests/resources.sh
+
+      - name: Require complete kcov coverage
+        if: runner.os == 'Linux'
+        run: skills/hwahap/tests/coverage.sh
+
+      - name: Require complete mutation score
+        if: runner.os == 'Linux'
+        run: skills/hwahap/tests/mutate.sh
+
+      - name: Reject generated repository changes
+        run: test -z "$(git status --porcelain --untracked-files=all)"

@@ -1,0 +1,7 @@
+{
+  "harness_repo": "/Users/me/dev/harness",
+  "improve": {
+    "auto": true,
+    "budget_tokens": 2000000
+  }
+}

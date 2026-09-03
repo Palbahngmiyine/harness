@@ -1,153 +1,74 @@
 ---
 name: hwahap
-description: "Execute an explicitly approved `status: prfaq` implementation spec with Sol/Luna/Terra orchestration, atomic units, plan-drift control, structured evidence, and time/token reporting. Trigger for implementation or orchestration requests; do not trigger for ideation, grilling, or unapproved specs."
+description: "Align an implementation request into a confirmed hwahap/v2 goal, run isolated Codex workers and reviews, integrate evidence, and deliver a draft PR. Trigger for implementation or orchestration requests; never use for questions, documentation-only work, ideation, or grilling."
 ---
 
 # Hwahap
 
-Use this skill only to execute an implementation request against an explicitly
-provided PR/FAQ path. The current request is authoritative over stored context.
-Resolve `<hwahap-skill-dir>` from this loaded `SKILL.md`; it may be installed
-outside the target workspace.
-The approved PR/FAQ is an input and may live outside the target repository;
-never copy it into that repository's `docs/prfaq`. Hwahap requires no login,
-API key, access token, or other credential and rejects such values in state.
-`token_total` means a numeric model-usage receipt, not an authentication token.
+The first rule is classification: do not use Hwahap for questions, documentation-only requests, ideation, or grilling. For an implementation request, keep align, build, delivery, and optional improve in the current Codex session. The user's current request is authoritative.
 
-Use `<absolute-hwahap-skill-dir>/scripts/hwahap` as the official state entrypoint. It
-starts the fixed adjacent trusted state script with an isolated (`-I`) trusted interpreter;
-running `hwahap_state.py` directly is not the official security boundary.
-Embedding callers must provide an isolated, validated interpreter and a clean
-module environment themselves.
+Resolve `<skill>` to this `SKILL.md` directory. Read applicable `AGENTS.md` files and preserve unrelated work. Hwahap needs Bash, jq, Git, gh, and Codex CLI 0.151 or newer; it has no Python runtime and creates no custom agent profiles.
 
-Invoke the launcher only by the absolute path resolved from this loaded skill.
-Copied, hard-linked, symlinked, or replaced entrypoints are outside the
-boundary. The launcher, adjacent state script, `/bin/sh`, kernel file-system
-semantics, and selected absolute Python plus its standard library are the trust
-roots; the launcher itself does not pin state data. Same-UID concurrent races
-and a stronger native or signed bootstrap are not covered.
+## 0. Preflight
 
-## Start gate
+Run exactly these checks before creating `.hwahap`; report the failed command and stop if any fails.
 
-### Observable fail-closed checks
+```sh
+jq --version
+gh auth status
+git check-ignore -q .hwahap
+```
 
-Before implementation, check these four inputs explicitly:
+If `.hwahap` is not ignored, ask before adding it to `.gitignore`. Do not infer network approval for nested `codex exec`; on a recorded `network=1`, request the required escalation. The verified manual fallback is `prefix_rule(pattern=["codex", "exec"], decision="allow")` followed by a Codex restart.
 
-1. Workspace and spec paths must be existing regular directories/files with no
-   symlink in any lexical ancestor. An unsafe workspace returns
-   `HW_STATE_INVALID`; an unsafe spec returns `HW_SPEC_UNCONFIRMED`. Preserve
-   state and request a real path. In plain terms: the path must point directly
-   to the intended workspace/spec. A real directory plus real `spec.md` passes;
-   `workspace-link/spec.md` or a symlinked ancestor fails before reading and the
-   next action is to provide the real path.
-2. The spec must be readable UTF-8 with `status: prfaq` and nonempty
-   `confirmed_at`. Any failure returns `HW_SPEC_UNCONFIRMED` with bounded
-   evidence and a request for a confirmed accessible PR/FAQ. In plain terms:
-   approval must be visible in the file. Matching frontmatter passes; a draft,
-   invalid UTF-8, or changed bytes after `init` fails and work stops.
-3. Installed profiles must be the exact five Hwahap source profiles, each a
-   regular byte-identical file with the source role metadata:
-   `hwahap-luna-implementer` (Luna/high/workspace-write), `hwahap-luna-verifier`
-   (Luna/xhigh/read-only), `hwahap-sol-final-reviewer` (Sol/read-only with no
-   configured effort), `hwahap-sol-orchestrator` (Sol/xhigh/Fast/workspace-write), and
-   `hwahap-terra-scope-reviewer` (Terra/xhigh/read-only). The installer must
-   return `HW_OK`; otherwise return
-   `HW_AGENT_CONFIG_INVALID`, do not overwrite conflicts or
-   `.codex/config.toml`, and repair the installation. In plain terms: every
-   named role must be the expected file. Five byte-identical profiles pass; a
-   missing, symlinked, conflicting, or extra `hwahap-*.toml` fails. Unrelated
-   user agent files are preserved and do not count toward the Hwahap set.
-4. Before `lock`, the contract must contain all six nonempty lists and safe,
-   sensitive-data-free allowlisted test/check/lint commands. Command input
-   rejects arbitrary scripts, network/deploy/VCS tools, external paths, URLs,
-   shell expansion, shell interpreter/wrapper tokens, and `-lc`. A
-   pass records a matching `lock_sha256`; a
-   failure returns `HW_STATE_INVALID` or `HW_SCOPE_DRIFT`, preserves files,
-   and requests corrected in-scope inputs. In plain terms: the plan must say
-   what is included, excluded, allowed, forbidden, how success is checked, and
-   which commands are definitions. Six filled lists and `pytest` pass; an empty
-   list, `env TOKEN=...`, or shell control operator fails before lock and must
-   be replaced by safe in-scope input.
+## 1. Align
 
-1. Read the applicable `AGENTS.md` files, then inspect the Git root, branch, and
-   current working-tree changes. Preserve unrelated work and limit edits to the
-   approved contract paths.
-2. Before execution, read [references/protocol.md](references/protocol.md).
-   Require the user to provide the exact PR/FAQ path. Read its frontmatter and
-   require both `status: prfaq` and `confirmed_at`. If the path is absent,
-   inaccessible, or fails either check, return `HW_SPEC_UNCONFIRMED` with the
-   reason, evidence, and next action, then stop. Never infer approval from a
-   draft, title, conversation, or stored context.
-3. Install the project-scoped custom agents before initializing state:
+Create `.hwahap/goal.json` with schema `hwahap/v2`, the current base branch, revision 1, and the user's goal. Ask the technical stack first. Read [SURFACES.md](SURFACES.md), inspect all twelve surfaces in order, and query repository facts with the fact template instead of asking the user.
 
-   `python3 <hwahap-skill-dir>/scripts/install_project_agents.py --workspace <workspace>`
+For each applicable surface add at least one `decision` and one "what happens when" `scenario`; reconcile conflicting terminology with a `term` choice. Record facts when source behavior differs from the request. For a proposed NA surface, state the reason and require `S<n>=NA`.
 
-   Require `HW_OK`. A conflict or path/source error is a stable failure; record
-   its code and bounded evidence and stop. The installer never edits
-   `.codex/config.toml` and never overwrites a different existing profile.
-4. Run the bundled initializer once the installer succeeds:
+Present the whole dependency frontier in one round. Accept only `C<n>=ALT<n>`, `C<n>=OTHER: <value>`, `C<n>=UNKNOWN`, `S<n>=NA`, `CP<k>=OK`, and exact `CONFIRM ALIGN`. After every round, derive new choices from the answers. At rounds 4, 8, and so on, require the checkpoint. Suggest splitting above 40 choices or 6 rounds; continue only if the user declines and record that in `diary.md`.
 
-   `<absolute-hwahap-skill-dir>/scripts/hwahap init --workspace <workspace> --goal-id <goal-id> --spec <approved-prfaq-path>`
+Resolve `UNKNOWN` with a fact or reversible `probe: true` unit. When the frontier is empty, write specs, acceptance criteria, atomic units, and a DAG; then run `jq -e -f <skill>/jq/check.jq .hwahap/goal.json`. Generate and run the cold review. Convert every cold finding into a choice and repeat until its three lists are empty.
 
-   Treat any non-zero result as a stable failure; record its code and evidence
-   and stop unless the defined recovery is safe and in scope.
+Render with `jq -r -f <skill>/jq/render.jq .hwahap/goal.json > .hwahap/align.md`, tell the user to inspect that file, explain autonomous build and draft delivery, and request `CONFIRM ALIGN`. `prompt.sh` records the human-authored stamp; do not write answer ledgers yourself.
 
-   Initialization constructs and scans the complete initial state in memory
-   before creating the run directory; sensitive title or source
-   inputs fail with a generic `HW_STATE_INVALID` and no state files are made.
-5. Before Sol writes or validates state, read
-   [references/state-contract.md](references/state-contract.md). Sol then fills
-   one contract containing nonempty `goals`, `non_goals`,
-   `allowed_paths`, `forbidden_changes`, `acceptance_criteria`, and
-   `test_commands`, but leaves `locked: false`. Lock it with the bundled
-   `lock` command so the tool records `lock_sha256` and the first transition.
-   The locked contract is the sole scope authority for the run; never edit it
-   after locking.
+## 2. Fixed execution templates
 
-After `init`, if the user explicitly requested a Goal or `get_goal` observes
-an active Goal, record its normalized receipt with `goal-sync --mode bound`.
-If the receipt confirms no active Goal, use `--mode no_active_goal`; if the
-tool is unavailable, use `--mode unavailable` with manual evidence. Once a
-bound receipt is in Goal history, later syncs cannot downgrade to
-`no_active_goal` or `unavailable`; every bound receipt and the eventual
-completion sync retain the same Goal thread/objective pair. A Goal receipt
-never expands the locked scope or authority.
+Only the unit id or fact question may vary. Generate every brief with `jq/brief.jq` and `data/brief.head.md`; never hand-write or print it. Because shell-wrapper rules do not match, issue each `codex exec` as a direct command and use parallel tool calls for a batch.
 
-If the current request conflicts with the approved spec or locked contract, do
-not silently expand or reinterpret scope. Set the run/unit to `awaiting_user`,
-record `HW_SCOPE_DRIFT` or `HW_USER_DECISION_REQUIRED` with a plain explanation,
-evidence, recovery/next action, and ask the user.
+Worker:
 
-For a bound Goal, `goal-sync` may receive `--token-total <nonnegative-int>`.
-It records that value only as a `codex.get_goal` token receipt; without it,
-and for `no_active_goal` or `unavailable`, token availability remains
-`unavailable`. After local completion, `goal-complete-sync` requires
-`--token-total` for `completed` or `already_completed`; `failed` forbids it and
-preserves the prior token receipt. `goal-sync` rolls back `run.json` on
-validation failure. `goal-complete-sync` regenerates canonical
-`report-data.json` and `report.html` and rolls back `run.json`, both artifacts,
-and their receipt byte-for-byte on failure.
+```sh
+codex exec -C .hwahap/wt/U1 -s workspace-write --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=high -c model_verbosity=low -c model_reasoning_summary=none -c web_search=disabled -c tool_output_token_limit=4000 --ephemeral --json -o .hwahap/out/U1.last.md < .hwahap/out/U1.brief.md > .hwahap/out/U1.events.jsonl
+```
 
-## Goal binding
+Replace only the worker `-m` and `model_reasoning_effort` values when its unit has a non-null override. Use the settings defaults shown above otherwise.
 
-When the user explicitly requests a Goal, Sol may call `create_goal`; otherwise
-Sol never creates one automatically. Sol uses `get_goal` to inspect an active
-Goal, records the receipt with `goal-sync`, and binds its objective, non-goals,
-proof, and checkpoint to the locked contract. Local state and a Goal never
-expand locked scope or authority. A bound Goal history is sticky: no later
-`no_active_goal` or `unavailable` downgrade is valid, and completion sync keeps
-the same thread/objective pair. If Goal tooling is unavailable, Sol uses the
-manual contract/state path and records the unavailable API and evidence. After
-completion, improvement candidates are report-only; do not implement one
-until the user approves a new Goal or scope.
+Reviewer, including `cold` at `-C .` and `integration` at its worktree:
 
+```sh
+codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/U1.md < .hwahap/out/review/U1.brief.md > .hwahap/out/review/U1.events.jsonl
+```
 
-## Detailed contracts
+Fact worker:
 
-Read only the reference needed for the current operation:
+```sh
+codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral --json -o .hwahap/facts/F1.md < .hwahap/out/F1.brief.md > .hwahap/facts/F1.events.jsonl
+```
 
-- For unit execution, receipts, failures, and recursive recovery, read [references/execution-review.md](references/execution-review.md).
-- For state and report persistence, read [references/reporting.md](references/reporting.md).
-- Follow [references/protocol.md](references/protocol.md) and its routed review/report continuation before orchestration.
-- Use [references/state-contract.md](references/state-contract.md) as the router for exact JSON state fields.
-- For report rendering or review, also read [references/material3-report.md](references/material3-report.md).
+## 3. Build
+
+Batch dependency-ready units up to `budget.max_parallel`. Add detached worktrees, generate byte-stable worker briefs, and run the worker template. Read only the PostToolUse summary; retry a failed worker once. After the second failure ask `retry`, `skip`, or `abort`. Never run a dependent unit whose prerequisite was skipped.
+
+Run the reviewer template for every passing unit. On `verdict: fail`, regenerate the worker brief with findings and return to the worker, up to two review rounds. PostToolUse integrates once all non-probe units are ready. Generate the integration patch brief and run the final reviewer, changing only `-m` to `gpt-5.6-sol` when `final_review` is `sol`.
+
+A worker may decide only a reversible detail inside its unit that changes no observable behavior, named identifier, path, format, schema, stored field, dependency, concurrency, security, performance, or compatibility. Otherwise it must change nothing and put `NEEDS_DECISION: <question>` on its first final-message line. Turn that into a new choice, increment revision, repeat cold review/render/`CONFIRM ALIGN`, and resume; unchanged unit briefs are cached.
+
+Budget notices are 50%, 80%, and 100%. At 100% ask the user before any new worker. Do not bypass a hook denial. Stop after the final integration review; Stop gate creates the ordered Markdown report, durable summary, commit, push, and draft PR. It never marks ready, merges, or enables auto-merge. `HWAHAP_UNATTENDED=1` validates but does not deliver.
+
+## Operator boundary
+
+The orchestrator may read only PostToolUse summary lines, the first line of `out/review/*.md`, `out/*.needs_decision`, `facts/F<n>.md`, and `report.md`. It must not read `out/*.events.jsonl`, `out/review/*.events.jsonl`, `facts/*.events.jsonl`, patches, or worker final messages. Reports are ordered conclusion, evidence, verification process, limitations, cost.
+
+Delivery retry is another normal session stop. After the user handles the PR, remove a requested worktree with `git worktree remove .hwahap/wt/<unit>`; never delete worktrees implicitly. Improve runs only under the configured signal, cadence, benchmark, and hard-budget gates and never expands the current goal.
