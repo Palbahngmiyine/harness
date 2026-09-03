@@ -30,8 +30,7 @@ if [ "$workdir" = . ]; then
       case "$first" in
         'verdict: pass') digest=$(jq -S -c 'del(.review,.confirm)' .hwahap/goal.json | sha); tmp=$(mktemp .hwahap/goal.XXXXXX); jq --arg digest "$digest" --arg ts "${HWAHAP_NOW:-$(date '+%Y-%m-%dT%H:%M:%S%z')}" '.review.cold={ts:$ts,goal_sha256:$digest,required_user_choices:[],underspecified:[],unmapped_spec_ids:[]}' .hwahap/goal.json >"$tmp"; mv "$tmp" .hwahap/goal.json; printf 'cold review pass%s\n' "$usage_error" ;;
         'verdict: fail') printf 'cold review fail%s\n' "$usage_error" ;;
-        *) printf 'cold review fail verdict_invalid=1%s\n' "$usage_error" ;;
-      esac ;;
+        *) printf 'cold review fail verdict_invalid=1%s\n' "$usage_error" ;; esac ;;
   esac
   exit 0
 fi

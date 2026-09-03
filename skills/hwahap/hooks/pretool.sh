@@ -61,10 +61,7 @@ brief_hash=$(digest "$brief" | awk '{print "sha256:" $1}')
 if [ "${HWAHAP_NO_CACHE:-}" != 1 ]; then if [ -f ".hwahap/out/$unit.patch" ]; then
   if [ "$(tail -n 1 ".hwahap/out/$unit.test.txt" 2>/dev/null)" = 'exit 0' ]; then
     if [ "$(head -n 1 ".hwahap/out/review/$unit.md" 2>/dev/null)" = 'verdict: pass' ]; then
-      if [ -f ".hwahap/out/$unit.brief.sha256" ]; then if [ "$(<".hwahap/out/$unit.brief.sha256")" = "$brief_hash" ]; then : >".hwahap/out/$unit.cached"; deny 'cached'; fi; fi
-    fi
-  fi
-fi; fi
+      if [ -f ".hwahap/out/$unit.brief.sha256" ]; then if [ "$(<".hwahap/out/$unit.brief.sha256")" = "$brief_hash" ]; then : >".hwahap/out/$unit.cached"; deny 'cached'; fi; fi; fi; fi; fi; fi
 compgen -G '.hwahap/out/*.needs_decision' >/dev/null && deny 'a worker decision is unresolved'
 used=$("$skill/hooks/lib/usage.sh" metrics | jq '.total.tokens')
 budget=$(jq '.budget.tokens' .hwahap/goal.json)
@@ -75,6 +72,5 @@ attempt=0; [ ! -f ".hwahap/out/$unit.attempt" ] || attempt=$(<".hwahap/out/$unit
 if [ "$attempt" -eq 0 ]; then base_index="$(pwd)/.hwahap/out/$unit.base-index"; cp "$(git -C "$workdir" rev-parse --git-path index)" "$base_index"; while IFS= read -r dep; do
     git -C "$workdir" apply --check "../../out/$dep.patch" || deny "dependency $dep does not apply"
     git -C "$workdir" apply "../../out/$dep.patch"
-    GIT_INDEX_FILE="$base_index" git -C "$workdir" apply --cached "../../out/$dep.patch"
-  done < <(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .depends_on[]' .hwahap/goal.json)
+    GIT_INDEX_FILE="$base_index" git -C "$workdir" apply --cached "../../out/$dep.patch"; done < <(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .depends_on[]' .hwahap/goal.json)
 fi

@@ -29,9 +29,7 @@ else
     if [ "$allowed" != true ]; then
       printf 'path outside unit scope: %s\nexit 1\n' "$changed" >"$out.test.txt"
       status=fail
-      break
-    fi
-  done < <(diff_base --name-only)
+      break; fi; done < <(diff_base --name-only)
   if [ ! -s "$out.test.txt" ]; then
     test_command=$(jq -er --arg unit "$unit" '.units[] | select(.id==$unit) | .test' "$goal")
     set +e

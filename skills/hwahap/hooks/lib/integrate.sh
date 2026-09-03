@@ -17,16 +17,7 @@ if [ ! -d .hwahap/wt/integration ]; then
   set +e; git worktree add -q --detach .hwahap/wt/integration HEAD >>"$out" 2>&1; rc=$?; set -e
   if [ "$rc" -ne 0 ]; then printf 'exit %s\n' "$rc" >>"$out"; exit "$rc"; fi
 fi
-order=$(jq -r '
-  def topo($left;$done):
-    if ($left|length)==0 then $done else
-      [$left[] as $id | select([.units[] | select(.id==$id) | .depends_on[]] as $deps |
-        all($deps[]; . as $dep | $done | index($dep)!=null)) | $id] as $ready |
-      if ($ready|length)==0 then error("dependency cycle") else
-        topo([$left[] | select(. as $id | $ready | index($id)==null)]; $done+$ready)
-      end
-    end;
-  . as $g | topo([.units[] | select(.probe|not) | .id];[])[]' "$goal")
+order=$(jq -r 'def topo($left;$done): if ($left|length)==0 then $done else [$left[] as $id | select([.units[] | select(.id==$id) | .depends_on[]] as $deps | all($deps[]; . as $dep | $done | index($dep)!=null)) | $id] as $ready | if ($ready|length)==0 then error("dependency cycle") else topo([$left[] | select(. as $id | $ready | index($id)==null)]; $done+$ready) end end; . as $g | topo([.units[] | select(.probe|not) | .id];[])[]' "$goal")
 set +e
 for unit in $order; do
   [ ! -f ".hwahap/out/$unit.skipped" ] || continue

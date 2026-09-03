@@ -39,9 +39,4 @@ worker='[]'; reviewer='[]'; fact='[]'
 if [ -e "${workers[0]}" ]; then worker=$(jq -s . "${workers[@]}"); fi
 if [ -e "${reviewers[0]}" ]; then reviewer=$(jq -s . "${reviewers[@]}"); fi
 if [ -e "${facts[0]}" ]; then fact=$(jq -s . "${facts[@]}"); fi
-jq -nc --argjson w "$worker" --argjson r "$reviewer" --argjson f "$fact" '
-  def sum($a;$key): [$a[] | .[$key]] | add // 0;
-  def role($a): {receipts:$a,tokens:(sum($a;"input_tokens")+sum($a;"output_tokens")),input:sum($a;"input_tokens"),cached:sum($a;"cached_input_tokens"),cost:sum($a;"cost_usd"),seconds:sum($a;"seconds")};
-  {worker:role($w),reviewer:role($r),fact:role($f)} as $roles |
-  ($w+$r+$f) as $all |
-  {roles:$roles,receipts:$all,total:{tokens:(sum($all;"input_tokens")+sum($all;"output_tokens")),input:sum($all;"input_tokens"),cached:sum($all;"cached_input_tokens"),cost:sum($all;"cost_usd"),seconds:sum($all;"seconds")}}'
+jq -nc --argjson w "$worker" --argjson r "$reviewer" --argjson f "$fact" 'def sum($a;$key): [$a[] | .[$key]] | add // 0; def role($a): {receipts:$a,tokens:(sum($a;"input_tokens")+sum($a;"output_tokens")),input:sum($a;"input_tokens"),cached:sum($a;"cached_input_tokens"),cost:sum($a;"cost_usd"),seconds:sum($a;"seconds")}; {worker:role($w),reviewer:role($r),fact:role($f)} as $roles | ($w+$r+$f) as $all | {roles:$roles,receipts:$all,total:{tokens:(sum($all;"input_tokens")+sum($all;"output_tokens")),input:sum($all;"input_tokens"),cached:sum($all;"cached_input_tokens"),cost:sum($all;"cost_usd"),seconds:sum($all;"seconds")}}'
