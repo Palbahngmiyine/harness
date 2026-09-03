@@ -95,23 +95,26 @@ Hwahap v2 keeps alignment and implementation in one Codex session:
 - run atomic Luna workers and independent Terra reviews in isolated worktrees
 - capture scoped patches, tests, token/cost receipts, and cache evidence through four hooks
 - integrate passing units once, run the full suite, and open a draft PR after the Stop gate
-- optionally improve the harness only under signal, cadence, benchmark, and hard-budget gates
+- evaluate improve signals after delivery; the benchmark runner is not implemented yet
 
-It requires Bash, `jq`, Git, `gh`, and Codex CLI 0.151 or newer. It uses no
-Python runtime, separate Hwahap CLI, session profile, or project agent install.
-Copy the skill to the Codex skills directory, then merge
-[`hooks/hooks.json`](skills/hwahap/hooks/hooks.json) into `~/.codex/hooks.json`
-without removing existing hooks. Restart Codex after hook registration.
+It requires Bash, `jq`, Git, `gh`, and Codex CLI 0.151 or newer, and no Python
+runtime. Installation, the hook contract, the design decisions, the test rules,
+and the verified platform facts are in
+[`skills/hwahap/README.md`](skills/hwahap/README.md); the orchestrator itself
+reads only [`SKILL.md`](skills/hwahap/SKILL.md) and
+[`SURFACES.md`](skills/hwahap/SURFACES.md).
 
 Validate from the repository root:
 
 ```bash
-python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/hwahap
 skills/hwahap/tests/all.sh
+skills/hwahap/tests/mutate.sh
 ```
 
-The Linux CI job additionally runs Bats, kcov, ShellCheck, resource-leak checks,
-and mutation tests; the macOS job runs the deterministic, Bats, and ShellCheck suites.
+CI runs the deterministic suites, Bats, ShellCheck, the lint scripts, and the
+resource-leak check on both ubuntu and macOS, and kcov coverage plus mutation
+testing on ubuntu. The `verify` job gates the whole matrix and is the required
+status check on `main`.
 
 Target repositories keep ignored run state under `.hwahap/`. Durable summaries
 and human answer ledgers live under `~/.codex/hwahap/<repo-id>/`; Hwahap never
