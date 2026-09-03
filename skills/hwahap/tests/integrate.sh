@@ -11,6 +11,7 @@ git -C "$repo" config user.email fixture@example.com
 git -C "$repo" config user.name Fixture
 printf 'base\n' >"$repo/src/check.sh"
 printf 'base\n' >"$repo/src/other.sh"
+printf 'base\n' >"$repo/src/third.sh"
 git -C "$repo" add src && git -C "$repo" commit -qm base
 git -C "$repo" worktree add -q --detach .hwahap/wt/U1 HEAD
 git -C "$repo" worktree add -q --detach .hwahap/wt/U2 HEAD
@@ -35,10 +36,22 @@ printf 'done\n' >"$repo/.hwahap/out/U2.last.md"
 (cd "$repo" && HWAHAP_NOW=now "$root/hooks/lib/capture.sh" U2) >/dev/null
 case "$(<"$repo/.hwahap/out/U2.patch")" in *'src/check.sh'*) exit 1 ;; *) ;; esac
 jq '(.units[] | select(.id=="U2") | .probe)=false |
+  .units += [{id:"U3",title:"transitive",paths:["src/third.sh"],test:"true",acceptance_ids:[],depends_on:["U2"],probe:true,model:null,effort:null}]' \
+  "$repo/.hwahap/goal.json" >"$tmp/goal"
+mv "$tmp/goal" "$repo/.hwahap/goal.json"
+git -C "$repo" worktree add -q --detach .hwahap/wt/U3 HEAD
+jq -r --rawfile head "$root/data/brief.head.md" --arg mode worker --arg unit U3 --arg patch '' --arg question '' -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/U3.brief.md"
+worker3=${worker//U2/U3}; payload=$(jq -nc --arg cwd "$repo" --arg command "$worker3" '{cwd:$cwd,tool_input:{command:$command}}')
+test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
+test "$(<"$repo/.hwahap/wt/U3/src/check.sh")" = unit1; test "$(<"$repo/.hwahap/wt/U3/src/other.sh")" = unit2
+jq '
   .units += [{id:"P1",title:"excluded probe",paths:["src/probe.sh"],test:"false",acceptance_ids:[],depends_on:[],probe:true,model:null,effort:null}]' \
   "$repo/.hwahap/goal.json" >"$tmp/goal"
 mv "$tmp/goal" "$repo/.hwahap/goal.json"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/U2.md"
+mkdir "$repo/.hwahap/out/integration.lock"
+set +e; (cd "$repo" && "$root/hooks/lib/integrate.sh"); rc=$?; set -e
+test "$rc" -eq 3; test ! -e "$repo/.hwahap/out/integration.test.txt"; rmdir "$repo/.hwahap/out/integration.lock"
 printf 'blocked\n' >"$repo/.hwahap/wt/integration"
 set +e; (cd "$repo" && "$root/hooks/lib/integrate.sh"); rc=$?; set -e
 test "$rc" -ne 0; case "$(tail -n 1 "$repo/.hwahap/out/integration.test.txt")" in 'exit '[1-9]*) ;; *) exit 1 ;; esac

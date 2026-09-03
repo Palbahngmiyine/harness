@@ -7,6 +7,7 @@ trap 'rm -rf "$tmp"' EXIT
 setup_case() {
   name=$1; case_root=$tmp/$name; repo=$case_root/repo; codex=$case_root/codex; harness=$case_root/harness
   mkdir -p "$repo/.hwahap" "$codex/hwahap/repo-id/runs" "$harness"
+  git -C "$repo" init -q
   git -C "$harness" init -q
   jq -n '{goal_id:"current",cost_per_passed_unit:5,first_try_pass:1,units_passed:1,cache_hit_ratio:0.5,deliver:"done",improve:{}}' >"$repo/.hwahap/summary.json"
   : >"$repo/.hwahap/report.md"
@@ -26,8 +27,9 @@ setup_case cost; benchmarks 1 2 3 4 5; mkdir -p "$codex/hwahap/repo-id/runs/curr
 setup_case retry; benchmarks 10 11 12 13 14; jq '.first_try_pass=0|.cache_hit_ratio=0.1' "$repo/.hwahap/summary.json" >"$case_root/s"; mv "$case_root/s" "$repo/.hwahap/summary.json"; evaluate; expect retry_seen 'runner pending (U9b)' 5
 setup_case cache; benchmarks 10 11 12 13 14; jq '.cache_hit_ratio=0.49' "$repo/.hwahap/summary.json" >"$case_root/s"; mv "$case_root/s" "$repo/.hwahap/summary.json"; evaluate; expect cache_miss 'runner pending (U9b)' 5
 setup_case benchmark4; benchmarks 1 2 3 4; jq '.cost_per_passed_unit=4' "$repo/.hwahap/summary.json" >"$case_root/s"; mv "$case_root/s" "$repo/.hwahap/summary.json"; evaluate; expect cost_above_median 'fewer than 5 benchmarks' 4
+setup_case missing_harness; cp "$root/tests/fixtures/regress/pr9-missing-harness-repo/config.json" "$codex/hwahap/config.json"; evaluate; expect none 'harness_repo is not a git repository' 0
 setup_case cadence_before; benchmarks 1 2 3 4 5; mkdir -p "$codex/hwahap/repo-id"; jq -n '{last_auto:"2026-09-03T00:00:01Z"}' >"$codex/hwahap/repo-id/improve.state.json"; evaluate; expect cost_above_median 'last auto improve is within 7 days' 5
-setup_case cadence_exact; benchmarks 1 2 3 4 5; mkdir -p "$codex/hwahap/repo-id"; jq -n '{last_auto:"2026-09-03T00:00:00Z"}' >"$codex/hwahap/repo-id/improve.state.json"; evaluate; expect cost_above_median 'runner pending (U9b)' 5
+setup_case cadence_offset; benchmarks 1 2 3 4 5; mkdir -p "$codex/hwahap/repo-id"; cp "$root/tests/fixtures/regress/pr9-offset-last-auto/improve.state.json" "$codex/hwahap/repo-id/improve.state.json"; evaluate; expect cost_above_median 'runner pending (U9b)' 5
 setup_case auto; jq '.improve.auto=false' "$codex/hwahap/config.json" >"$case_root/c"; mv "$case_root/c" "$codex/hwahap/config.json"; evaluate; expect none 'auto disabled' 0
 setup_case budget; jq 'del(.improve.budget_tokens)' "$codex/hwahap/config.json" >"$case_root/c"; mv "$case_root/c" "$codex/hwahap/config.json"; evaluate; expect none 'budget_tokens missing' 0
 setup_case nongit; mkdir "$case_root/plain"; jq --arg path "$case_root/plain" '.harness_repo=$path' "$codex/hwahap/config.json" >"$case_root/c"; mv "$case_root/c" "$codex/hwahap/config.json"; evaluate; expect none 'harness_repo is not a git repository' 0

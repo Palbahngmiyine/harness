@@ -52,6 +52,11 @@ test -z "$(run_pretool "$worker")"
 expect_deny "${worker/ --json/}" 'required codex exec flags'
 expect_deny "${worker/gpt-5.6-luna/gpt-5.6-terra}" 'model or effort differs from settings'
 expect_deny "${worker/model_reasoning_effort=high/model_reasoning_effort=medium}" 'model or effort differs from settings'
+jq '(.units[] | select(.id=="U1")) |= (.model="gpt-5.6-terra" | .effort="medium")' "$tmp/base-goal" >"$repo/.hwahap/goal.json"
+override=${worker/gpt-5.6-luna/gpt-5.6-terra}; override=${override/model_reasoning_effort=high/model_reasoning_effort=medium}
+expect_deny "$worker" 'model or effort differs from settings'
+(cd "$repo" && "$root/hooks/lib/usage.sh" validate "$override" .hwahap/wt/U1 workspace-write .hwahap/out/U1.last.md U1)
+cp "$tmp/base-goal" "$repo/.hwahap/goal.json"
 jq '.schema="bad"' "$tmp/base-goal" >"$repo/.hwahap/goal.json"
 expect_deny "$worker" 'goal contract'
 cp "$tmp/base-goal" "$repo/.hwahap/goal.json"
