@@ -38,12 +38,15 @@ finish() {
 if ! jq -e '.improve.auto==true' "$config" >/dev/null 2>&1; then finish 'auto disabled'; fi
 if ! jq -e '.improve.budget_tokens != null' "$config" >/dev/null 2>&1; then finish 'budget_tokens missing'; fi
 harness=$(jq -r '.harness_repo // empty' "$config")
+if [ -z "$harness" ]; then finish 'harness_repo is not a git repository'; fi
 if ! git -C "$harness" rev-parse --is-inside-work-tree >/dev/null 2>&1; then finish 'harness_repo is not a git repository'; fi
 if [ "$signal" = none ]; then finish 'no improve signal'; fi
 if [ -f "$state" ]; then
   last=$(jq -r '.last_auto // empty' "$state")
   if [ -n "$last" ]; then
-    elapsed=$(jq -nr --arg last "$last" --arg current "${HWAHAP_NOW:-}" '($last|fromdateiso8601) as $start | (if $current=="" then now else ($current|fromdateiso8601) end) - $start | floor')
+    elapsed=$(jq -nr --arg last "$last" --arg current "${HWAHAP_NOW:-}" '
+      def epoch: capture("^(?<stamp>[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2})(?<zone>Z|(?<sign>[+-])(?<hours>[0-9]{2}):?(?<minutes>[0-9]{2}))$") | (.stamp|strptime("%Y-%m-%dT%H:%M:%S")|mktime) as $base | if .zone=="Z" then $base else $base-((((.hours|tonumber)*60)+(.minutes|tonumber))*60*(if .sign=="+" then 1 else -1 end)) end;
+      ($last|epoch) as $start | (if $current=="" then now else ($current|epoch) end) - $start | floor')
     if [ "$elapsed" -lt 604800 ]; then finish 'last auto improve is within 7 days'; fi
   fi
 fi

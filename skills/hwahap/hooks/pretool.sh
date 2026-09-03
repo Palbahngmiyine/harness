@@ -72,5 +72,5 @@ attempt=0; [ ! -f ".hwahap/out/$unit.attempt" ] || attempt=$(<".hwahap/out/$unit
 if [ "$attempt" -eq 0 ]; then base_index="$(pwd)/.hwahap/out/$unit.base-index"; cp "$(git -C "$workdir" rev-parse --git-path index)" "$base_index"; while IFS= read -r dep; do
     git -C "$workdir" apply --check "../../out/$dep.patch" || deny "dependency $dep does not apply"
     git -C "$workdir" apply "../../out/$dep.patch"
-    GIT_INDEX_FILE="$base_index" git -C "$workdir" apply --cached "../../out/$dep.patch"; done < <(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .depends_on[]' .hwahap/goal.json)
+    GIT_INDEX_FILE="$base_index" git -C "$workdir" apply --cached "../../out/$dep.patch"; done < <(jq -r --arg unit "$unit" '.units as $units | def deps($id): $units[] | select(.id==$id) | .depends_on[] | ., deps(.); def topo($left;$done): if ($left|length)==0 then $done else [$left[] as $id | select([$units[] | select(.id==$id) | .depends_on[]] as $need | all($need[]; . as $dep | $done | index($dep)!=null)) | $id] as $ready | if ($ready|length)==0 then error("dependency cycle") else topo([$left[] | select(. as $id | $ready | index($id)==null)];$done+$ready) end end; ([$units[] | select(.id==$unit) | .depends_on[] | ., deps(.)] | unique) as $needed | topo([$units[] | select(.probe|not) | .id];[])[] | select(. as $id | $needed | index($id))' .hwahap/goal.json)
 fi

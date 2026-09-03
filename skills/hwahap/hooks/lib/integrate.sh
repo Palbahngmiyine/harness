@@ -4,6 +4,9 @@ set -euo pipefail
 goal=.hwahap/goal.json
 out=.hwahap/out/integration.test.txt
 [ -f "$goal" ] || { printf 'hwahap integrate: goal.json is missing\n' >&2; exit 1; }
+lock=.hwahap/out/integration.lock
+mkdir "$lock" 2>/dev/null || exit 3
+trap 'rmdir "$lock"' EXIT
 [ ! -f "$out" ] || exit 3
 while IFS= read -r unit; do
   [ ! -f ".hwahap/out/$unit.skipped" ] || continue

@@ -16,4 +16,5 @@ test "$(value "$reviewer" -m)" = "$(jq -r '.reviewer.model' "$root/data/settings
 test "$(config "$reviewer" model_reasoning_effort)" = "$(jq -r '.reviewer.effort' "$root/data/settings.json")"
 test "$(value "$fact" -m)" = "$(jq -r '.fact.model' "$root/data/settings.json")"
 test "$(config "$fact" model_reasoning_effort)" = "$(jq -r '.fact.effort' "$root/data/settings.json")"
+grep -Fq "Replace only the worker \`-m\` and \`model_reasoning_effort\` values when its unit has a non-null override." "$root/SKILL.md"
 printf 'templates match settings\n'

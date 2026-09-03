@@ -43,6 +43,8 @@ Worker:
 codex exec -C .hwahap/wt/U1 -s workspace-write --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=high -c model_verbosity=low -c model_reasoning_summary=none -c web_search=disabled -c tool_output_token_limit=4000 --ephemeral --json -o .hwahap/out/U1.last.md < .hwahap/out/U1.brief.md > .hwahap/out/U1.events.jsonl
 ```
 
+Replace only the worker `-m` and `model_reasoning_effort` values when its unit has a non-null override. Use the settings defaults shown above otherwise.
+
 Reviewer, including `cold` at `-C .` and `integration` at its worktree:
 
 ```sh
