@@ -72,3 +72,14 @@ jobs:
 
       - name: Reject generated repository changes
         run: test -z "$(git status --porcelain --untracked-files=all)"
+
+  verify:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every test matrix job to succeed
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+        run: test "$TEST_RESULT" = success
