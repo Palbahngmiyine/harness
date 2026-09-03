@@ -180,6 +180,7 @@ If verification fails, revise your response."""
 - **references/system-prompts.md**: System-level prompt design
 - **assets/prompt-template-library.md**: Battle-tested prompt templates
 - **assets/few-shot-examples.json**: Curated example datasets
+- **scripts/optimize-prompt.py**: Automated prompt optimization tool
 
 ## Success Metrics
 
