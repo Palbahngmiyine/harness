@@ -19,3 +19,4 @@ setup() { root=$(cd "$BATS_TEST_DIRNAME" && pwd); }
 @test "structural lint" { run bash "$root/lint-conditions.sh"; [ "$status" -eq 0 ]; }
 @test "documented templates" { run bash "$root/templates.sh"; [ "$status" -eq 0 ]; }
 @test "hook messages have fixtures" { run bash "$root/lint-messages.sh"; [ "$status" -eq 0 ]; }
+@test "improve start gate" { run bash "$root/improve-gate.sh"; [ "$status" -eq 0 ]; }
