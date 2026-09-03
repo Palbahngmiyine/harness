@@ -27,3 +27,4 @@ case "$output" in
   .hwahap/facts/F*.md) printf 'observed fixture\n' >"$output" ;;
   *) exit 2 ;;
 esac
+printf '%s\n' '{"type":"turn.completed","usage":{"input_tokens":1000,"cached_input_tokens":500,"output_tokens":200,"reasoning_output_tokens":50}}'

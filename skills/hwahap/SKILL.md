@@ -46,13 +46,13 @@ codex exec -C .hwahap/wt/U1 -s workspace-write --ignore-user-config -m gpt-5.6-l
 Reviewer, including `cold` at `-C .` and `integration` at its worktree:
 
 ```sh
-codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/U1.md < .hwahap/out/review/U1.brief.md
+codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/U1.md < .hwahap/out/review/U1.brief.md > .hwahap/out/review/U1.events.jsonl
 ```
 
 Fact worker:
 
 ```sh
-codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/facts/F1.md < .hwahap/out/F1.brief.md
+codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral --json -o .hwahap/facts/F1.md < .hwahap/out/F1.brief.md > .hwahap/facts/F1.events.jsonl
 ```
 
 ## 3. Build
@@ -67,6 +67,6 @@ Budget notices are 50%, 80%, and 100%. At 100% ask the user before any new worke
 
 ## Operator boundary
 
-The orchestrator may read only PostToolUse summary lines, the first line of `out/review/*.md`, `out/*.needs_decision`, `facts/F<n>.md`, and `report.md`. It must not read `events.jsonl`, patches, or worker final messages. Reports are ordered conclusion, evidence, verification process, limitations, cost.
+The orchestrator may read only PostToolUse summary lines, the first line of `out/review/*.md`, `out/*.needs_decision`, `facts/F<n>.md`, and `report.md`. It must not read `out/*.events.jsonl`, `out/review/*.events.jsonl`, `facts/*.events.jsonl`, patches, or worker final messages. Reports are ordered conclusion, evidence, verification process, limitations, cost.
 
 Delivery retry is another normal session stop. After the user handles the PR, remove a requested worktree with `git worktree remove .hwahap/wt/<unit>`; never delete worktrees implicitly. Improve runs only under the configured signal, cadence, benchmark, and hard-budget gates and never expands the current goal.

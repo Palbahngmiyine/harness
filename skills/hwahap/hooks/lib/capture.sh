@@ -42,8 +42,8 @@ else
     if [ "$rc" -eq 0 ]; then status=pass; else status=fail; fi
   fi
 fi
-model=$(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .model // "gpt-5.6-luna"' "$goal")
-effort=$(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .effort // "high"' "$goal")
+model=$(jq -r --arg unit "$unit" --slurpfile s "$skill/data/settings.json" '.units[] | select(.id==$unit) | .model // $s[0].worker.model' "$goal")
+effort=$(jq -r --arg unit "$unit" --slurpfile s "$skill/data/settings.json" '.units[] | select(.id==$unit) | .effort // $s[0].worker.effort' "$goal")
 now=${HWAHAP_NOW:-$(date '+%Y-%m-%dT%H:%M:%S%z')}
 receipt="$out.usage.$attempt.json"
 if ! jq -s --slurpfile prices "$skill/data/prices.json" --arg unit "$unit" --arg attempt "$attempt" --arg model "$model" --arg effort "$effort" --arg started "$now" --arg ended "$now" --arg seconds "${HWAHAP_SECONDS:-0}" -f "$skill/jq/usage.jq" "$out.events.jsonl" >"$receipt"; then

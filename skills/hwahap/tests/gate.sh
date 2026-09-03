@@ -45,6 +45,12 @@ cp "$root/tests/fixtures/usage/good/events.jsonl" "$repo/.hwahap/out/U1.events.j
 jq -s --slurpfile prices "$root/data/prices.json" --arg unit U1 --arg attempt 1 --arg model gpt-5.6-luna --arg effort high --arg started s --arg ended e --arg seconds 2 \
   -f "$root/jq/usage.jq" "$repo/.hwahap/out/U1.events.jsonl" >"$repo/.hwahap/out/U1.usage.1.json"
 cp "$repo/.hwahap/out/U1.usage.1.json" "$repo/.hwahap/out/U1.usage.json"
+cp "$root/tests/fixtures/usage/good/events.jsonl" "$repo/.hwahap/out/review/U1.events.jsonl"
+jq -s --slurpfile prices "$root/data/prices.json" --arg unit U1 --arg attempt 1 --arg model gpt-5.6-terra --arg effort high --arg started s --arg ended e --arg seconds 3 \
+  -f "$root/jq/usage.jq" "$repo/.hwahap/out/review/U1.events.jsonl" >"$repo/.hwahap/out/review/U1.usage.1.json"
+mkdir -p "$repo/.hwahap/facts"; cp "$root/tests/fixtures/usage/good/events.jsonl" "$repo/.hwahap/facts/F1.events.jsonl"
+jq -s --slurpfile prices "$root/data/prices.json" --arg unit F1 --arg attempt 1 --arg model gpt-5.6-luna --arg effort medium --arg started s --arg ended e --arg seconds 4 \
+  -f "$root/jq/usage.jq" "$repo/.hwahap/facts/F1.events.jsonl" >"$repo/.hwahap/facts/F1.usage.json"
 git -C "$repo" worktree add -q --detach .hwahap/wt/integration HEAD
 git -C "$repo/.hwahap/wt/integration" apply ../../out/U1.patch
 printf 'exit 0\n' >"$repo/.hwahap/out/integration.test.txt"
@@ -105,8 +111,9 @@ expect_block 'fact hash changed'; restore_goal
 printf 'unit1\nAKIA1234567890ABCDEF\n' >"$repo/.hwahap/wt/integration/src/check.sh"; expect_block 'secret pattern'; printf 'unit1\n' >"$repo/.hwahap/wt/integration/src/check.sh"
 
 test -z "$(run_gate)"
-jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .tokens.orchestrator==4321 and .units[0].cache_hit_ratio==0.4 and .units[0].reasoning_ratio==(1/3) and .cache_hit_ratio==0.4 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
+jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .tokens.reviewers==1800 and .tokens.facts==1800 and .tokens.orchestrator==4321 and .units[0].cache_hit_ratio==0.4 and .units[0].reasoning_ratio==(1/3) and .cache_hit_ratio==0.4 and .cost_usd==0.006624 and .seconds==9 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
 test -f "$repo/.hwahap/report.md"
+grep -Fq 'worker tokens=1800' "$repo/.hwahap/report.md"; grep -Fq 'reviewer tokens=1800' "$repo/.hwahap/report.md"; grep -Fq 'fact tokens=1800' "$repo/.hwahap/report.md"
 grep -Fq -- '- kept deviation' "$repo/.hwahap/report.md"; grep -Fq -- '- kept question' "$repo/.hwahap/report.md"
 if grep -Fq 'not reported' "$repo/.hwahap/report.md"; then exit 1; fi
 test -f "$codex_home/hwahap/$repo_id/runs/2026-09-02-test/summary.json"

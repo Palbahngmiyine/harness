@@ -46,6 +46,8 @@ jobs:
           shellcheck skills/hwahap/hooks/*.sh skills/hwahap/hooks/lib/*.sh skills/hwahap/tests/*.sh skills/hwahap/tests/fuzz/*.sh skills/hwahap/tests/fixtures/bin/*
           for program in skills/hwahap/jq/*.jq; do jq -n --arg head x --arg mode worker --arg unit U1 --arg patch x --arg question x --arg attempt 1 --arg model x --arg effort x --arg started x --arg ended x --arg seconds 0 --argjson r '[]' --slurpfile prices skills/hwahap/data/prices.json -f "$program" >/dev/null 2>&1 || test $? -ne 3; done
           skills/hwahap/tests/lint-conditions.sh
+          skills/hwahap/tests/lint-messages.sh
+          skills/hwahap/tests/templates.sh
 
       - name: Detect resource leaks
         run: skills/hwahap/tests/resources.sh
