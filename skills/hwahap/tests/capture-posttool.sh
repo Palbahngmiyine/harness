@@ -22,7 +22,7 @@ printf 'changed\n' >>"$repo/.hwahap/wt/U1/src/check.sh"
 payload='{"cwd":"'"$repo"'","tool_input":{"command":"codex exec -C .hwahap/wt/U1 -s workspace-write --json"}}'
 
 # Exported into the hook subprocess below.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 command() { if [ "${1:-}" = -v ]; then if [ "${2:-}" = sha256sum ]; then return 1; fi; fi; builtin command "$@"; }
 export -f command
 summary=$(cd "$repo" && HWAHAP_NOW=now HWAHAP_SECONDS=3 "$root/hooks/posttool.sh" <<<"$payload")

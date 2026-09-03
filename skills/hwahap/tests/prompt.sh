@@ -31,7 +31,7 @@ test "$(lines)" -eq "$before"
 case "$(<"$tmp/err")" in *'unknown alternative'*) ;; *) exit 1 ;; esac
 
 # Exported into the hook subprocess below.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 command() { if [ "${1:-}" = -v ]; then if [ "${2:-}" = sha256sum ]; then return 1; fi; fi; builtin command "$@"; }
 export -f command
 run_prompt 'C1=ALT1 S2=NA'
