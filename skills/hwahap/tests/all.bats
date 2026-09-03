@@ -17,3 +17,5 @@ setup() { root=$(cd "$BATS_TEST_DIRNAME" && pwd); }
 @test "command fuzz" { run bash "$root/fuzz/command.sh"; [ "$status" -eq 0 ]; }
 @test "patch fuzz" { run bash "$root/fuzz/patch.sh"; [ "$status" -eq 0 ]; }
 @test "structural lint" { run bash "$root/lint-conditions.sh"; [ "$status" -eq 0 ]; }
+@test "documented templates" { run bash "$root/templates.sh"; [ "$status" -eq 0 ]; }
+@test "hook messages have fixtures" { run bash "$root/lint-messages.sh"; [ "$status" -eq 0 ]; }

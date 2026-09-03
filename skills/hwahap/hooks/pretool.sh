@@ -2,16 +2,14 @@
 # Deny codex exec calls that cross the fixed template or build gates.
 set -euo pipefail
 digest() { if command -v sha256sum >/dev/null 2>&1; then sha256sum "$@"; else shasum -a 256 "$@"; fi; } # MUTATION-IGNORE equivalent digest providers
-[ "${HWAHAP_DISABLE_HOOKS:-}" = 1 ] && exit 0; template='codex exec -C <path> -s <mode> --ignore-user-config -m <model> -c model_reasoning_effort=<effort> --ephemeral; worker also requires --json -o <file> and the three fixed -c flags'
+[ "${HWAHAP_DISABLE_HOOKS:-}" = 1 ] && exit 0; template='codex exec -C <path> -s <mode> --ignore-user-config -m <model> -c model_reasoning_effort=<effort> --ephemeral --json -o <file>; worker also requires the fixed -c flags'
 deny() {
   reason=$1; printf 'hwahap pretool: %s\ncorrect template: %s\n' "$reason" "$template" >&2
   jq -nc --arg reason "$reason. Correct template: $template" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"deny",permissionDecisionReason:$reason}}'
   exit 0
 }
-payload=$(</dev/stdin)
-printf '%s' "$payload" | jq -e . >/dev/null 2>&1 || { printf 'hwahap pretool: invalid hook payload\n' >&2; exit 1; }
-cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty')
-command=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty')
+payload=$(</dev/stdin); printf '%s' "$payload" | jq -e . >/dev/null 2>&1 || { printf 'hwahap pretool: invalid hook payload\n' >&2; exit 1; }
+cwd=$(printf '%s' "$payload" | jq -r '.cwd // empty'); command=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty')
 [ -n "$cwd" ] || exit 0
 cd "$cwd" || exit 0
 [ -f .hwahap/goal.json ] || exit 0
@@ -19,22 +17,25 @@ case "$command" in codex\ exec\ *) ;; *) exit 0 ;; esac
 skill=$(cd "$(dirname "$0")/.." && pwd)
 workdir=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-C"){print $(i+1); exit}}')
 sandbox=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-s"){print $(i+1); exit}}'); output=$(printf '%s\n' "$command" | awk '{for(i=1;i<=NF;i++) if($i=="-o"){print $(i+1); exit}}')
-for required in ' --ignore-user-config ' ' -m ' ' -c model_reasoning_effort=' ' --ephemeral'; do case "$command" in *"$required"*) ;; *) deny 'required codex exec flags are missing' ;; esac; done
+for required in ' --ignore-user-config ' ' -m ' ' -c model_reasoning_effort=' ' --ephemeral ' ' --json ' ' -o '; do case "$command" in *"$required"*) ;; *) deny 'required codex exec flags are missing' ;; esac; done
 if [ "$workdir" = . ]; then
   [ "$sandbox" = read-only ] || deny 'fact and cold review require -s read-only'
   case "$output" in .hwahap/facts/F*.md|.hwahap/out/review/cold.md) ;; *) deny 'fact or cold review output path is invalid' ;; esac
+  "$skill/hooks/lib/usage.sh" validate "$command" "$workdir" "$sandbox" "$output" || deny 'model or effort differs from settings'
   exit 0
 fi
 case "$workdir" in .hwahap/wt/U*|.hwahap/wt/P*|.hwahap/wt/integration) ;; *) deny 'unknown worktree path' ;; esac; unit=${workdir##*/}
 if [ "$sandbox" = read-only ]; then
   [ "$output" = ".hwahap/out/review/$unit.md" ] || deny 'reviewer output path is invalid'; rounds=0; [ ! -f ".hwahap/out/review/$unit.attempt" ] || rounds=$(<".hwahap/out/review/$unit.attempt")
-  [ "$rounds" -lt 2 ] || deny 'reviewer retry limit reached'; exit 0
+  [ "$rounds" -lt 2 ] || deny 'reviewer retry limit reached'
+  "$skill/hooks/lib/usage.sh" validate "$command" "$workdir" "$sandbox" "$output" "$unit" || deny 'model or effort differs from settings'; exit 0
 fi
 [ "$sandbox" = workspace-write ] || deny 'worker requires -s workspace-write'
-for required in ' --json ' ' -o ' ' -c model_verbosity=low ' ' -c model_reasoning_summary=none ' ' -c web_search=disabled '; do
+for required in ' -c model_verbosity=low ' ' -c model_reasoning_summary=none ' ' -c web_search=disabled '; do
   case "$command" in *"$required"*) ;; *) deny 'worker flags are incomplete' ;; esac
 done
 jq -e --arg unit "$unit" 'any(.units[]; .id==$unit)' .hwahap/goal.json >/dev/null || deny 'unknown worker unit'
+"$skill/hooks/lib/usage.sh" validate "$command" "$workdir" "$sandbox" "$output" "$unit" || deny 'model or effort differs from settings'
 probe=$(jq -r --arg unit "$unit" '.units[] | select(.id==$unit) | .probe' .hwahap/goal.json)
 if [ "$probe" = false ]; then
   jq -e -f "$skill/jq/check.jq" .hwahap/goal.json >/dev/null 2>&1 || deny 'goal contract is invalid'
@@ -65,8 +66,7 @@ if [ "${HWAHAP_NO_CACHE:-}" != 1 ]; then if [ -f ".hwahap/out/$unit.patch" ]; th
   fi
 fi; fi
 compgen -G '.hwahap/out/*.needs_decision' >/dev/null && deny 'a worker decision is unresolved'
-used=0; usage_files=(.hwahap/out/*.usage.[0-9]*.json)
-if [ -e "${usage_files[0]}" ]; then used=$(jq -s '[.[] | .input_tokens + .output_tokens] | add // 0' "${usage_files[@]}"); fi
+used=$("$skill/hooks/lib/usage.sh" metrics | jq '.total.tokens')
 budget=$(jq '.budget.tokens' .hwahap/goal.json)
 if [ "$budget" -eq 0 ]; then deny 'token budget is exhausted'; fi
 [ "$used" -lt "$budget" ] || deny 'token budget is exhausted'

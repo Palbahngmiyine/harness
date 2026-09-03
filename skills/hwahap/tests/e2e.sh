@@ -20,9 +20,9 @@ prompt() { jq -nc --arg cwd "$repo" --arg prompt "$1" '{cwd:$cwd,prompt:$prompt}
 prompt 'C1=ALT1 C2=ALT1 S2=NA S3=NA S4=NA S5=NA S6=NA S7=NA S8=NA S9=NA S10=NA S11=NA S12=NA'
 jq --slurpfile a "$repo/.hwahap/answers.jsonl" '.choices |= map(. as $c | .answer.choice_sha256=([$a[]|select(.key==$c.id)][-1].bound_sha256)) | .surfaces.not_applicable |= with_entries(.key as $k | .value.answer.hash=([$a[]|select(.key==$k)][-1].bound_sha256))' "$repo/.hwahap/goal.json" >"$tmp/goal"; mv "$tmp/goal" "$repo/.hwahap/goal.json"
 jq -r --rawfile head "$root/data/brief.head.md" --arg mode cold --arg unit '' --arg patch '' --arg question '' -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/review/cold.brief.md"
-cold='codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/out/review/cold.md'
+cold='codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/cold.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$cold" '{cwd:$cwd,tool_input:{command:$command}}'); test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
-(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=medium --ephemeral -o .hwahap/out/review/cold.md <.hwahap/out/review/cold.brief.md)
+(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C . -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/cold.md <.hwahap/out/review/cold.brief.md >.hwahap/out/review/cold.events.jsonl)
 test "$(cd "$repo" && HWAHAP_NOW=2026-09-02T00:00:00Z "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review pass'
 jq -r -f "$root/jq/render.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/align.md"; prompt 'CONFIRM ALIGN'
 jq --slurpfile a "$repo/.hwahap/answers.jsonl" '([$a[]|select(.key=="CONFIRM")][-1]) as $c | .confirm={text:$c.text,ts:$c.ts,revision:.revision,goal_sha256:$c.bound_sha256,render_sha256:$c.render_sha256}' "$repo/.hwahap/goal.json" >"$tmp/goal"; mv "$tmp/goal" "$repo/.hwahap/goal.json"
@@ -36,18 +36,18 @@ test -z "$(cd "$repo" && CODEX_HOME="$codex_home" "$root/hooks/pretool.sh" <<<"$
 case "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" in 'U1 pass '*) ;; *) exit 1 ;; esac
 
 jq -r --rawfile head "$root/data/brief.head.md" --rawfile patch "$repo/.hwahap/out/U1.patch" --arg mode review --arg unit U1 --arg question '' -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/review/U1.brief.md"
-review='codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/U1.md'
+review='codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/U1.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$review" '{cwd:$cwd,tool_input:{command:$command}}')
 test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
-(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/U1.md <.hwahap/out/review/U1.brief.md)
+(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/U1.md <.hwahap/out/review/U1.brief.md >.hwahap/out/review/U1.events.jsonl)
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'U1 review pass integration=pass'
 
 git -C "$repo/.hwahap/wt/integration" diff HEAD >"$repo/.hwahap/out/integration.patch"
 jq -r --rawfile head "$root/data/brief.head.md" --rawfile patch "$repo/.hwahap/out/integration.patch" --arg mode review --arg unit integration --arg question '' -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/review/integration.brief.md"
-final='codex exec -C .hwahap/wt/integration -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/integration.md'
+final='codex exec -C .hwahap/wt/integration -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/integration.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$final" '{cwd:$cwd,tool_input:{command:$command}}')
 test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
-(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C .hwahap/wt/integration -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/integration.md <.hwahap/out/review/integration.brief.md)
+(cd "$repo" && PATH="$shim:$PATH" CODEX_SHIM_LOG="$tmp/codex.log" codex exec -C .hwahap/wt/integration -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/integration.md <.hwahap/out/review/integration.brief.md >.hwahap/out/review/integration.events.jsonl)
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'integration review pass'
 
 payload=$(jq -nc --arg cwd "$repo" '{cwd:$cwd,stop_hook_active:false}')

@@ -24,7 +24,7 @@ printf 'exit 0\n' >"$repo/.hwahap/out/U1.test.txt"
 printf 'verdict: pass\n' >"$repo/.hwahap/out/review/U1.md"
 jq -r --rawfile head "$root/data/brief.head.md" --arg mode worker --arg unit U2 --arg patch '' --arg question '' \
   -f "$root/jq/brief.jq" "$repo/.hwahap/goal.json" >"$repo/.hwahap/out/U2.brief.md"
-worker='codex exec -C .hwahap/wt/U2 -s workspace-write --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=high -c model_verbosity=low -c model_reasoning_summary=none -c web_search=disabled --ephemeral --json -o .hwahap/out/U2.last.md'
+worker='codex exec -C .hwahap/wt/U2 -s workspace-write --ignore-user-config -m gpt-5.6-luna -c model_reasoning_effort=high -c model_verbosity=low -c model_reasoning_summary=none -c web_search=disabled -c tool_output_token_limit=4000 --ephemeral --json -o .hwahap/out/U2.last.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$worker" '{cwd:$cwd,tool_input:{command:$command}}')
 test -z "$(cd "$repo" && "$root/hooks/pretool.sh" <<<"$payload")"
 test "$(<"$repo/.hwahap/wt/U2/src/check.sh")" = unit1
@@ -43,8 +43,9 @@ printf 'blocked\n' >"$repo/.hwahap/wt/integration"
 set +e; (cd "$repo" && "$root/hooks/lib/integrate.sh"); rc=$?; set -e
 test "$rc" -ne 0; case "$(tail -n 1 "$repo/.hwahap/out/integration.test.txt")" in 'exit '[1-9]*) ;; *) exit 1 ;; esac
 rm "$repo/.hwahap/wt/integration" "$repo/.hwahap/out/integration.test.txt"
-review='codex exec -C .hwahap/wt/U2 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral -o .hwahap/out/review/U2.md'
+review='codex exec -C .hwahap/wt/U2 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/U2.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$review" '{cwd:$cwd,tool_input:{command:$command}}')
+cp "$root/tests/fixtures/usage/good/events.jsonl" "$repo/.hwahap/out/review/U2.events.jsonl"
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'U2 review pass integration=pass'
 before=$(shasum -a 256 "$repo/.hwahap/out/integration.test.txt")
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'U2 review pass'
