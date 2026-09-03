@@ -11,7 +11,6 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
-| [grill-prfaq](skills/grill-prfaq/) | Pressure-test an idea before writing a Working Backwards PR/FAQ | KO |
 | [hwahap](skills/hwahap/) | Align an implementation contract, run isolated Codex workers/reviews, and deliver a draft PR | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
@@ -27,11 +26,8 @@ cp -r skills/prompt-engineering-patterns ~/.claude/skills/
 # Claude Code: install all skills at once
 cp -r skills/* ~/.claude/skills/
 
-# Codex: install grill-prfaq at user level
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/grill-prfaq "${CODEX_HOME:-$HOME/.codex}/skills/"
-
 # Codex: install the Hwahap implementation orchestrator
+mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
 cp -R skills/hwahap "${CODEX_HOME:-$HOME/.codex}/skills/"
 ```
 
@@ -54,7 +50,7 @@ Master advanced prompt engineering techniques including:
 - Template systems with variable interpolation
 - System prompt design patterns
 
-Includes reference docs, a prompt template library, curated few-shot examples, and an automated optimization script.
+Includes reference docs, a prompt template library, and curated few-shot examples.
 
 ### claude-code-analyzer
 
@@ -90,21 +86,6 @@ Automate PR creation from a forked repo to upstream:
 - Auto-generated PR body with summary, changes, and test plan
 - Build verification before PR creation
 
-### grill-prfaq
-
-Pressure-test an idea through short rounds before writing a Working Backwards PR/FAQ:
-- Builds a decision tree from customer, problem, core benefit, evidence, and experience
-- Records facts, user decisions, assumptions, and parked questions in one file
-- Requires a rubric gate, explicit user confirmation, and validator success before writing the PR
-- Includes Codex display metadata, reference material, and a deterministic validator
-
-Validate the skill from the repository root:
-
-```bash
-python3 skills/grill-prfaq/scripts/test_validate_prfaq.py
-python3 skills/grill-prfaq/scripts/validate_prfaq.py --help
-```
-
 ### hwahap
 
 Hwahap v2 keeps alignment and implementation in one Codex session:
@@ -125,7 +106,6 @@ without removing existing hooks. Restart Codex after hook registration.
 Validate from the repository root:
 
 ```bash
-"$PWD/skills/hwahap/scripts/hwahap" --help
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/hwahap
 skills/hwahap/tests/all.sh
 ```
