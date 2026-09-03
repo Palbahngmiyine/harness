@@ -55,5 +55,5 @@ test -z "$(cd "$repo" && PATH="$shim:$PATH" CODEX_HOME="$codex_home" GH_MODE=suc
 jq -e '.deliver=="done" and .pr_url=="https://example.test/new" and .units_passed==1' "$repo/.hwahap/summary.json" >/dev/null
 test "$(wc -l <"$tmp/codex.log")" -eq 4
 git --git-dir="$remote" show-ref --verify --quiet refs/heads/hwahap/e2e
-if [ -n "${HWAHAP_E2E_RESULT:-}" ]; then { for file in U1.patch U1.test.txt integration.test.txt review/U1.md review/integration.md; do shasum -a 256 "$repo/.hwahap/out/$file" | awk -v file="$file" '{print file, $1}'; done; jq -S 'del(.config.max_parallel)' "$repo/.hwahap/summary.json"; } >"$HWAHAP_E2E_RESULT"; fi
+if [ -n "${HWAHAP_E2E_RESULT:-}" ]; then { for file in U1.patch U1.test.txt integration.test.txt review/U1.md review/integration.md; do shasum -a 256 "$repo/.hwahap/out/$file" | awk -v file="$file" '{print file, $1}'; done; jq -S 'del(.config.max_parallel,.base_sha,.repo_path)' "$repo/.hwahap/summary.json"; } >"$HWAHAP_E2E_RESULT"; fi
 printf 'e2e align worker review integrate gate deliver\n'

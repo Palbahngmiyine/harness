@@ -111,7 +111,7 @@ expect_block 'fact hash changed'; restore_goal
 printf 'unit1\nAKIA1234567890ABCDEF\n' >"$repo/.hwahap/wt/integration/src/check.sh"; expect_block 'secret pattern'; printf 'unit1\n' >"$repo/.hwahap/wt/integration/src/check.sh"
 
 test -z "$(run_gate)"
-jq -e '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .tokens.reviewers==1800 and .tokens.facts==1800 and .tokens.orchestrator==4321 and .units[0].cache_hit_ratio==0.4 and .units[0].reasoning_ratio==(1/3) and .cache_hit_ratio==0.4 and .cost_usd==0.006624 and .seconds==9 and .deliver=="skipped:unattended"' "$repo/.hwahap/summary.json" >/dev/null
+jq -e --arg sha "$(git -C "$repo" rev-parse HEAD)" --arg repo "$(git -C "$repo" rev-parse --show-toplevel)" '.units_total==1 and .units_passed==1 and .first_try_pass==1 and .tokens.workers==1800 and .tokens.reviewers==1800 and .tokens.facts==1800 and .tokens.orchestrator==4321 and .units[0].cache_hit_ratio==0.4 and .units[0].reasoning_ratio==(1/3) and .cache_hit_ratio==0.4 and .cost_usd==0.006624 and .seconds==9 and .deliver=="skipped:unattended" and .base_sha==$sha and .repo_path==$repo and .improve.reason=="auto disabled" and .improve.benchmark_count==0' "$repo/.hwahap/summary.json" >/dev/null
 test -f "$repo/.hwahap/report.md"
 grep -Fq 'worker tokens=1800' "$repo/.hwahap/report.md"; grep -Fq 'reviewer tokens=1800' "$repo/.hwahap/report.md"; grep -Fq 'fact tokens=1800' "$repo/.hwahap/report.md"
 grep -Fq -- '- kept deviation' "$repo/.hwahap/report.md"; grep -Fq -- '- kept question' "$repo/.hwahap/report.md"
@@ -119,4 +119,5 @@ if grep -Fq 'not reported' "$repo/.hwahap/report.md"; then exit 1; fi
 test -f "$codex_home/hwahap/$repo_id/runs/2026-09-02-test/summary.json"
 headings=$(grep '^## ' "$repo/.hwahap/report.md" | tr '\n' '|')
 test "$headings" = '## 결론|## 근거|## 확인 과정|## 한계|## 비용|'
+bash "$root/tests/improve-gate.sh" >/dev/null
 printf 'gate failures=12 align=nonblocking report=durable\n'

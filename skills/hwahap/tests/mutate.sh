@@ -15,6 +15,7 @@ target_tests() {
     integrate.sh) printf 'integrate.sh fuzz/patch.sh' ;;
     deliver.sh) printf 'deliver.sh' ;;
     usage.sh) printf 'brief-usage.sh capture-posttool.sh e2e.sh gate.sh pretool-posttool.sh templates.sh' ;;
+    improve-gate.sh) printf 'improve-gate.sh' ;;
     improve.sh) printf 'improve.sh' ;;
   esac
 }

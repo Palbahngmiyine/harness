@@ -9,7 +9,7 @@ while IFS= read -r file; do
   if awk '/if .*(&&|\|\|).*then|\[[^]]*(&&|\|\|)[^]]*\]/{print FNR ":" $0; bad=1} END{exit bad}' "$file"; then :; else status=1; fi
 done < <(find "$root/hooks" -type f -name '*.sh' -print | sort)
 test "$(find "$root/hooks" -maxdepth 1 -type f -name '*.sh' | wc -l)" -le 4 || status=1
-test "$(find "$root/hooks/lib" -type f -name '*.sh' | wc -l)" -le 4 || status=1
+test "$(find "$root/hooks/lib" -type f -name '*.sh' | wc -l)" -le 5 || status=1
 test "$(find "$root/jq" -type f -name '*.jq' | wc -l)" -le 4 || status=1
 test "$(wc -l <"$root/SKILL.md")" -le 100 || status=1
 test "$(wc -l <"$root/SURFACES.md")" -le 40 || status=1
