@@ -72,7 +72,6 @@ while IFS= read -r token; do
       bound=$(jq -e -S -c --arg id "$key" '.choices[] | select(.id==$id) | {id,question,alternatives}' "$goal") || { printf 'hwahap prompt: unknown choice %s\n' "$key" >&2; continue; }
       ;;
     S*) bound=$(jq -e -S -c --arg id "$key" '.surfaces.not_applicable[$id] | select(. != null) | {id:$id,reason}' "$goal") || { printf 'hwahap prompt: unknown surface %s\n' "$key" >&2; continue; } ;;
-    *) continue ;;
   esac
   append_answer "$token" "$key" "$(printf '%s' "$bound" | sha)"
 done < <(printf '%s\n' "$prompt" | awk '{for(i=1;i<=NF;i++){if($i~/^(C[0-9]+=(ALT[0-9]+|UNKNOWN)|S[0-9]+=NA|CP[0-9]+=OK)$/)print $i;else if($i~/^C[0-9]+=OTHER:$/){v=$i;for(j=i+1;j<=NF;j++)v=v" "$j;if(i<NF)print v;break}}}')

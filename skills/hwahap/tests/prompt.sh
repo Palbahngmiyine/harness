@@ -30,7 +30,12 @@ run_prompt 'C1=ALT9'
 test "$(lines)" -eq "$before"
 case "$(<"$tmp/err")" in *'unknown alternative'*) ;; *) exit 1 ;; esac
 
+# Exported into the hook subprocess below.
+# shellcheck disable=SC2329
+command() { if [ "${1:-}" = -v ]; then if [ "${2:-}" = sha256sum ]; then return 1; fi; fi; builtin command "$@"; }
+export -f command
 run_prompt 'C1=ALT1 S2=NA'
+unset -f command
 test "$(lines)" -eq 2
 run_prompt 'C2=UNKNOWN'
 test "$(lines)" -eq 3

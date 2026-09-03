@@ -29,8 +29,7 @@ prev=null
 while IFS= read -r line; do
   [ "$(printf '%s' "$line" | jq -r '.prev')" = "$prev" ] || fail 'answer hash chain is discontinuous'
   stored=$(printf '%s' "$line" | jq -r '.hash'); actual=$(printf '%s' "$line" | jq -S -c 'del(.hash)' | sha)
-  [ "$stored" = "$actual" ] || fail 'answer hash is invalid'; prev=$stored
-done <.hwahap/answers.jsonl
+  [ "$stored" = "$actual" ] || fail 'answer hash is invalid'; prev=$stored; done <.hwahap/answers.jsonl
 jq -e -f "$skill/jq/check.jq" "$goal" >/dev/null 2>&1 || fail 'goal contract is invalid'
 jq -e 'any(.open_items[]; .status=="open") | not' "$goal" >/dev/null || fail 'open items remain'
 while IFS=$'\t' read -r path digest; do [ -f "$path" ] || fail "fact is missing: $path"; [ "$(sha <"$path")" = "$digest" ] || fail "fact hash changed: $path"; done < <(jq -r '.facts[] | [.path,.sha256] | @tsv' "$goal")
@@ -66,8 +65,7 @@ jq -n --arg id "$goal_id" --arg base "$base" --argjson revision "$revision" --ar
     attempt=0; [ ! -f ".hwahap/out/$unit.attempt" ] || attempt=$(<".hwahap/out/$unit.attempt")
     cached_unit=no; [ ! -f ".hwahap/out/$unit.cached" ] || cached_unit=yes
     unit_usage=$(jq -s '{tokens:([.[].input_tokens+.[].output_tokens]|add//0),input:([.[].input_tokens]|add//0),cached:([.[].cached_input_tokens]|add//0),cost:([.[].cost_usd]|add//0),seconds:([.[].seconds]|add//0)}' .hwahap/out/"$unit".usage.[0-9]*.json 2>/dev/null || printf '{"tokens":0,"input":0,"cached":0,"cost":0,"seconds":0}')
-    printf '| %s | %s | %s | %s | %s | out/%s.patch | %s | %s | %s | %s |\n' "$unit" "$attempt" "$cached_unit" "$(tail -n 1 ".hwahap/out/$unit.test.txt" 2>/dev/null)" "$(head -n 1 ".hwahap/out/review/$unit.md" 2>/dev/null)" "$unit" "$(printf '%s' "$unit_usage"|jq '.tokens')" "$(printf '%s' "$unit_usage"|jq 'if .input==0 then 0 else .cached/.input end')" "$(printf '%s' "$unit_usage"|jq '.cost')" "$(printf '%s' "$unit_usage"|jq '.seconds')"
-  done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
+    printf '| %s | %s | %s | %s | %s | out/%s.patch | %s | %s | %s | %s |\n' "$unit" "$attempt" "$cached_unit" "$(tail -n 1 ".hwahap/out/$unit.test.txt" 2>/dev/null)" "$(head -n 1 ".hwahap/out/review/$unit.md" 2>/dev/null)" "$unit" "$(printf '%s' "$unit_usage"|jq '.tokens')" "$(printf '%s' "$unit_usage"|jq 'if .input==0 then 0 else .cached/.input end')" "$(printf '%s' "$unit_usage"|jq '.cost')" "$(printf '%s' "$unit_usage"|jq '.seconds')"; done < <(jq -r '.units[] | select(.probe|not) | .id' "$goal")
   printf '## 확인 과정\nGoal, 답변 원장, hash chain, unit 범위, unit test/review, 통합 test/review, human turn을 확인했다.\n## 한계\n'
   if [ -f .hwahap/diary.md ]; then awk '/^## (Deviations|Open questions)$/{show=1; sub(/^## /,"### "); print; next} /^## /{show=0} show' .hwahap/diary.md; else printf 'diary 없음.\n'; fi
   worker_cost=$(printf '%s' "$metrics" | jq '.roles.worker.cost'); reviewer_cost=$(printf '%s' "$metrics" | jq '.roles.reviewer.cost'); fact_cost=$(printf '%s' "$metrics" | jq '.roles.fact.cost')

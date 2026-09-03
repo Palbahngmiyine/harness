@@ -114,6 +114,8 @@ printf 'bad\n' >"$repo/.hwahap/out/review/cold.md"
 payload=$(jq -nc --arg cwd "$repo" --arg command "$cold" '{cwd:$cwd,tool_input:{command:$command}}')
 test -z "$(run_pretool "$cold")"
 test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review fail verdict_invalid=1'
+printf 'verdict: fail\n' >"$repo/.hwahap/out/review/cold.md"
+test "$(cd "$repo" && "$root/hooks/posttool.sh" <<<"$payload")" = 'cold review fail'
 printf 'bad\n' >"$repo/.hwahap/out/review/U1.md"
 review='codex exec -C .hwahap/wt/U1 -s read-only --ignore-user-config -m gpt-5.6-terra -c model_reasoning_effort=high --ephemeral --json -o .hwahap/out/review/U1.md'
 payload=$(jq -nc --arg cwd "$repo" --arg command "$review" '{cwd:$cwd,tool_input:{command:$command}}')
