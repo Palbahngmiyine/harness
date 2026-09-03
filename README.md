@@ -125,6 +125,7 @@ without removing existing hooks. Restart Codex after hook registration.
 Validate from the repository root:
 
 ```bash
+"$PWD/skills/hwahap/scripts/hwahap" --help
 python3 "${CODEX_HOME:-$HOME/.codex}/skills/.system/skill-creator/scripts/quick_validate.py" skills/hwahap
 skills/hwahap/tests/all.sh
 ```

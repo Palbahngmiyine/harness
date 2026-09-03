@@ -29,11 +29,18 @@ jobs:
 
       - name: Install Linux test tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y bats kcov shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats curl ripgrep shellcheck
+          curl -L -o "$RUNNER_TEMP/kcov-amd64-v42.tar.gz" https://github.com/SimonKagstrom/kcov/releases/download/v42/kcov-amd64.tar.gz
+          echo "78aa17a5f6d27a867cc0540b1550051591d350423a1a0ef98d63c9ce7cc10f9d  $RUNNER_TEMP/kcov-amd64-v42.tar.gz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/kcov"
+          tar -xzf "$RUNNER_TEMP/kcov-amd64-v42.tar.gz" -C "$RUNNER_TEMP/kcov"
+          echo "$RUNNER_TEMP/kcov/usr/local/bin" >> "$GITHUB_PATH"
 
       - name: Install macOS test tools
         if: runner.os == 'macOS'
-        run: brew install bats-core shellcheck
+        run: brew install bats-core ripgrep shellcheck
 
       - name: Run deterministic shell harnesses
         run: skills/hwahap/tests/all.sh
