@@ -11,7 +11,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
-| [hwahap](skills/hwahap/) | Align an implementation contract, run isolated Codex workers/reviews, and deliver a draft PR | KO/EN |
+| [hwahap](skills/hwahap/) | Codex **plugin**: confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
 
@@ -25,13 +25,13 @@ cp -r skills/prompt-engineering-patterns ~/.claude/skills/
 
 # Claude Code: install all skills at once
 cp -r skills/* ~/.claude/skills/
-
-# Codex: install the Hwahap implementation orchestrator
-mkdir -p "${CODEX_HOME:-$HOME/.codex}/skills"
-cp -R skills/hwahap "${CODEX_HOME:-$HOME/.codex}/skills/"
 ```
 
 Start a new session after copying to confirm that the skill is available.
+
+`hwahap` is the exception: it is a **Codex plugin**, not a copyable skill directory, because it
+ships an MCP server that a bare skill cannot register. Install it with `codex plugin add` — see
+[skills/hwahap/README.md](skills/hwahap/README.md).
 
 ### Skill Locations
 
@@ -88,37 +88,39 @@ Automate PR creation from a forked repo to upstream:
 
 ### hwahap
 
-Hwahap v2 keeps alignment and implementation in one Codex session:
+Hwahap v3 is a Codex plugin that runs one implementation request end to end:
 
-- inspect twelve decision surfaces and bind only explicit user answers
-- render the exact `goal.json` contract before `CONFIRM ALIGN`
-- run atomic Luna workers and independent Terra reviews in isolated worktrees
-- capture scoped patches, tests, token/cost receipts, and cache evidence through four hooks
-- integrate passing units once, run the full suite, and open a draft PR after the Stop gate
-- evaluate improve signals after delivery; the benchmark runner is not implemented yet
+- it investigates the repository itself and asks only about preferences and trade-offs
+- every material decision arrives with alternatives, a recommendation, evidence, and impact — and
+  the recommendation is never an implicit default
+- `CONFIRM PLAN <challenge>` freezes a digest-bound plan; after that a normal cycle asks nothing
+- units are implemented, tested, and independently reviewed one at a time, each accepted unit
+  becoming a checkpoint commit on a single run branch
+- success is judged from repository state and exit status, never from what an agent claims
+- it finishes with a draft pull request, and marks it ready only on an explicit `SHIP <challenge>`
 
-It requires Bash, `jq`, Git, `gh`, and Codex CLI 0.151 or newer, and no Python
-runtime. Installation, the hook contract, the design decisions, the test rules,
-and the verified platform facts are in
-[`skills/hwahap/README.md`](skills/hwahap/README.md); the orchestrator itself
-reads only [`SKILL.md`](skills/hwahap/SKILL.md) and
-[`SURFACES.md`](skills/hwahap/SURFACES.md).
+One Rust binary is both a local STDIO MCP server (exactly three tools) and an ACP client driving a
+pinned `codex-acp` adapter, one session at a time. There is no daemon, no database, no HTTP
+transport, and no lifecycle hook.
+
+Requirements: Rust 1.90 or newer, an authenticated `gh`, and `codex-acp` on `PATH`.
+Installation, the architecture, the fixed model/effort policy, and the design decisions are in
+[`skills/hwahap/README.md`](skills/hwahap/README.md).
 
 Validate from the repository root:
 
 ```bash
-skills/hwahap/tests/all.sh
-skills/hwahap/tests/mutate.sh
+cargo test --manifest-path skills/hwahap/runtime/Cargo.toml --all-targets
+skills/hwahap/tests/gates.sh
 ```
 
-CI runs the deterministic suites, Bats, ShellCheck, the lint scripts, and the
-resource-leak check on both ubuntu and macOS, and kcov coverage plus mutation
-testing on ubuntu. The `verify` job gates the whole matrix and is the required
-status check on `main`.
+CI runs fmt, clippy, and the test suite on ubuntu, macOS, and Windows, plus the static simplicity
+gates that pin the design to numbers: three MCP tools, a 40-line skill, three model/effort
+profiles, and zero SQLite, HTTP-server, daemon, hook, or nested-exec dependencies. The `verify`
+job gates everything and is the required status check on `main`.
 
-Target repositories keep ignored run state under `.hwahap/`. Durable summaries
-and human answer ledgers live under `~/.codex/hwahap/<repo-id>/`; Hwahap never
-marks a PR ready, merges it, or enables auto-merge.
+Target repositories keep ignored run state under `.hwahap/`. Hwahap never marks a PR ready without
+an explicit confirmation, and never merges or enables auto-merge.
 
 ### korean-spell-check
 

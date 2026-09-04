@@ -1,0 +1,43 @@
+#!/bin/sh
+# Launches the hwahap MCP server.
+#
+# The plugin directory is copied verbatim into the Codex plugin cache on install, so this launcher
+# travels with it while the compiled binary does not. It resolves the binary in a fixed order and
+# fails with an actionable message rather than starting something unexpected.
+set -eu
+
+plugin_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+
+if [ -n "${HWAHAP_BIN:-}" ]; then
+  if [ ! -x "$HWAHAP_BIN" ]; then
+    echo "hwahap: HWAHAP_BIN is set to '$HWAHAP_BIN', which is not an executable file." >&2
+    exit 1
+  fi
+  exec "$HWAHAP_BIN" "$@"
+fi
+
+for candidate in \
+  "$plugin_root/runtime/target/release/hwahap" \
+  "$plugin_root/runtime/target/debug/hwahap"
+do
+  if [ -x "$candidate" ]; then
+    exec "$candidate" "$@"
+  fi
+done
+
+if command -v hwahap >/dev/null 2>&1; then
+  exec hwahap "$@"
+fi
+
+# stderr, never stdout: stdout is the MCP transport, and a diagnostic there would be read as a
+# malformed JSON-RPC frame.
+cat >&2 <<EOF
+hwahap: no hwahap binary found.
+
+Build it once:
+
+    cargo build --release --manifest-path "$plugin_root/runtime/Cargo.toml"
+
+or point HWAHAP_BIN at an existing binary.
+EOF
+exit 1
