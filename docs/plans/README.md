@@ -2,7 +2,7 @@
 
 | Date | Plan | Status |
 |---|---|---|
-| 2026-09-04 | [Hwahap V3: Plan Freeze 기반 자율 구현 사이클](2026-09-04-hwahap-v3.md) | Proposed |
+| 2026-09-04 | [Hwahap V3: 얇은 Skill과 단일 실행 루프](2026-09-04-hwahap-v3.md) | Proposed |
 | 2026-09-04 | [Hwahap V3 구현·검증 계획](2026-09-04-hwahap-v3-delivery.md) | Proposed |
 
-기획 문서는 구현 전에 결정과 검증 계약을 고정한다. Hwahap V3는 v2와 병행하는 호환 버전이 아니라 breaking replacement다. V3 cutover가 완료되면 `skills/hwahap`의 v2 runtime/hook/schema는 지원 대상에서 제거되고 V3 코드와 운영 문서가 유일한 source of truth가 된다. v2 artifact 자동 migration이나 v2/v3 dual-mode는 제공하지 않는다.
+Hwahap V3는 v2를 호환성 없이 전면 교체한다. 핵심 형태는 `thin Skill + local STDIO MCP + Rust binary + stable ACP v1`이다. 초기 구현은 한 repository당 active run 하나, run worktree 하나, adapter process 하나, active agent session 하나만 사용한다. SQLite, daemon, HTTP server, lifecycle hook, worker용 내부 MCP, parallel worker pool, v2 compatibility layer는 만들지 않는다.
