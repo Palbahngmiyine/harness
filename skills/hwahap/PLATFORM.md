@@ -6,7 +6,7 @@ Hwahap v3의 구조는 아래 사실 위에 서 있다. 전부 2026-09-04에 실
 
 | 대상 | 버전 | 확인 방법 |
 |---|---|---|
-| rustc / cargo | 1.90.0 | `rustc --version` |
+| rustc / cargo | 1.98.1 (CI와 동일) | `rustc --version` |
 | `agent-client-protocol` | 2.0.0 | crates.io, vendored source |
 | `agent-client-protocol-schema` | 1.5.0 | 위 크레이트의 의존성 |
 | `rmcp` | 3.2.0 (features `server`, `transport-io`, `macros`) | crates.io, vendored source |
@@ -115,8 +115,44 @@ Hwahap은 스펙에 있는 `set_config_option` 경로만 쓴다. `session/set_mo
   **그대로 복사**된다. 따라서 실행 파일은 플러그인 디렉터리 안에 있어야 하고, OpenAI 자체 플러그인도
   같은 이유로 `bin/`에 sh 런처를 둔다.
 
-`skills/hwahap`은 `python3 ~/.codex/skills/.system/plugin-creator/scripts/validate_plugin.py
-skills/hwahap`을 통과한다.
+### 3.1 스킬 경로는 협상 불가능하다
+
+플러그인 스킬을 `<plugin>/skills/<name>/` 밖에 둘 방법은 없다.
+
+- `validate_skill_manifests`는 `skills_root = plugin_root / "skills"`를 **하드코딩**하고 그 바로
+  아래 디렉터리만 순회한다 (`scripts/validate_plugin.py:424-431`).
+- `plugin.json`의 `skills` 필드로 우회할 수 없다. `"skills": "./SKILL.md"`로 설치를 시도하면
+  ``plugin.json field `skills` must resolve to `skills` ``로 거부된다 (실측). 이 필드는 경로를
+  바꾸는 것이 아니라 기본 위치를 재확인하는 용도다.
+- 이 머신에 있는 실제 플러그인의 스킬 **617개 중 플러그인 루트에 `SKILL.md`를 둔 것은 0개**다.
+  (`find ~/.codex/.tmp/plugins/plugins ~/.codex/.tmp/bundled-marketplaces -maxdepth 2 -name SKILL.md`)
+- `skills` 필드를 아예 빼고 루트에 `SKILL.md`를 둔 플러그인은 validator를 통과하고
+  `codex plugin add`도 성공하며 파일도 캐시로 복사된다. 그러나 설치기는 디렉터리를 통째로 복사할
+  뿐이므로, 이것은 **발견된다는 증거가 아니다.** 위 세 가지 근거를 볼 때 그런 스킬은 설치는 되지만
+  발견되지 않을 가능성이 높다 — 겉보기에는 멀쩡한 가장 나쁜 실패다.
+
+**결론**: hwahap은 Codex 플러그인으로 배포하지 않는다. 플러그인으로 만들려면
+`skills/hwahap/skills/hwahap/SKILL.md`가 되어야 하는데, 이는 이 저장소가 나머지 7개 스킬에 쓰는
+`skills/<name>/SKILL.md` 규약과 어긋나고 루트 README의 `cp -r skills/*` 설치를 깨뜨린다. 대신
+스킬은 평범한 스킬 디렉터리로, MCP 서버는 `codex mcp add`로 등록한다. 후자는 실측으로 확인된
+경로다(§3.2).
+
+### 3.2 `codex mcp add`가 쓰는 TOML
+
+격리된 `CODEX_HOME`에 대해 `codex mcp add hwahap --env FOO=bar -- /path/to/hwahap serve --flag`를
+실행하면 `config.toml`에 다음이 기록된다.
+
+```toml
+[mcp_servers.hwahap]
+command = "/path/to/hwahap"
+args = ["serve", "--flag"]
+
+[mcp_servers.hwahap.env]
+FOO = "bar"
+```
+
+사용자의 실제 `~/.codex/config.toml`도 같은 모양이며, 선택적으로 `cwd`, `enabled`,
+`startup_timeout_sec`을 받는다.
 
 ## 4. 알려진 제약: Windows
 
@@ -132,12 +168,12 @@ Windows에서 단위 테스트는 전부 돌지만 사이클은 검증되지 않
 
 정직하게 남겨 둔다. 아래는 설계가 의존하지만 실측하지 못했다.
 
-- ChatGPT Desktop이 CLI와 같은 marketplace/매니페스트를 읽는지. CLI 0.152.1만 확인했다.
-- 플러그인 `.mcp.json`의 상대 `command`가 설치 캐시 기준으로 풀리는지 원본 디렉터리 기준인지.
-  복사 동작상 캐시 기준이 강하게 시사되지만 실제로 띄워 보지 않았다.
-- `env_vars`의 정확한 의미(pass-through allowlist로 추정).
-- Codex 샌드박스(`workspace-write`) 아래에서 플러그인 MCP 서버가 `codex-acp` 같은 장수명 자식
-  프로세스를 띄울 수 있는지. **v3의 핵심 가정이며 미검증이다.**
+- ChatGPT Desktop이 `codex mcp add`가 쓴 `config.toml`을 CLI와 같게 읽는지. CLI 0.152.1만 확인했다.
+- Codex 샌드박스(`workspace-write`) 아래에서 MCP 서버가 `codex-acp` 같은 장수명 자식 프로세스를
+  띄울 수 있는지. **v3의 핵심 가정이며 미검증이다.**
+- 플러그인 루트에 놓인 `SKILL.md`가 정말로 발견되지 않는지. §3.1의 세 근거가 그렇게 가리키지만,
+  발견 여부를 직접 관측할 방법을 찾지 못했다. hwahap이 플러그인 배포를 쓰지 않으므로 결론에는
+  영향이 없다.
 - `session/prompt` 중 어댑터가 `fs/*`, `terminal/*`, `session/request_permission`을 실제로 호출하는
   경로. 프롬프트를 보내는 프로브는 quota 때문에 최소한으로만 돌렸다.
 - `session/cancel` → `StopReason::Cancelled` 왕복.

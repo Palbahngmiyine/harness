@@ -1,12 +1,12 @@
 #!/bin/sh
 # Launches the hwahap MCP server.
 #
-# The plugin directory is copied verbatim into the Codex plugin cache on install, so this launcher
+# The skill directory is what gets copied into a skills directory on install, so this launcher
 # travels with it while the compiled binary does not. It resolves the binary in a fixed order and
 # fails with an actionable message rather than starting something unexpected.
 set -eu
 
-plugin_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+skill_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 if [ -n "${HWAHAP_BIN:-}" ]; then
   if [ ! -x "$HWAHAP_BIN" ]; then
@@ -17,8 +17,8 @@ if [ -n "${HWAHAP_BIN:-}" ]; then
 fi
 
 for candidate in \
-  "$plugin_root/runtime/target/release/hwahap" \
-  "$plugin_root/runtime/target/debug/hwahap"
+  "$skill_root/runtime/target/release/hwahap" \
+  "$skill_root/runtime/target/debug/hwahap"
 do
   if [ -x "$candidate" ]; then
     exec "$candidate" "$@"
@@ -36,7 +36,7 @@ hwahap: no hwahap binary found.
 
 Build it once:
 
-    cargo build --release --manifest-path "$plugin_root/runtime/Cargo.toml"
+    cargo build --release --manifest-path "$skill_root/runtime/Cargo.toml"
 
 or point HWAHAP_BIN at an existing binary.
 EOF
