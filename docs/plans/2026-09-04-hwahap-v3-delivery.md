@@ -2,388 +2,429 @@
 
 - 상위 기획: [2026-09-04-hwahap-v3.md](2026-09-04-hwahap-v3.md)
 - 상태: 제안
-- 원칙: 기획 계약을 먼저 고정하고 runtime은 작은 vertical slice로 검증한 뒤, 최종 cutover에서 v2를 전면 제거한다.
+- 전달 방식: 작은 구현 단계로 검증하되 마지막 cutover에서 v2를 전면 제거한다.
 
-## 1. 전달 전략
+## 1. 구현 전략
 
-V3는 **breaking replacement**로 전달한다. v2와 v3를 사용자에게 동시에 제공하거나 migration compatibility layer를 유지하지 않는다. 다만 구현 품질을 위해 작업 자체는 작은 vertical slice로 나눈다.
-
-권장 개발 방식은 V3 전용 integration branch에 V3-0~V3-8을 stacked/순차 검증하고, `main`에는 v2를 그대로 둔 뒤 마지막 V3-9 cutover에서 `skills/hwahap`을 V3로 전면 교체하는 것이다. 따라서 사용자가 보는 중간 dual-mode 상태는 만들지 않는다.
+기존 계획의 10개 구현 PR과 다수 subsystem을 6개 단계로 줄인다.
 
 ```text
-P0 facts
-  -> V3 contract
-  -> Desktop/MCP shell
-  -> ACP worker slice
-  -> scheduler/state
-  -> model routing
-  -> structured review
-  -> integration/PR
-  -> adjust/ship
-  -> BREAKING CUTOVER (remove v2, install V3)
+V3-0 official-surface probes
+  -> V3-1 plan contract
+  -> V3-2 thin plugin + file state
+  -> V3-3 sequential ACP coding loop
+  -> V3-4 review, PR, adjust, ship
+  -> V3-5 breaking cutover
 ```
 
-각 구현 단계는 자체 테스트와 review를 통과해야 한다. red CI를 다음 단계에서 고친다는 계획은 허용하지 않는다. v2로 되돌아가기 위한 production compatibility code는 만들지 않는다. cutover 자체에 문제가 있으면 Git history에서 cutover PR/commit을 revert한다.
+`main`에는 V3-5 전까지 v2가 남는다. V3 작업은 전용 integration branch에서 검증한다. 사용자에게 v2/v3 selector나 dual-mode를 제공하지 않는다.
 
-## 2. PR sequence
+각 단계는 green 상태로 끝나야 한다. 이후 단계가 이전 단계의 red CI를 고치는 전달 방식은 허용하지 않는다.
 
-### PR V3-0 — Compatibility probes
+## 2. V3-0 — 공식 surface probe
 
-목적: architecture를 추정으로 잠그지 않는다.
+목적: Desktop와 ACP의 실제 behavior를 확인하고 불필요한 fallback을 설계하지 않는다.
 
-산출물:
+### 확인할 것
 
-- Desktop MCP lifecycle probe
-- Desktop sandbox/child process probe
-- Rust ACP SDK -> pinned codex-acp handshake probe
-- one-adapter multi-session/concurrency probe
-- session config isolation probe
-- ChatGPT auth path probe
-- resume/cancel/process cleanup probe
-- macOS/Windows evidence report
+1. ChatGPT Desktop가 local STDIO MCP process를 언제 시작·종료하는가.
+2. 하나의 MCP tool call이 coding cycle 동안 유지되는가.
+3. Host deadline/interruption 뒤 새 call이 같은 local files에서 복구 가능한가.
+4. MCP initialize `instructions`가 Codex의 tool 사용에 반영되는가.
+5. official Rust ACP SDK stable v1 client가 pinned `codex-acp`와 handshake하는가.
+6. 하나의 adapter process에서 session을 순차 생성·종료할 수 있는가.
+7. Model, reasoning effort, cwd, sandbox mode가 session별로 적용되는가.
+8. Existing ChatGPT login을 사용하면서 Hwahap이 credential bytes를 읽지 않는가.
+9. Cancellation/drop이 adapter와 Codex child process tree를 종료하는가.
+10. macOS와 Windows에서 path quoting과 process cleanup이 일치하는가.
 
-Acceptance:
+### 의도적으로 확인하지 않을 것
 
-- 각 probe는 command, environment, expected, observed, version, date 기록
-- 실패를 숨기지 않고 topology 수정으로 연결
-- credential contents artifact 기록 금지
-- 반복 실행 process leak 0
+- Concurrent multi-session
+- ACP protocol v2
+- MCP-over-ACP
+- HTTP transport
+- MCP Tasks
+- Desktop private App Server endpoint
 
-### PR V3-1 — Contract and Plan Engine
+위 기능은 초기 architecture에 사용하지 않기 때문에 probe 범위에서도 제외한다.
 
-목적: runtime 이전에 Blackbox-Zero planning contract를 고정한다.
+### 산출물
 
-산출물:
+- `docs/evidence/hwahap-v3/platform.md`
+- version/date/OS/command/expected/observed를 가진 probe records
+- 최종 dependency/version pin
 
-- `hwahap/v3` JSON schema
+### Acceptance
+
+- 모든 required probe가 반복 가능한 command 또는 test로 남음
+- credential contents가 log/artifact에 없음
+- cancellation 반복 실행 후 orphan process 0
+- 실패한 probe는 fallback을 즉시 추가하지 않고 architecture assumption을 수정함
+
+## 3. V3-1 — Plan contract
+
+목적: Blackbox-Zero와 recommendation-first planning을 runtime과 독립적으로 고정한다.
+
+### 구현
+
+- `hwahap/v3` `plan.json` schema
 - Fact, Decision, Recommendation, Scenario, Acceptance, Unit, Test records
-- `C<n>=REC` + recommendation hash binding
-- `no_recommendation` / `probe_required`
-- frontier derivation contract
-- all-REC checkpoint
+- 12-surface applicability checklist
+- frontier derivation
+- `C<n>=REC`, `ALT`, `OTHER`, `UNKNOWN`, `NA`
+- `recommended`, `no_recommendation`, `probe_required`
+- challenge-bound `CONFIRM PLAN <digest>`
 - deterministic `plan.md` renderer
-- completeness/traceability validator
+- traceability/DAG/completeness validator
+- Luna cold-consumer prompt contract
+- Terra plan-review prompt contract
 
-Acceptance:
+### 단순화 규칙
 
-- unanswered recommendation을 선택으로 간주하지 않음
-- recommendation 변경 후 기존 `REC` answer stale
-- open decision/assumption/orphan mapping이 있으면 freeze 불가
-- cold implementer finding을 숨기는 경로 없음
-- property/mutation tests로 negative cases 고정
-- v2 artifact import/compatibility code를 추가하지 않음
+- 12개 surface는 stage object가 아니다.
+- Plan lifecycle은 Inspect, Decide, Prove, Freeze 네 상태뿐이다.
+- 여러 critic agent 대신 Terra review 하나와 deterministic validator 하나를 사용한다.
+- 별도 answers database를 만들지 않는다. User answers는 hash-chained event로 기록하고 `plan.json`에 materialize한다.
 
-### PR V3-2 — Rust binary and Desktop surface
+### Acceptance
 
-목적: 사용자가 Desktop에서 하나의 Hwahap capability로 사용한다.
+- Recommendation만 있고 user answer가 없으면 unresolved
+- Recommendation content 변경 시 기존 `REC` answer stale
+- Open fact/probe/assumption이 있으면 freeze 불가
+- Requirement, acceptance, unit, test 중 orphan node가 있으면 freeze 불가
+- Cold consumer가 새 product decision을 요구하면 freeze 불가
+- Plan output이 같은 입력에서 byte-stable
+- Negative/property/mutation tests가 모든 gate를 뒤집어 검증
 
-산출물:
+## 4. V3-2 — Thin Desktop plugin과 file state
 
-- `hwahap` Rust binary
-- `hwahap mcp`, `doctor`, `verify`
-- local Codex Skill
-- MCP declaration/install flow
-- tools: `plan`, `cycle`, `status`, `adjust`, `ship`
-- durable run id와 repository binding
+목적: ChatGPT Desktop에서 Hwahap을 하나의 capability로 설치하고 호출한다.
 
-Acceptance:
+### Plugin shape
 
-- idle 상시 daemon 없음
-- Desktop에서 terminal 없이 plan 시작 가능
-- low-level orchestration tools Parent Codex 미노출
-- same-repo concurrent run policy deterministic
-- binary/process/version readiness를 installed/missing/unknown으로 구분
+```text
+Hwahap plugin
+├── .codex-plugin/plugin.json
+├── skills/hwahap/SKILL.md
+├── .mcp.json
+└── hwahap binary distribution metadata
+```
 
-### PR V3-3 — ACP worker vertical slice
+### Skill
 
-목적: `codex exec` 없이 unit 하나를 구현·검증한다.
+- `SKILL.md` 40줄 이하
+- trigger, exact user-input forwarding, tool-loop behavior만 포함
+- Architecture, model routing, Git algorithm은 포함하지 않음
+- Cross-tool protocol은 MCP `instructions`가 소유
 
-산출물:
+### MCP tools
 
-- official Rust ACP SDK v1 client
-- pinned codex-acp resolver/install probe
-- role-specific session profile
-- model/mode/effort config
-- permission handler
-- ACP event reducer
-- one worktree, one patch, one test receipt
-- cancellation/teardown
+정확히 세 개만 제공한다.
 
-Acceptance:
+1. `hwahap_step`: start, answer, plan advance, build advance, adjust
+2. `hwahap_status`: read-only projection
+3. `hwahap_ship`: explicit consequential PR-ready action
 
-- nested `codex exec` 0
-- worker cwd = unit worktree
-- workspace-write 밖 변경 0
-- network default deny
-- Luna worker가 frozen unit 구현
-- command/file/usage events typed receipt화
-- process tree leak 0
+### File state
 
-### PR V3-4 — Scheduler and durable state
+```text
+.hwahap/
+├── plan.json
+├── plan.md
+├── run.json
+├── events.jsonl
+├── artifacts/
+├── worktree/
+└── report.md
+```
 
-목적: 여러 unit을 LLM이 아닌 deterministic engine이 실행한다.
+- 한 repository에서 active run 하나
+- `run.json`: fsync + atomic rename
+- `events.jsonl`: sequence + previous hash
+- SQLite 없음
+- daemon 없음
+- lifecycle hooks 없음
 
-산출물:
+### Acceptance
 
-- SQLite schema/migrations
-- Run/Unit state machines
-- DAG scheduler + bounded parallelism
-- transition journal
-- retry/review budget
-- crash/restart resume
-- plan/unit/input digest 기반 cache
+- ChatGPT Desktop에서 terminal 없이 skill 선택과 PLAN 시작 가능
+- Tool descriptions가 서로 overlap하지 않음
+- `status`만 `readOnlyHint=true`
+- `ship`은 별도 confirmation challenge 없이는 실행 불가
+- Skill이 `CONFIRM PLAN` 또는 `SHIP`을 생성하지 않는 behavioral test
+- Process 재시작 후 `run.json`/journal에서 같은 phase 복구
+- Same-repo second run은 명확히 거부
 
-Acceptance:
+## 5. V3-3 — 순차 ACP coding loop
 
-- invalid cycle/DAG fail-closed
-- prerequisite accepted 전 dependent 실행 불가
-- transition별 crash injection에서 duplicate side effect 없음
-- unchanged accepted unit 재호출 0
-- cancellation 후 child/session/worktree 일관성 유지
+목적: nested `codex exec`와 per-unit worktree 없이 frozen plan을 구현한다.
 
-### PR V3-5 — Model router
+### Runtime
 
-목적: cheap work는 Luna에 집중하고 escalation을 증거 기반으로 제한한다.
+- 하나의 Rust package
+- Tokio
+- official ACP Rust SDK stable v1
+- pinned `codex-acp`
+- active run 동안 adapter process 하나
+- 동시에 active한 ACP session 하나
+- unit attempt/review마다 fresh session
+- session resume/load 사용 안 함
 
-산출물:
+### Git model
 
-- semantic model tiers
-- risk scoring
-- Luna/Terra/Sol role mapping
-- runtime model availability validation
-- escalation receipts
-- role별 token/quota metrics
+```text
+one run
+  = one hwahap/<goal-id> branch
+  = one .hwahap/worktree
+  = accepted unit checkpoint commits
+```
 
-Acceptance:
+Unit loop:
 
-- low-risk unit default Luna
-- routine retry에 Sol 금지
-- unsupported model silent fallback 금지
-- model change마다 reason 존재
-- high-risk surface가 review 강화 없이 Luna-only로 끝나는 경로 없음
+1. DAG의 다음 ready unit 선택
+2. Last checkpoint에서 Luna worker session 시작
+3. Strict JSON final result 수집
+4. Changed path와 실제 unit test 검증
+5. Terra read-only review
+6. Pass면 checkpoint commit
+7. Fail이면 reset 후 Luna rework 한 번
+8. Persistent failure면 Terra diagnosis 후 blocked 또는 한 번의 수정 attempt
 
-### PR V3-6 — Structured worker/reviewer control
+### Fixed model roles
 
-목적: final-message 문자열 protocol을 제거한다.
+- Luna: facts, cold consumer, implementation, tests, first rework
+- Terra: plan critic, unit reviewer, persistent-failure diagnosis
+- Sol: plan/recommendation synthesis, PlanConflict replan, final review
 
-산출물:
+Numeric risk score와 범용 router는 만들지 않는다.
 
-- worker result contract
-- `PlanConflict` contract
-- reviewer verdict/findings contract
-- role별 최소 structured result/MCP surface
-- invalid/missing result handling
+### Result contracts
 
-Acceptance:
+Worker:
 
-- `NEEDS_DECISION:` 첫 줄 parsing 없음
-- `verdict: pass` 첫 줄 parsing 없음
-- Worker가 parent/control-plane spawn tool에 접근하지 못함
-- malformed result fail-closed
-- PlanConflict + code patch를 successful result로 처리하지 않음
+```json
+{"status":"completed|plan_conflict|failed","summary":"...","conflict":null}
+```
 
-### PR V3-7 — Integration, final review, draft PR
+Reviewer:
 
-목적: V3 native delivery gate를 완성한다.
+```json
+{"verdict":"pass|fail","findings":[]}
+```
 
-산출물:
+Worker-facing MCP server는 없다. JSON이 malformed하면 fail-closed한다. Test/patch 성공은 agent result가 아니라 host observation으로 판정한다.
 
-- topological patch integration
-- full-suite
-- scope/secret/freshness checks
-- Sol final review
-- report/summary
-- draft PR creation
+### Crash recovery
 
-Acceptance:
+- In-flight ACP session ID를 저장하지 않음
+- Process crash 시 working tree를 last accepted checkpoint로 reset
+- Current unit을 fresh session으로 재실행
+- Accepted commits는 재실행하지 않음
 
-- `git apply --check` 선행
-- full-suite current integration diff에 결속
-- final review current head/digest에 결속
-- unplanned product decisions > 0이면 successful terminal 불가
-- ready/merge/auto-merge 수행 안 함
-- report conclusion/evidence/verification/limitations/usage 순서 고정
+### Acceptance
 
-### PR V3-8 — Adjustment and Ship
+- production path의 `codex exec` 호출 0
+- unit별 worktree 생성 0
+- simultaneous worker session 최대 1
+- out-of-scope diff는 commit 전 reset
+- failed/rejected unit commit 0
+- accepted checkpoint commit에 unit ID와 plan digest 포함
+- crash point별 accepted commit 손실 0
+- cancellation 뒤 adapter/Codex process leak 0
 
-목적: PR 확인 후 전체 cycle을 재실행하지 않고 조정한다.
+## 6. V3-4 — Final review, PR, adjustment, ship
 
-산출물:
+목적: 같은 branch/worktree에서 cycle을 완료하고 사용자가 PR에서 조정한다.
 
-- feedback impact analysis
-- affected decision/unit invalidation
-- selective planning + `CONFIRM PLAN`
-- selective rebuild/reintegration
-- `SHIP` final gate
-- draft -> ready transition
+### Completion
 
-Acceptance:
+- 모든 unit accepted 후 full suite 한 번
+- Sol final review 한 번
+- Scope/secret/plan-digest/freshness gate
+- Branch push
+- Draft PR 생성
+- `report.md`와 structured summary
 
-- unaffected accepted unit 재실행 0
-- material feedback을 local coding change로 축소 불가
-- ship 전 CI/head/final-review freshness 재검사
-- merge/auto-merge 없음
-- stale PR head에서 ship 거부
+별도 integration worktree, patch merge engine, integration lock은 만들지 않는다.
 
-### PR V3-9 — Breaking cutover and v2 removal
+### PlanConflict
 
-목적: 검증된 V3를 `hwahap`의 유일한 구현으로 만들고 v2 runtime을 제거한다.
+- Worker result가 `plan_conflict`이면 diff가 비어 있어야 함
+- Affected unit과 dependent를 park
+- Independent ready unit은 계속 실행
+- 실행 가능한 unit이 끝난 뒤 conflict를 한 번에 반환
+- Resolution은 PLAN revision과 새 `CONFIRM PLAN`을 요구
 
-산출물:
+### Adjustment
 
-- `skills/hwahap`을 V3 Skill/설치 문서/runtime 기준으로 전면 교체
-- v2 `codex exec` templates와 orchestration hooks 제거
-- v2 shell helpers/jq runtime 중 V3에서 사용하지 않는 구현 제거
-- v2 schema/run/artifact compatibility code 0
-- v2 전용 tests/workflow 제거 또는 V3 tests/workflow로 교체
-- Hwahap-owned legacy config/hook entry cleanup
-- Desktop install/update/uninstall flow
-- Desktop compatibility matrix + release checklist
+- Feedback을 decision/acceptance/unit에 매핑
+- Material change만 selective PLAN round
+- Existing branch 위에 correction commits 추가
+- Unaffected accepted unit 재실행 없음
+- Affected unit/dependent 검증과 full suite/final review 재실행
+- Force-push/history rewrite 없음
 
-Acceptance:
+### Ship
 
-- repository가 지원하는 Hwahap schema는 `hwahap/v3` 하나뿐
-- 기존 v2 `.hwahap` state/artifact는 자동 import하지 않고 unsupported/restart message 반환
-- `skills/hwahap` production path에서 nested `codex exec` reference 0
-- v2 hook-based orchestration entrypoint 0
-- v2/v3 selector와 compatibility adapter 0
-- Hwahap-owned legacy Codex hook/MCP 설정은 제거/교체하되 unrelated user config 보존
-- full Desktop E2E + manual release checklist 통과 후 cutover
-- cutover rollback은 compatibility mode가 아니라 Git revert로만 수행
+`hwahap_ship`은 다음을 확인한다.
 
-## 3. Test architecture
+- exact `SHIP <digest>` challenge
+- current PR head
+- required CI success
+- current plan digest
+- open conflict/finding 0
+- final review freshness
+- scope/secret gate
 
-### 3.1 Deterministic unit tests
+통과하면 draft PR을 ready로 전환한다. Merge와 auto-merge는 범위 밖이다.
 
-- contract/schema validation
+### Acceptance
+
+- Successful cycle의 unplanned material decision 0
+- Final review가 current head에 결속
+- Draft PR 이전에 full suite와 final review 필수
+- Adjustment가 unrelated unit을 다시 실행하지 않음
+- Stale head 또는 stale review에서 ship 거부
+- PR ready 외 external mutation 없음
+
+## 7. V3-5 — Breaking cutover
+
+목적: V3를 유일한 Hwahap 구현으로 만들고 v2를 제거한다.
+
+### 제거
+
+- v2 `codex exec` templates
+- v2 UserPromptSubmit/PreToolUse/PostToolUse/Stop orchestration
+- v2 shell helper
+- V3에서 사용하지 않는 jq runtime
+- v2 schema/artifact reader
+- v2 run resume
+- v2 tests/workflow
+- v2/v3 selector와 compatibility adapter
+
+### 교체
+
+- `skills/hwahap/SKILL.md` -> thin dispatcher
+- 설치 문서 -> plugin + local STDIO MCP
+- CI -> Rust, contract, fake ACP, live smoke, Desktop checklist
+- README -> PLAN/FREEZE/CODING/ADJUST/SHIP
+
+### Acceptance
+
+- Supported schema는 `hwahap/v3` 하나
+- Production Hwahap path의 `codex exec` reference 0
+- Hwahap-owned lifecycle hook 0
+- SQLite/HTTP/daemon/internal worker MCP dependency 0
+- ACP proxy/conductor/unstable feature 0
+- MCP tools 정확히 3개
+- `SKILL.md` 40줄 이하
+- Existing v2 `.hwahap`은 자동 import하지 않고 clear error 반환
+- Unrelated Codex/MCP/user config 보존
+- Rollback은 cutover PR Git revert로 검증
+
+## 8. Test architecture
+
+### 8.1 Contract tests
+
 - recommendation freshness/hash binding
-- frontier/prerequisite graph
+- frontier prerequisite graph
+- surface coverage
 - traceability completeness
+- challenge validation
 - state transition legality
-- model routing/escalation
-- DAG scheduling
-- path/scope/secret policy
-- report generation
+- deterministic rendering
 
-### 3.2 Fake ACP harness
+### 8.2 Fake ACP agent
 
-실제 모델 없이 다음을 결정적으로 생성한다.
+실제 모델 없이 다음을 생성한다.
 
-- text/reasoning chunk
-- shell command
-- file change
+- text/reasoning/tool events
+- valid/invalid JSON final response
 - permission request
-- usage
-- malformed update
-- disconnect/reconnect
-- delayed completion
+- file change
+- disconnect
+- timeout
 - cancellation race
-- session load/resume
+- process crash
 
-### 3.3 Live ACP smoke
+### 8.3 Live smoke
 
-pinned codex-acp로 최소 fixture repository를 실행한다.
+Pinned adapter로 작은 fixture repository를 실행한다.
 
-- Luna one-file change
-- read-only reviewer
-- concurrent independent sessions
-- dependent units
+- Luna one-file implementation
+- Terra read-only review
+- dependent sequential units
 - PlanConflict
 - network denial
-- cancellation
-- adapter restart/resume
+- adapter crash/current-unit restart
+- draft PR flow
 
-Live tests는 nightly/manual lane에 둘 수 있지만 release checklist에서는 필수다.
+Live model test는 일반 PR CI에 항상 넣지 않아도 되지만 cutover release checklist에는 필수다.
 
-### 3.4 Desktop E2E
+### 8.4 Desktop E2E
 
-| OS | Path | Required scenarios |
-|---|---|---|
-| macOS current-1/current | ChatGPT Desktop Codex | install, plan, cycle, resume, PR, adjust, ship |
-| Windows current-1/current | ChatGPT Desktop Codex | install, quoting, process cleanup, resume |
-| Linux | Codex CLI compatibility lane | core MCP/ACP/runtime regressions |
+| OS | Required |
+|---|---|
+| macOS current/current-1 | plugin install, PLAN, resume, PR, adjust, ship |
+| Windows current/current-1 | install, path quoting, restart, process cleanup |
+| Linux CLI lane | MCP/ACP/runtime regression |
 
-Desktop private endpoint는 테스트 대상이 아니다. 공개 Skill/MCP behavior만 검사한다.
+### 8.5 Failure injection
 
-### 3.5 Failure injection
-
-- Hwahap process 종료
-- codex-acp 종료
-- Codex App Server 종료
-- SQLite busy/corrupt copy
+- MCP process 종료
+- adapter/Codex child 종료
+- atomic-write 직전/직후 종료
+- malformed/truncated journal tail
 - disk full/permission denied
-- worktree/patch conflict
-- GitHub/gh failure
-- CI pending/fail
-- token/quota exhaustion
-- user modifies PR head
+- worktree dirty/reset failure
+- test timeout
+- GitHub/CI failure
+- user-modified PR head
 
-각 case는 terminal state, resume action, retained evidence를 고정한다.
+### 8.6 Static simplicity gates
 
-### 3.6 Coverage and mutation
+다음을 CI에서 숫자로 고정한다.
 
-- Rust line/branch coverage 수치 보고
-- state transition/gate/permission/freshness mutation
-- parser/schema fuzzing
-- concurrency model testing 또는 loom 평가
-- process/resource leak repeat test
-- fmt/clippy/deny/audit
+- MCP tool count = 3
+- Skill physical lines <= 40
+- active worker sessions <= 1 in tests
+- `codex exec` production references = 0
+- lifecycle hook definitions = 0
+- SQLite dependencies = 0
+- HTTP server dependencies = 0
+- ACP unstable features = 0
+- Hwahap-owned daemon/service definitions = 0
 
-수치 목표는 implementation PR에서 toolchain probe 후 고정하되 gate 조건 mutation survival은 0을 목표로 한다.
+## 9. Release gate
 
-## 4. Review gates
+Breaking cutover 전 다음이 모두 필요하다.
 
-각 implementation PR은 다음 질문에 답해야 한다.
-
-1. Parent LLM에게 orchestration 결정을 다시 넘기는가?
-2. 제품 결정을 hidden default로 만드는가?
-3. Luna로 충분한 작업에 상위 모델을 사용하는가?
-4. stronger model이 필요한 작업을 비용 이유로 Luna-only로 끝내는가?
-5. sandbox/permission만 믿고 postcondition 검사를 제거하는가?
-6. resume 시 duplicate side effect가 가능한가?
-7. current plan/current diff/current PR head에 evidence가 결속되는가?
-8. Desktop 외 terminal 조작이 정상 UX에 필요한가?
-9. 새 process/component 종류가 반드시 필요한가?
-10. v2 호환성을 위해 dual-mode/adapter/legacy code path를 다시 추가하는가? (추가하면 안 됨)
-
-한 항목이라도 설명되지 않으면 merge하지 않는다.
-
-## 5. Release criteria
-
-V3 breaking cutover 조건:
-
-- P0 probe 완료와 문서화
-- Plan completeness negative suite 통과
-- recommendation freshness/property suite 통과
-- Rust state/scheduler failure injection 통과
-- nested `codex exec` 0 증명
-- Luna-first routing receipts 확인
+- V3-0 probe 완료
+- Contract negative/property/mutation suite 통과
+- Atomic state/journal recovery tests 통과
+- ACP process/cancellation leak tests 통과
+- Luna-first fixed-role receipts 확인
 - macOS/Windows Desktop E2E 통과
-- v2에서 계승하기로 한 invariant를 V3 native tests로 재검증
 - 실제 repository canary run 5개 이상
-- canary 모두 unplanned material decision 0
-- orphan process 0
-- draft PR -> adjustment -> ship E2E 통과
-- v2 runtime/hook/schema compatibility path 제거를 static scan으로 확인
-- cutover commit/PR의 Git revert 절차 확인
+- Canary의 unplanned material decision 0
+- Draft PR -> adjustment -> ship E2E 통과
+- Static simplicity gates 통과
+- Cutover Git revert rehearsal 통과
 
-## 6. Current PR의 범위
+## 10. Review 질문
 
-이 문서와 상위 기획 PR은 설계 전용이다.
+각 PR은 다음에 답한다.
 
-포함:
+1. 이 기능이 PLAN/FREEZE/CODING/ADJUST/SHIP에 필수인가?
+2. 새로운 process, storage, protocol, tool을 추가하지 않고 구현할 수 없는가?
+3. Parent LLM에게 scheduling이나 approval 결정을 다시 넘기는가?
+4. Hidden default 또는 unplanned material decision 경로가 생기는가?
+5. Luna로 충분한 routine work에 상위 모델을 사용하는가?
+6. LLM claim을 deterministic evidence 대신 신뢰하는가?
+7. Crash 뒤 current unit 재실행보다 session resume가 정말 필요한가?
+8. One worktree/sequential loop보다 복잡한 Git/concurrency 구조가 정말 필요한가?
+9. Skill, MCP instructions, runtime에 같은 규칙을 중복하는가?
+10. V2 compatibility code를 다시 추가하는가?
 
-- V3 제품 계약
-- lifecycle/architecture/model routing
-- breaking replacement 전략
-- implementation sequence
-- acceptance/test/release gates
-
-미포함:
-
-- 현재 PR에서의 v2 code 변경(실제 제거는 V3-9 cutover에서 수행)
-- Rust runtime scaffold
-- Codex/MCP 설정 변경
-- model call
-- global Hwahap 설치 변경
-- branch protection 변경
+필수성을 입증하지 못한 추가 subsystem은 merge하지 않는다.
