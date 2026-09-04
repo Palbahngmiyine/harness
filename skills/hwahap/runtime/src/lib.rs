@@ -1,0 +1,28 @@
+//! Hwahap v3: `PLAN -> PLAN FREEZE -> AUTONOMOUS CODING -> DRAFT PR -> ADJUST | SHIP`.
+//!
+//! The crate is one binary that is two things at once: a local STDIO MCP server exposing exactly
+//! three tools to the host, and an ACP client that drives a pinned `codex-acp` adapter, one session
+//! at a time. Everything between those two edges is a deterministic state machine over files in
+//! `.hwahap/`.
+
+pub mod acp;
+pub mod agentresult;
+pub mod answer;
+pub mod canonical;
+pub mod clock;
+pub mod config;
+pub mod engine;
+pub mod error;
+pub mod forge;
+pub mod frontier;
+pub mod git;
+pub mod mcp;
+pub mod plan;
+pub mod profile;
+pub mod prompts;
+pub mod proposal;
+pub mod render;
+pub mod state;
+pub mod validate;
+
+pub use error::{Error, Result};

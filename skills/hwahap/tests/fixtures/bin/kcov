@@ -1,6 +1,0 @@
-#!/bin/bash
-# Emit a deterministic kcov coverage summary for parser contract tests.
-set -euo pipefail
-out=$2
-mkdir -p "$out"
-printf '{"percent_covered":"%s"}\n' "${KCOV_PERCENT:-100.00}" >"$out/coverage.json"

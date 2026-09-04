@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hwahap": {
+      "command": "./bin/hwahap",
+      "args": [],
+      "cwd": ".",
+      "env_vars": ["CODEX_HOME", "HWAHAP_BIN", "PATH", "HOME"]
+    }
+  }
+}
