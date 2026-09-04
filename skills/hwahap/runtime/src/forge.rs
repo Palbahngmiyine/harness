@@ -144,8 +144,7 @@ fn check_succeeded(check: &serde_json::Value) -> bool {
 /// The last whitespace-separated token that looks like an https URL.
 fn last_url(text: &str) -> Option<String> {
     text.split_whitespace()
-        .filter(|t| t.starts_with("https://"))
-        .next_back()
+        .rfind(|t| t.starts_with("https://"))
         .map(str::to_string)
 }
 

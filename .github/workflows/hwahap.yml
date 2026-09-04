@@ -15,7 +15,9 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  RUSTFLAGS: -D warnings
+  # Deliberately no global `RUSTFLAGS: -D warnings`: it applies to dependencies too, so a warning
+  # in an upstream crate would fail this build for something nobody here can fix. The Lint step
+  # passes `-D warnings` to clippy instead, which covers rustc's lints for this crate as well.
 
 jobs:
   # Windows runs the unit tests only: the cycle harness and the engine's test runner both need a
