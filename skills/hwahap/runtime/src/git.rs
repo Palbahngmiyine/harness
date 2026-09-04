@@ -814,13 +814,29 @@ mod tests {
         );
     }
 
+    /// Compares two paths by identity rather than by spelling.
+    ///
+    /// Git reports `C:/Users/...` while Rust canonicalizes to the verbatim `\\?\C:\Users\...`, so
+    /// a string comparison of the two fails on Windows for paths that are the same directory.
+    fn same_path(left: impl AsRef<Path>, right: impl AsRef<Path>) {
+        let left = left.as_ref();
+        let right = right.as_ref();
+        assert_eq!(
+            left.canonicalize().expect("left path exists"),
+            right.canonicalize().expect("right path exists"),
+            "{} and {} are not the same directory",
+            left.display(),
+            right.display()
+        );
+    }
+
     #[test]
     fn open_from_a_subdirectory_finds_the_top_level() {
         let (dir, _git) = repo();
         let nested = dir.path().join("a/b/c");
         fs::create_dir_all(&nested).unwrap();
         let git = Git::open(&nested).unwrap();
-        assert_eq!(git.root(), dir.path().canonicalize().unwrap());
+        same_path(git.root(), dir.path());
     }
 
     #[test]
@@ -938,6 +954,22 @@ mod tests {
     }
 
     #[test]
+    fn changed_paths_survives_spaces_and_unicode_in_a_filename() {
+        // The portable half of the name torture test, so no platform loses this coverage.
+        let (dir, git) = repo();
+        for name in ["a file with spaces.txt", "문서 ☕.txt"] {
+            write(&dir.path().join(name), "x\n");
+        }
+        assert_eq!(
+            git.changed_paths(git.root()).unwrap(),
+            strings(&["a file with spaces.txt", "문서 ☕.txt"])
+        );
+    }
+
+    #[test]
+    // Unix only: Windows rejects `"` and a newline in a filename outright, so there is no way to
+    // create the very names this test exists to prove are parsed correctly.
+    #[cfg(unix)]
     fn changed_paths_survives_spaces_quotes_newlines_and_unicode_in_a_filename() {
         let (dir, git) = repo();
         for name in [
@@ -1444,7 +1476,9 @@ mod tests {
         let (command, detail) =
             command_failure(git.run(&["rev-parse", "no-such-ref"]).unwrap_err());
         assert_eq!(command, "git rev-parse no-such-ref");
-        assert!(detail.starts_with("exit status: "), "{detail}");
+        // The exit code, not the wording around it: std spells `ExitStatus` as "exit status: 128"
+        // on unix and "exit code: 128" on Windows, and neither is the thing worth pinning.
+        assert!(detail.contains("128"), "{detail}");
         assert!(detail.contains("unknown revision"), "{detail}");
     }
 
@@ -1454,14 +1488,14 @@ mod tests {
         let holder = TempDir::new().unwrap();
         let path = holder.path().join("run");
         git.add_worktree(&path, "hwahap/goal", "main").unwrap();
-        assert_eq!(
+        same_path(
             git.run_in(&path, &["rev-parse", "--show-toplevel"])
                 .unwrap(),
-            path.canonicalize().unwrap().to_str().unwrap()
+            &path,
         );
-        assert_eq!(
+        same_path(
             git.run(&["rev-parse", "--show-toplevel"]).unwrap(),
-            git.root().to_str().unwrap()
+            git.root(),
         );
     }
 
