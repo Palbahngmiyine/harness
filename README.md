@@ -11,7 +11,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
-| [hwahap](skills/hwahap/) | Codex **plugin**: confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
+| [hwahap](skills/hwahap/) | Confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
 
@@ -29,8 +29,8 @@ cp -r skills/* ~/.claude/skills/
 
 Start a new session after copying to confirm that the skill is available.
 
-`hwahap` is the exception: it is a **Codex plugin**, not a copyable skill directory, because it
-ships an MCP server that a bare skill cannot register. Install it with `codex plugin add` — see
+`hwahap` needs one extra step: it is a skill *and* an MCP server, so after copying the directory
+you also build its binary and register the server with `codex mcp add`. See
 [skills/hwahap/README.md](skills/hwahap/README.md).
 
 ### Skill Locations
@@ -88,7 +88,7 @@ Automate PR creation from a forked repo to upstream:
 
 ### hwahap
 
-Hwahap v3 is a Codex plugin that runs one implementation request end to end:
+Hwahap v3 runs one implementation request end to end:
 
 - it investigates the repository itself and asks only about preferences and trade-offs
 - every material decision arrives with alternatives, a recommendation, evidence, and impact — and
@@ -103,9 +103,11 @@ One Rust binary is both a local STDIO MCP server (exactly three tools) and an AC
 pinned `codex-acp` adapter, one session at a time. There is no daemon, no database, no HTTP
 transport, and no lifecycle hook.
 
-Requirements: Rust 1.90 or newer, an authenticated `gh`, and `codex-acp` on `PATH`.
+Requirements: Rust 1.90 or newer, an authenticated `gh`, and `codex-acp` on `PATH`. It is a
+Unix-only tool today: the engine runs a plan's test commands through `sh -c`.
 Installation, the architecture, the fixed model/effort policy, and the design decisions are in
-[`skills/hwahap/README.md`](skills/hwahap/README.md).
+[`skills/hwahap/README.md`](skills/hwahap/README.md); the measured platform facts it depends on
+are in [`skills/hwahap/PLATFORM.md`](skills/hwahap/PLATFORM.md).
 
 Validate from the repository root:
 

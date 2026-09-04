@@ -68,12 +68,17 @@ jobs:
       - name: Enforce the static simplicity gates
         run: skills/hwahap/tests/gates.sh
 
-      - name: Check the launcher and the plugin manifest
+      - name: Check the launcher and the skill manifest
         run: |
           sh -n skills/hwahap/bin/hwahap
           test -x skills/hwahap/bin/hwahap
-          python3 -c 'import json,sys; json.load(open("skills/hwahap/.codex-plugin/plugin.json"))'
-          python3 -c 'import json,sys; d=json.load(open("skills/hwahap/.mcp.json")); assert list(d)==["mcpServers"], d'
+          # The skill sits where every other skill in this repository sits, so that the README's
+          # `cp -r skills/*` install keeps working for it too.
+          test -f skills/hwahap/SKILL.md
+          test ! -d skills/hwahap/skills
+          head -1 skills/hwahap/SKILL.md | grep -qx -- ---
+          grep -qE '^name: hwahap$' skills/hwahap/SKILL.md
+          grep -qE '^description: ' skills/hwahap/SKILL.md
 
   verify:
     needs: [test, gates]

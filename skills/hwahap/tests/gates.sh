@@ -9,8 +9,8 @@
 set -euo pipefail
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/../../.." && pwd)
-plugin="$root/skills/hwahap"
-src="$plugin/runtime/src"
+skill_dir="$root/skills/hwahap"
+src="$skill_dir/runtime/src"
 failures=0
 
 fail() {
@@ -51,7 +51,7 @@ production_matches() {
 
 # ---------------------------------------------------------------- surface size
 
-skill="$plugin/skills/hwahap/SKILL.md"
+skill="$skill_dir/SKILL.md"
 if [ ! -f "$skill" ]; then
   fail "the thin skill is missing at $skill"
 else
@@ -79,15 +79,15 @@ pass "no scheduling or approval tool was added"
 # ------------------------------------------------------------- removed v2 shape
 
 expect_count "production codex exec references" 0 "$(production_matches 'codex[[:space:]]+exec')"
-expect_count "lifecycle hook definitions" 0 "$(find "$plugin" -name 'hooks.json' -o -name 'pretool.sh' -o -name 'posttool.sh' -o -name 'prompt.sh' -o -name 'gate.sh' | wc -l | tr -d ' ')"
-expect_count "jq programs" 0 "$(find "$plugin" -name '*.jq' | wc -l | tr -d ' ')"
+expect_count "lifecycle hook definitions" 0 "$(find "$skill_dir" -name 'hooks.json' -o -name 'pretool.sh' -o -name 'posttool.sh' -o -name 'prompt.sh' -o -name 'gate.sh' | wc -l | tr -d ' ')"
+expect_count "jq programs" 0 "$(find "$skill_dir" -name '*.jq' | wc -l | tr -d ' ')"
 
 expect_count "production hwahap/v2 references" 0 "$(production_matches '"hwahap/v2"')"
 
 # ------------------------------------------------------------------ dependencies
 
-manifest="$plugin/runtime/Cargo.toml"
-lock="$plugin/runtime/Cargo.lock"
+manifest="$skill_dir/runtime/Cargo.toml"
+lock="$skill_dir/runtime/Cargo.lock"
 for banned in rusqlite libsqlite3-sys sqlx diesel sea-orm; do
   if grep -qE "^name = \"$banned\"" "$lock" 2>/dev/null; then
     fail "the dependency graph contains $banned; Hwahap v3 has no database"
@@ -112,7 +112,7 @@ if grep -qE 'unstable' "$manifest"; then
 fi
 expect_count "ACP unstable feature references" 0 "$(production_matches 'unstable_')"
 
-expect_count "daemon or service definitions" 0 "$(find "$plugin" -name '*.service' -o -name '*.plist' -o -name 'launchd*' | wc -l | tr -d ' ')"
+expect_count "daemon or service definitions" 0 "$(find "$skill_dir" -name '*.service' -o -name '*.plist' -o -name 'launchd*' | wc -l | tr -d ' ')"
 
 # ------------------------------------------------------------- effort policy
 

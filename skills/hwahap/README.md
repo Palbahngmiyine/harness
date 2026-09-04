@@ -23,10 +23,17 @@ human gate는 `CONFIRM PLAN`과 `SHIP` 두 개뿐이다. 둘 다 내용에 결�
 
 ## 2. 설치
 
+hwahap은 스킬 하나와 MCP 서버 하나로 이루어진다. 둘을 따로 설치한다.
+
 ```sh
+# 1. 바이너리를 빌드한다
 cargo build --release --manifest-path skills/hwahap/runtime/Cargo.toml
-codex plugin marketplace add <이 저장소를 담은 marketplace 경로>
-codex plugin add hwahap@<marketplace-name>
+
+# 2. MCP 서버를 등록한다
+codex mcp add hwahap -- "$PWD/skills/hwahap/bin/hwahap"
+
+# 3. 스킬을 설치한다 (이 저장소의 다른 스킬과 같은 방식)
+cp -R skills/hwahap "${CODEX_HOME:-$HOME/.codex}/skills/"
 ```
 
 `bin/hwahap` 런처가 `HWAHAP_BIN` → `runtime/target/release/hwahap` →
@@ -36,16 +43,26 @@ codex plugin add hwahap@<marketplace-name>
 필요한 것: Rust 1.90 이상, `git`, 인증된 `gh`, 그리고 PATH 위의 `codex-acp`. `.hwahap/`은 대상
 저장소의 `.gitignore`에 있어야 한다.
 
+### Codex 플러그인으로 배포하지 않는 이유
+
+Codex 플러그인은 스킬을 `<plugin-root>/skills/<name>/SKILL.md`에서만 찾는다. `plugin.json`의
+`skills` 필드로 다른 경로를 가리킬 수 없고(validator가 `must resolve to skills`로 거부한다), 이
+머신에 설치된 실제 플러그인 617개의 스킬 중 플러그인 루트에 `SKILL.md`를 둔 것은 하나도 없다.
+
+플러그인으로 만들려면 `skills/hwahap/skills/hwahap/SKILL.md`가 되어야 하는데, 그러면 이 저장소가
+나머지 7개 스킬에 쓰는 `skills/<name>/SKILL.md` 규약과 어긋나고 루트 README의 `cp -r skills/*`
+설치도 깨진다. 규약을 지키는 쪽을 택했고, 그 대가로 설치가 한 명령에서 세 명령이 되었다. 근거는
+[PLATFORM.md](PLATFORM.md) §3에 있다.
+
 ## 3. 구조
 
 ```
-skills/hwahap/                     플러그인 루트 (= 설치 단위)
-├── .codex-plugin/plugin.json      Codex 매니페스트. 공식 validate_plugin.py 통과
-├── .mcp.json                      local STDIO MCP 서버 하나
-├── bin/hwahap                     바이너리를 찾아 exec 하는 POSIX sh 런처
-├── skills/hwahap/SKILL.md         thin dispatcher. 25줄 (게이트는 40줄)
-├── tests/gates.sh                 정적 단순성 게이트
+skills/hwahap/
+├── SKILL.md                       thin dispatcher. 25줄 (게이트는 40줄)
+├── README.md                      이 문서
 ├── PLATFORM.md                    실측으로 확인한 플랫폼 사실 (V3-0 증거)
+├── bin/hwahap                     바이너리를 찾아 exec 하는 POSIX sh 런처
+├── tests/gates.sh                 정적 단순성 게이트
 └── runtime/                       Rust 크레이트
     ├── src/                       모듈당 책임 하나
     └── tests/
@@ -53,9 +70,6 @@ skills/hwahap/                     플러그인 루트 (= 설치 단위)
         ├── cycle.rs               스크립트로 도는 전체 사이클
         └── surface.rs             크레이트 밖에서 본 MCP 표면
 ```
-
-`SKILL.md`가 `skills/hwahap/skills/hwahap/`에 중첩된 것은 Codex 플러그인 규약이 스킬을
-`<plugin>/skills/<name>/SKILL.md`에서 찾기 때문이다. 근거는 [PLATFORM.md](PLATFORM.md) §3에 있다.
 
 런타임 모듈은 각각 한 가지만 안다.
 
