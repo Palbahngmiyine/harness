@@ -36,6 +36,7 @@ const MAX_ATTEMPTS: u32 = 2;
 mod adjust_build;
 mod build;
 mod interview;
+mod grounding;
 mod pr_review;
 pub use adjust_build::AdjustBuildRequest;
 pub use build::{BuildRequest, BuildUnit};
