@@ -432,7 +432,7 @@ impl Engine {
     async fn prove(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         let mut plan = self.require_plan()?;
 
-        if plan.units.is_empty() {
+        if plan.units.is_empty() || plan.structure_stale {
             let structure = self
                 .ask(
                     sessions,
@@ -447,6 +447,7 @@ impl Engine {
             plan.units = structure.units;
             plan.tests = structure.tests;
             plan.full_suite = structure.full_suite;
+            plan.structure_stale = false;
             self.save_plan(&plan)?;
         }
 
@@ -648,7 +649,10 @@ impl Engine {
         }
 
         let digest = plan.digest()?;
-        if digest.challenge() != challenge || !validate::freeze_blockers(&plan)?.is_empty() {
+        if plan.structure_stale
+            || digest.challenge() != challenge
+            || !validate::freeze_blockers(&plan)?.is_empty()
+        {
             plan.frozen = None;
             plan.reviews = crate::plan::PlanReviews::default();
             self.save_plan(&plan)?;
@@ -1088,6 +1092,7 @@ impl Engine {
         }
         plan.frozen = None;
         plan.reviews = crate::plan::PlanReviews::default();
+        plan.structure_stale = true;
         self.save_plan(&plan)?;
 
         run.revision = plan.revision;
@@ -1122,6 +1127,12 @@ impl Engine {
         };
 
         let parsed = parse_message(input);
+        if !parsed.conflicts.is_empty() {
+            return Ok(self.report(
+                &run,
+                "Conflicting answers were not recorded. Send one answer per decision.".into(),
+            ));
+        }
         self.record_answers(&mut plan, &parsed.directives)?;
 
         let prose = free_text(input, &parsed.directives);
@@ -1135,6 +1146,7 @@ impl Engine {
         }
         plan.frozen = None;
         plan.reviews = crate::plan::PlanReviews::default();
+        plan.structure_stale = true;
         self.save_plan(&plan)?;
 
         run.revision = plan.revision;
@@ -1228,6 +1240,9 @@ impl Engine {
 
     fn apply_decisions(&self, plan: &mut Plan, final_message: &str) -> Result<()> {
         let (decisions, not_applicable) = proposal::DecisionsProposal::parse(final_message, plan)?;
+        if !decisions.is_empty() || !not_applicable.is_empty() {
+            plan.structure_stale = true;
+        }
         plan.decisions.extend(decisions);
         for na in not_applicable {
             // Recorded as a proposal only. The surface stays applicable until the user types
@@ -1307,8 +1322,9 @@ impl Engine {
                     );
                     plan.open_items.retain(|item| item.id != format!("NA-{id}"));
                 }
-                Directive::ConfirmPlan { .. } | Directive::Ship { .. } => {}
+                Directive::ConfirmPlan { .. } | Directive::Ship { .. } => continue,
             }
+            plan.structure_stale = true;
         }
         Ok(())
     }

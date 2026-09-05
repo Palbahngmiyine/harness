@@ -549,7 +549,8 @@ async fn changing_an_answer_at_the_confirmation_prompt_invalidates_the_challenge
     // Planning sessions only: this run never gets as far as building anything.
     let mut steps = happy_path_steps();
     steps.truncate(5);
-    // Re-proving runs the two plan reviews again, because a review binds to what it reviewed.
+    // Changed answers require newly derived structure and reviews bound to that structure.
+    steps.push(step(Role::PlanSynthesis, Reply::say(structure())));
     steps.push(step(Role::ColdConsumer, Reply::say(PASS)));
     steps.push(step(Role::PlanCritic, Reply::say(PASS)));
     let script = Script::new(steps);
@@ -1189,6 +1190,144 @@ async fn identical_requests_on_one_day_build_three_distinct_runs_and_keep_archiv
     ids.truncate(2);
     ids.sort();
     assert_eq!(archived_ids, ids);
+}
+
+#[tokio::test]
+async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built() {
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    let first = run_to_draft_pr(&fixture, &script).await;
+    let old_head = fixture.head_sha(&fixture.worktree());
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let before = store.read_run().unwrap().unwrap();
+    let old: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    let mut decision = old["decisions"][0].clone();
+    decision["id"] = serde_json::json!("C3");
+    decision["question"] = serde_json::json!("What extra file should be generated?");
+    decision["alternatives"][0]["value"] = serde_json::json!("src/extra.txt");
+    let mut proposed: serde_json::Value = serde_json::from_str(&structure()).unwrap();
+    for (collection, value) in [
+        (
+            "requirements",
+            serde_json::json!({"id":"R3", "statement":"an extra file exists", "decision_ids":["C3"]}),
+        ),
+        (
+            "acceptance",
+            serde_json::json!({"id":"A3", "requirement_ids":["R3"], "observable":"src/extra.txt exists"}),
+        ),
+        (
+            "units",
+            serde_json::json!({"id":"U3", "title":"generate extra file", "paths":["src/extra.txt"], "acceptance_ids":["A3"], "depends_on":["U2"], "probe":false}),
+        ),
+        (
+            "tests",
+            serde_json::json!({"id":"T3", "command":"test -s src/extra.txt", "acceptance_ids":["A3"], "unit_id":"U3"}),
+        ),
+    ] {
+        proposed[collection].as_array_mut().unwrap().push(value);
+    }
+    proposed["full_suite"] = serde_json::json!(
+        "test -f src/added.txt && test -f docs/added.md && test -s src/extra.txt"
+    );
+    script.extend(vec![
+        step(
+            Role::Recommender,
+            Reply::say(
+                serde_json::json!({"decisions":[decision], "not_applicable":[]}).to_string(),
+            ),
+        ),
+        step(Role::PlanSynthesis, Reply::say(proposed.to_string())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+        step(
+            Role::Implementer,
+            Reply::write(&[("src/extra.txt", "extra\n")], DONE),
+        ),
+        step(Role::UnitReviewer, Reply::say(PASS)),
+        step(Role::FinalReview, Reply::say(PASS)),
+    ]);
+    let engine = fixture.engine();
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some("Also generate src/extra.txt"))
+            .await
+            .unwrap()
+            .state,
+        "inspecting"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some("C3=REC"))
+            .await
+            .unwrap()
+            .state,
+        "proving"
+    );
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        preview.state, "awaiting_confirmation",
+        "{}",
+        preview.message
+    );
+    let challenge = challenge_in(&preview.message, "CONFIRM PLAN ");
+    let mut outcome = engine
+        .step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}")))
+        .await
+        .unwrap();
+    assert_eq!(outcome.state, "coding");
+    let frozen = store.read_run().unwrap().unwrap();
+    assert_eq!(frozen.accepted_units, before.accepted_units);
+    assert_eq!(frozen.accepted_fingerprints, before.accepted_fingerprints);
+    while outcome.next == "continue" {
+        outcome = engine.step_with(&script, None, None).await.unwrap();
+    }
+    assert_eq!(
+        outcome.state, "awaiting_adjust_or_ship",
+        "{}",
+        outcome.message
+    );
+    assert_eq!(outcome.pr_url, first.last().unwrap().pr_url);
+    let after = store.read_run().unwrap().unwrap();
+    assert_eq!(after.branch, before.branch);
+    assert_eq!(after.revision, 2);
+    assert_eq!(after.accepted_units, vec!["U1", "U2", "U3"]);
+    assert_eq!(
+        after.reviewed_head.as_deref(),
+        Some(fixture.head_sha(&fixture.worktree()).as_str())
+    );
+    assert_eq!(
+        git(
+            &fixture.worktree(),
+            &["rev-list", "--count", &format!("{old_head}..HEAD")]
+        ),
+        "1"
+    );
+    assert_eq!(
+        git(&fixture.worktree(), &["show", "HEAD:src/extra.txt"]),
+        "extra"
+    );
+    assert_eq!(
+        script
+            .roles()
+            .iter()
+            .filter(|r| **r == Role::PlanSynthesis)
+            .count(),
+        2
+    );
+    assert_eq!(
+        script
+            .calls()
+            .iter()
+            .filter(|c| c.role == Role::Implementer)
+            .map(|c| c.unit.clone().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["U1", "U2", "U3"]
+    );
+    assert_eq!(script.remaining(), 0);
 }
 
 #[tokio::test]
