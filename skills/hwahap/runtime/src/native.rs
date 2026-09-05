@@ -22,7 +22,7 @@ pub mod timing;
 
 const PENDING: &str = "native-pending.json";
 
-/// One exact request to relay to a fresh native child, without inherited history.
+/// One exact request for a retained child or the parent coordinator.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NativeDispatch {
     pub dispatch_id: String,

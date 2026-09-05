@@ -511,7 +511,7 @@ mod tests {
     }
 
     #[test]
-    fn the_step_tool_derives_an_input_schema_that_requires_only_cwd() {
+    fn the_step_tool_requires_repository_and_parent_identity() {
         let tool = Hwahap::step_tool_attr();
         let schema = serde_json::to_value(&tool.input_schema).unwrap();
         let required = schema
@@ -520,7 +520,7 @@ mod tests {
             .cloned()
             .unwrap_or_default();
         let required: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-        assert_eq!(required, vec!["cwd"]);
+        assert_eq!(required, vec!["cwd", "host_session_id"]);
         let properties = schema
             .get("properties")
             .and_then(|p| p.as_object())
