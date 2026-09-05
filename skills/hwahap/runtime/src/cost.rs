@@ -8,6 +8,7 @@ use crate::state::Store;
 use crate::{Error, Result};
 
 mod latency;
+pub mod meter;
 
 #[derive(Default, Serialize)]
 struct Counts {
