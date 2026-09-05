@@ -2083,3 +2083,117 @@ async fn changed_plan_content_invalidates_the_checkpointed_cold_review() {
     );
     assert_eq!(script.remaining(), 0);
 }
+
+#[tokio::test]
+async fn direct_build_adjust_preserves_branch_and_enters_plan() {
+    let fixture = Fixture::new();
+    git(
+        &fixture.repo,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let engine = fixture.engine();
+    let input = hwahap::engine::BuildRequest {
+        user_instruction: "Build without planning".into(),
+        objective: REQUEST.into(),
+        base_branch: "main".into(),
+        branch: "codex/direct-build".into(),
+        full_suite: "test -f feature.txt".into(),
+        units: vec![hwahap::engine::BuildUnit {
+            title: "Create feature".into(),
+            acceptance: "feature is ready".into(),
+            paths: vec!["feature.txt".into()],
+            test_command: "test -f feature.txt".into(),
+        }],
+    };
+    engine.start_build(&input).unwrap();
+    let script = Script::new(vec![
+        step(
+            Role::Implementer,
+            Reply::write(
+                &[("feature.txt", "ready")],
+                r#"{"status":"completed","summary":"Created feature","conflict":null}"#,
+            ),
+        ),
+        step(
+            Role::UnitReviewer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "final_verifying"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "pr_review"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "awaiting_adjust_or_ship"
+    );
+    let adjusted = engine
+        .step_with(
+            &Script::new(vec![]),
+            None,
+            Some("Add a second documented behavior"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(adjusted.state, "inspecting");
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let plan = store.read_plan().unwrap().unwrap();
+    let config = hwahap::config::Config::for_run(&store).unwrap();
+    assert!(plan.execution_authorization.is_none());
+    assert_eq!(
+        config.profiles.for_role(Role::Implementer).model,
+        "gpt-5.6-luna"
+    );
+    assert!(!hwahap::render::plan_markdown(&plan)
+        .unwrap()
+        .contains("Planning omitted"));
+    assert!(store.artifacts_path().join("build-request.json").exists());
+    script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(
+            Role::ColdConsumer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(
+            Role::PlanCritic,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+    ]);
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some(&all_answers()))
+            .await
+            .unwrap()
+            .state,
+        "proving"
+    );
+    let reviewed = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        reviewed.state, "awaiting_confirmation",
+        "{}",
+        reviewed.message
+    );
+    let plan = store.read_plan().unwrap().unwrap();
+    assert!(hwahap::validate::freeze_blockers(&plan).unwrap().is_empty());
+    assert!(plan.reviews.critic.is_some() && plan.reviews.cold_consumer.is_some());
+    let confirm = format!("CONFIRM PLAN {}", plan.challenge().unwrap());
+    let result = engine.step_with(&script, None, Some(&confirm)).await;
+    assert_eq!(result.unwrap().state, "coding");
+    assert_eq!(store.read_run().unwrap().unwrap().branch, input.branch);
+    assert_eq!(
+        git(&fixture.worktree(), &["branch", "--show-current"]),
+        input.branch
+    );
+}

@@ -106,6 +106,18 @@ impl NativeHost {
                 } else {
                     Some(RepoLock::acquire(root)?)
                 };
+                // BUILD seals its parent before creating the worktree, including interrupted starts.
+                if crate::pr_review::read_evidence::<serde_json::Value>(
+                    &store,
+                    "build-request.json",
+                )?
+                .and_then(|v| v["pool_scope"].as_str().map(str::to_owned))
+                .is_some_and(|scope| Some(scope) != expected_scope)
+                {
+                    return Err(Error::Rejected(
+                        "BUILD belongs to another parent task".into(),
+                    ));
+                }
                 // Recover ownership from older pinned runtimes without allocating another pool.
                 if store.artifacts_path().exists() {
                     for entry in std::fs::read_dir(store.artifacts_path())
@@ -165,8 +177,17 @@ impl NativeHost {
                 ));
             }
             let _lock = RepoLock::acquire(root)?;
+            let outcome = Engine::open(root)?
+                .start_build_for_parent(build, input.host_session_id.as_deref())?;
+            crate::pr_review::save_evidence(
+                &store,
+                "native-owner.json",
+                &serde_json::json!({
+                    "run_id":outcome.run_id, "pool_scope":input.host_session_id.as_ref().unwrap_or(&outcome.run_id)
+                }),
+            )?;
             return Ok(NativeProgress {
-                outcome: Engine::open(root)?.start_build(build)?,
+                outcome,
                 dispatch: None,
             });
         }
