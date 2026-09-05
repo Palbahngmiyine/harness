@@ -60,6 +60,25 @@ pub fn freeze_blockers(plan: &Plan) -> Result<Vec<Violation>> {
     Ok(sorted_unique(out))
 }
 
+/// Explicit BUILD keeps executable scope and verification checks without inventing planning evidence.
+pub fn build_blockers(plan: &Plan) -> Result<Vec<Violation>> {
+    let mut out = structural_errors(plan)?;
+    check_substance(plan, &mut out);
+    check_traceability(plan, &mut out)?;
+    check_verification(plan, &mut out);
+    if plan
+        .execution_authorization
+        .as_ref()
+        .is_none_or(|text| is_blank(text))
+    {
+        out.push(Violation::new(
+            "missing_build_authorization",
+            "BUILD requires the user's explicit instruction",
+        ));
+    }
+    Ok(sorted_unique(out))
+}
+
 /// Units in a deterministic topological order.
 ///
 /// Ties are broken by the numeric suffix, so `U2` precedes `U10` and the result does not depend on

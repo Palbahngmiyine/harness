@@ -33,6 +33,9 @@ use crate::{frontier, prompts, proposal, render, validate};
 /// diagnosis call, and no repeated same-model retry loop.
 const MAX_ATTEMPTS: u32 = 2;
 
+mod build;
+pub use build::{BuildRequest, BuildUnit};
+
 /// A source of agent sessions.
 ///
 /// Boxed futures rather than `async fn` in the trait, because the engine holds it behind `dyn` so
