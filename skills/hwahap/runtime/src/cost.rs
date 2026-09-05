@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use serde::{de::DeserializeOwned, Serialize};
 
-use crate::native::{NativeCompletion, NativeDispatch, NativeStopped};
+use crate::native::{NativeCompletion, NativeDispatch, NativeFailure, NativeResume, NativeStopped};
 use crate::state::Store;
 use crate::{Error, Result};
 
@@ -13,6 +13,9 @@ struct Counts {
     completions: u64,
     stopped_without_completion: u64,
     incomplete: u64,
+    dispatch_failures: u64,
+    confirmed_no_child_failures: u64,
+    observed_recoveries: u64,
     coordinator_completions: u64,
     native_child_completions: u64,
     coordinator_usage_reported_completions: u64,
@@ -62,6 +65,8 @@ fn collect(store: &Store) -> Result<(Counts, BTreeMap<String, Counts>)> {
     let run = store.read_run()?;
     let completions = artifacts::<NativeCompletion>(store, "native-completion-")?;
     let stopped = artifacts::<NativeStopped>(store, "native-stopped-")?;
+    let resumes = artifacts::<NativeResume>(store, "native-resume-")?;
+    let failures = artifacts::<NativeFailure>(store, "native-failure-")?;
     // Requests are durable before results: read them last while the engine may be progressing.
     let requests = artifacts::<NativeDispatch>(store, "native-request-")?;
     for (id, completion) in &completions {
@@ -75,6 +80,24 @@ fn collect(store: &Store) -> Result<(Counts, BTreeMap<String, Counts>)> {
             return Err(Error::Corrupt(format!(
                 "invalid native stop acknowledgment {id}"
             )));
+        }
+    }
+    for (id, failure) in &failures {
+        if id != &failure.dispatch_id
+            || !requests.contains_key(id)
+            || failure.message.trim().is_empty()
+            || completions.contains_key(id)
+            || (failure.no_agent_created && stopped.contains_key(id))
+        {
+            return Err(Error::Corrupt(format!("invalid native failure {id}")));
+        }
+    }
+    for (id, resume) in &resumes {
+        if id != &resume.dispatch_id
+            || resume.recovery_evidence.trim().is_empty()
+            || !failures.get(id).is_some_and(|f| f.no_agent_created)
+        {
+            return Err(Error::Corrupt(format!("invalid native recovery {id}")));
         }
     }
     let (mut total, mut models) = (Counts::default(), BTreeMap::<String, Counts>::new());
@@ -102,6 +125,18 @@ fn collect(store: &Store) -> Result<(Counts, BTreeMap<String, Counts>)> {
         }
         for counts in [&mut total, models.entry(request.model).or_default()] {
             add(&mut counts.requests, 1)?;
+            add(
+                &mut counts.dispatch_failures,
+                u64::from(failures.contains_key(&id)),
+            )?;
+            add(
+                &mut counts.confirmed_no_child_failures,
+                u64::from(failures.get(&id).is_some_and(|f| f.no_agent_created)),
+            )?;
+            add(
+                &mut counts.observed_recoveries,
+                u64::from(resumes.contains_key(&id)),
+            )?;
             let Some(completion) = completion else {
                 add(&mut counts.incomplete, 1)?;
                 add(
@@ -146,6 +181,7 @@ pub fn summary(store: &Store) -> Result<serde_json::Value> {
         "evidence": "caller-reported tokens grouped by requested model; actual model unverified",
         "coverage": "usage_reported_completions / requests; incomplete work may consume tokens",
         "total_billed_cost": "unknown",
+        "native_thread_release": "unknown; completed or interrupted work does not prove a host thread was released",
         "parent_relay_usage": "unknown; separate from any reported coordinator dispatch usage",
         "limits": "Missing usage is unknown, not zero. Parent relay tokens are not measured. Token subtotals are reported evidence only; cached input is part of input.",
         "total": total, "by_requested_model": models,
@@ -240,6 +276,38 @@ mod tests {
             (20, 80)
         );
     }
+    #[test]
+    fn spawn_refusal_and_recovery_are_distinct_from_completed_work() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        request(&store, "refused", "luna");
+        put(
+            &store,
+            "failure",
+            "refused",
+            json!({"dispatch_id":"refused",
+            "message":"agent thread limit reached","no_agent_created":true}),
+        );
+        put(
+            &store,
+            "resume",
+            "refused",
+            json!({"dispatch_id":"refused",
+            "recovery_evidence":"host confirmed release of owned thread 42"}),
+        );
+        let report = summary(&store).unwrap();
+        assert_eq!(report["total"]["dispatch_failures"], 1);
+        assert_eq!(report["total"]["confirmed_no_child_failures"], 1);
+        assert_eq!(report["total"]["observed_recoveries"], 1);
+        assert_eq!(report["total"]["native_child_completions"], 0);
+        assert_eq!(report["total_billed_cost"], "unknown");
+        complete(&store, "refused", "invented-child", serde_json::Value::Null);
+        assert!(
+            summary(&store).is_err(),
+            "a refused spawn also counted as completed"
+        );
+    }
+
     #[test]
     fn bad_evidence_is_an_error_instead_of_zero_usage() {
         let dir = tempfile::tempdir().unwrap();

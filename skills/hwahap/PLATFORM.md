@@ -25,6 +25,14 @@ Hwahap은 호스트에 노출된 native 도구를 사용하며 MCP 서버 자체
 [profile.rs](runtime/src/profile.rs)가 정의한다. Deep은 `gpt-6-astra` / `high`,
 Economy는 Luna / `medium`, Critic은 Terra / `high`다.
 
+[공식 설정 문서](https://learn.chatgpt.com/docs/config-file/config-reference)의
+`agents.max_concurrent_threads_per_session`은 부모를 제외한 동시에 열린 하위 에이전트 스레드 한도다.
+미설정 시 Codex가 기본값을 정하며 `agents.max_threads`는 이전 이름이다. 이는 실행 완료 횟수의 한도가 아니다.
+공식 subagents 문서에는 스레드 닫기가 설명되어 있지만, 2026-09-05 이 작업에 노출된 collaboration 도구에는
+작업 중단용 `interrupt_agent`는 있고 close/release는 없다. 완료·중단은 스레드 해제의 증거가 아니며 해제 여부는 `unknown`이다.
+호스트가 close/release를 제공할 때만 완료가 저장된 뒤 해당 Hwahap 소유 에이전트를 해제한다.
+Hwahap은 외부 capacity 회복을 보장하지 않으며 전역 한도 변경이나 무관한 작업 종료로 우회하지 않는다.
+
 ## 2. 저장과 중단 복구
 
 [호스트 실행기](runtime/src/native/host.rs)는 저장소당 한 실행을 관리하고 OS 파일 잠금으로 다른
@@ -36,6 +44,8 @@ MCP 프로세스의 동시 실행을 거부한다. `status`는 진행 상황을 
 | `native-pending.json` | 현재 요청과 등록된 agent ID, 완료 상태 |
 | `native-completion-<id>.json` | 호스트가 전달한 종료 결과와 선택적 사용량 |
 | `native-stopped-<id>.json` | 호스트가 남은 에이전트와 명령의 종료를 확인한 기록 |
+| `native-failure-<id>.json` | 정확한 spawn 실패와 생성 여부에 대한 호스트 관찰 |
+| `native-resume-<id>.json` | 해당 중단을 재개하는 새 호스트 회복 관찰 |
 | `receipt-<sequence>-<role>.json` | 실행 증거의 출처가 명시된 세션 결과 |
 
 호스트는 생성 직후 agent ID를 등록하고, 동일 요청에 두 번째 에이전트를 만들지 않는다.
@@ -44,9 +54,15 @@ MCP 프로세스의 동시 실행을 거부한다. `status`는 진행 상황을 
 종료 여부가 불명확할 때 `all_work_stopped=true`를 보내면 안 된다.
 
 기본 한도는 실행당 native 요청 64회, 요청당 대기 900초다. 재시도 요청도 한도에 포함된다.
-재시작과 시간 초과는 `native_stop`을 요구한다. 이는 실제 종료를 자동 수행했다는 뜻이 아니다.
+자식이 없다고 확인된 spawn 실패는 `native_paused`로 저장한다. 자동 재시도·polling·새 요청은 중단하고
+run·plan·accepted unit을 유지한다. 새로 관찰한 호스트 회복 근거로 명시적으로 재개하며, 같은 근거를
+다른 재시도에 재사용할 수 없다. 재개 후 생성되는 새 요청도 `native_max_calls`에 포함된다.
+자식 생성 여부가 불명확한 실패와 미완료 작업의 재시작·timeout은 `native_stop`으로 보낸다.
+이는 실제 종료를 자동 수행했다는 뜻이 아니다. 정확한 dispatch의 자식·명령을 찾아 종료를 확인해야 한다.
+재개는 저장된 run 단계에서 진행하므로 아직 accepted가 아닌 unit이나 단계 내부 역할은 반복될 수 있다.
+메모리에만 있던 역할 진행까지 정확히 이어받거나 모든 미완료 변경을 보존하는 계약은 아니다.
 [config.rs](runtime/src/config.rs), [broker](runtime/src/native/broker.rs),
-[native_surface.rs](runtime/tests/native_surface.rs)가 설정과 복구 검사의 근거다.
+[failure.rs](runtime/src/native/failure.rs), [native_surface.rs](runtime/tests/native_surface.rs)가 근거다.
 
 ## 3. 현재 확인한 것과 남은 검증
 
@@ -55,7 +71,11 @@ MCP 프로세스의 동시 실행을 거부한다. `status`는 진행 상황을 
 - 단위 테스트: 모델·역할 배정, 상태 저장, JSON 계약, 사용량 오류와 집계.
 - 사이클 테스트: Luna 첫 구현 뒤 Astra 재작업 한 번, 검증·검토·commit·ship 조건.
 - native 인터페이스 테스트: 등록·완료 연결, 중복 완료, 재시작 복구, 시간 초과와 잠금.
+- [capacity 테스트](runtime/tests/native_capacity.rs): 통제한 실패 주입으로 no-child 중단·재시작, 새 근거 재개, 근거 재사용 거부, unknown-child 종료 확인, 실패 기록 중 단절을 검사한다.
 - MCP 인터페이스 테스트: 세 도구의 공개 계약과 입력 검증.
+
+capacity 테스트는 실제 호스트 pool을 고갈시킨 실험이 아니다. 실제 스레드 해제와 슬롯 반환,
+해제 후 spawn 성공은 검증하지 않았으며, 아래의 canary도 그 증거가 아니다.
 
 2026-09-05의 제한된 실제 호스트 canary에서는 Luna `fact_finder` 하위 에이전트를 생성하고,
 등록한 뒤 반환된 JSON을 completion으로 전달했다. 이어 현재 Astra가 `recommender`를
@@ -69,6 +89,7 @@ pending 제거를 확인했으며 EOF로 MCP가 종료됐다. 실제 사용 토�
 
 - 계획 합성·구현·독립 Astra 최종 검토·PR 생성을 포함하는 전체 실제 모델 실행.
 - 호스트 연결 해제·실제 하위 에이전트 중단 이후 남은 명령의 종료와 복구.
+- 실제 호스트의 capacity 거부·회복과, 제공되는 경우 close/release 이후 슬롯 반환.
 - 각 배포 환경에서 MCP 연결, 하위 에이전트 도구 및 요청 모델·effort의 제공 여부.
 - 같은 성공 조건에서 기존 구성과 비교한 성공률·소요시간·사용량·사용자 개입.
 

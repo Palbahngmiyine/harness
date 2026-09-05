@@ -21,6 +21,8 @@ Follow `next`:
 - `native_wait`: for `agent_id=coordinator`, perform the planning role here and send completion;
   otherwise wait for the registered child, or poll after one second during host validation.
   Relay exact final text after the child and its commands stop. Usage is null unless tools report it.
+- `native_paused`: show the recorded failure; stop polling, spawning, and new requests.
+  Preserve this run; resume only with new observed host recovery evidence under the server protocol.
 - `native_stop`: stop the exact child (or this coordinator task) and its commands, then acknowledge.
   Do not acknowledge an uncertain stop; locate unregistered children by `hwahap_<dispatch_id>`.
 - `await_user`: show `message` and wait for the user.
@@ -28,8 +30,9 @@ Follow `next`:
 
 Outside the assigned dispatch, do not edit files, run tests, spawn agents, or create branches/PRs.
 Final review always uses an independent child. Native workers must not invoke Hwahap recursively.
-If the native tools or requested model are unavailable, report the limitation; do not fall back
-to ACP or CLI sessions or fabricate results. Requested settings and read-only instructions are
+Record spawn failures or unavailable native tools through the server protocol; never repeat spawn,
+use ACP/CLI substitutes, or fabricate results. Requested settings and read-only instructions are
 not independent proof of the applied model or OS isolation. Unknown usage is never zero cost.
 
 Use `hwahap_status` for progress and cost evidence. Installation and scope are in [README.md](README.md).
+For staged runs and capacity recovery, read [OPERATIONS.md](OPERATIONS.md).
