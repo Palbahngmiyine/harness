@@ -30,7 +30,7 @@ Follow `next`:
 - `completed` or `blocked`: show `message` and stop.
 
 Outside the assigned dispatch, do not edit files, run tests, spawn agents, or create branches/PRs.
-After draft publication, Astra Critic attacks and a distinct Astra Auditor defends; parent repairs.
+After draft publication, distinct Astra Critic/Auditor check defects and mandatory security coverage; parent repairs.
 Use `recheck_pr=true` to recheck this run's draft. Native workers must not invoke Hwahap recursively.
 Record spawn failures or unavailable native tools through the server protocol; never repeat spawn,
 use ACP/CLI substitutes, or fabricate results. Requested settings and read-only instructions are

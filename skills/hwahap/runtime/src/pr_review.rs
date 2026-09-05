@@ -68,6 +68,7 @@ pub fn validate_evidence(evidence: &[String]) -> Result<()> {
 pub struct AttackReport {
     pub binding: ReviewBinding,
     pub findings: Vec<Finding>,
+    pub security: SecurityReview,
     /// Evidence of checked behavior is required even when no defects were found.
     pub evidence: Vec<String>,
 }
@@ -90,7 +91,8 @@ impl AttackReport {
                 return Err(Error::Rejected("duplicate finding identity".into()));
             }
         }
-        Ok(())
+        self.security
+            .validate(&self.findings.iter().collect::<Vec<_>>())
     }
 }
 
@@ -113,8 +115,21 @@ mod tests {
                 observed: "duplicate operation".into(),
                 evidence: vec!["reproduction output".into()],
             }],
+            security: security::checked(),
             evidence: vec!["inspected retry path".into()],
         }
+    }
+    #[test]
+    fn legacy_reports_cannot_supply_security_clearance() {
+        let r = report();
+        let mut json = serde_json::to_value(&r).unwrap();
+        json.as_object_mut().unwrap().remove("security");
+        assert!(serde_json::from_value::<AttackReport>(json).is_err());
+        let defense = serde_json::json!({
+            "binding": r.binding, "assessments": [],
+            "additional_findings": [], "evidence": ["old clean review"]
+        });
+        assert!(serde_json::from_value::<DefenseReport>(defense).is_err());
     }
     #[test]
     fn accepts_bound_reproduction_and_evidenced_clean_review() {

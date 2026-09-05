@@ -17,24 +17,48 @@ use crate::plan::{Decision, Plan, Selection, Surface, Unit, SURFACES};
 use crate::proposal::{DecisionsProposal, FactsProposal, StructureProposal};
 
 pub fn pr_attack(binding: &crate::pr_review::ReviewBinding, contract: &str, diff: &str) -> String {
-    let example = serde_json::json!({"binding":binding,"findings":[],"evidence":["actual checks and their observed results"]});
+    let example = serde_json::json!({"binding":binding,"findings":[],"security":crate::pr_review::security_example(),"evidence":["actual checks and their observed results"]});
     format!("{COMMON}\n# Attack team: independently try to falsify this published commit\n{}\n{}\n\
 Read source beyond the diff when needed. Report concrete defects, never style preferences. Each finding needs \
 id, file (relative), line (positive), condition (reproduction), expected, observed, evidence (nonempty strings). \
 Use unique IDs. Empty findings still require meaningful checked evidence. Do not modify files. \
-Return only this JSON shape with the exact binding, replacing sample evidence:\n{example}", quoted(contract), quoted(diff))
+{SECURITY_REVIEW}\nReturn only this JSON shape with the exact binding, replacing sample evidence:\n{example}", quoted(contract), quoted(diff))
 }
 
 pub fn pr_defense(attack: &crate::pr_review::AttackReport, contract: &str, diff: &str) -> String {
-    let example = serde_json::json!({"binding":attack.binding,"assessments":[],"additional_findings":[],"evidence":["independent checks and their observed results"]});
+    let example = serde_json::json!({"binding":attack.binding,"assessments":[],"additional_findings":[],"security":crate::pr_review::security_example(),"evidence":["independent checks and their observed results"]});
     format!("{COMMON}\n# Defense team: independently check every attack claim\n{}\n{}\n{}\n\
 Reproduce or refute every attack finding using source or focused checks. Do not assume the attacker is correct. \
 Return one assessment per finding: finding_id, judgment (confirmed/refuted/unresolved), evidence (nonempty strings). \
 Add newly found defects under additional_findings with id/file/line/condition/expected/observed/evidence. \
 Do not repair or edit files. Never mark an unverified claim refuted; use unresolved. \
-Return only this JSON shape with the exact binding, replacing sample evidence:\n{example}",
+Independently inspect all six security areas, including the attacker's checked and not_applicable claims. \
+Do not copy their coverage as your evidence. Link findings even when refuted; assessments record the judgment. \
+{SECURITY_REVIEW}\nReturn only this JSON shape with the exact binding, replacing sample evidence:\n{example}",
         quoted(contract), quoted(diff), quoted(&serde_json::to_string(attack).expect("serializable attack")))
 }
+
+const SECURITY_REVIEW: &str = "\
+Security review is mandatory, including unknown-vulnerability hypotheses without a CVE. Start with a concise \
+threat_model: protected assets, attacker-controlled inputs, trust boundaries, and deployment assumptions. \
+Trace changed entry points to consequential operations and inspect adjacent callers/guards as needed. \
+For each security area exactly once, report status checked, not_applicable or blocked; evidence must name \
+inspected paths/tests and observed results, justify inapplicability, or identify the blocker and next check. \
+checked means the stated inspection was completed, not that all vulnerabilities are absent. Link relevant \
+finding_ids to full findings; do not hide a vulnerability in coverage prose. Each security finding must \
+state attacker prerequisites/control, boundary crossed, impact, minimal local reproduction or source trace, \
+expected/observed behavior and a proposed regression check in condition/expected/observed/evidence. \
+Distinguish observed results from hypotheses; unavailable environment or unresolved assumptions mean blocked. \
+Do not claim a confirmed zero-day or zero-day-free result from a missing CVE or a clean scanner. Inspect:\n\
+- authorization: identity, privilege, ownership and tenant/repository boundaries;\n\
+- untrusted_input: injection (including repository/prompt/tool output), paths/symlinks, deserialization and network sinks;\n\
+- secrets: credentials, logs, artifacts, data exposure and cryptographic handling;\n\
+- supply_chain: dependency/build/update provenance and executable hooks; scans supplement source reasoning;\n\
+- state_integrity: replay, TOCTOU/races, tampering, fail-open errors and workflow bypass;\n\
+- resource_exhaustion: unbounded input/output, time, retry/spawn loops and cancellation.\n\
+Use bounded local tests with synthetic data in temporary fixtures. Do not attack external systems, use real \
+secrets or run destructive/load tests. Keep sensitive reproduction details in local evidence and report \
+only redacted summaries publicly. No extra agents or broad scans; prioritize changed trust boundaries.";
 
 /// Preamble shared by every role: what Hwahap is and what the agent must not do.
 const COMMON: &str = "\
