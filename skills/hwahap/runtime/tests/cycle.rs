@@ -2612,3 +2612,58 @@ async fn empty_interpretation_waits_for_user_without_reoffering_old_options() {
     );
     assert!(store.read_plan().unwrap().unwrap().frozen.is_none());
 }
+
+#[tokio::test]
+async fn interactive_preview_feedback_reopens_planning_and_dependent_questions() {
+    for feedback in ["C1=ALT2", "Keep the original file contents in a backup"] {
+        let fixture = Fixture::new();
+        let engine = fixture.engine();
+        let mut questions: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+        questions["decisions"][1]["depends_on"] = serde_json::json!(["C1"]);
+        let empty = r#"{"decisions":[],"not_applicable":[]}"#;
+        let script = Script::new(vec![
+            step(Role::FactFinder, Reply::say(facts())),
+            step(Role::Recommender, Reply::say(questions.to_string())),
+            step(Role::Recommender, Reply::say(empty)),
+            step(Role::PlanSynthesis, Reply::say(structure())),
+            step(Role::ColdConsumer, Reply::say(PASS)),
+            step(Role::PlanCritic, Reply::say(PASS)),
+            step(Role::Recommender, Reply::say(empty)),
+        ]);
+        engine.start_planning(REQUEST, true).unwrap();
+        engine.step_with(&script, None, None).await.unwrap();
+        engine
+            .step_with(&script, None, Some(&all_answers()))
+            .await
+            .unwrap();
+        engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(
+            engine.step_with(&script, None, None).await.unwrap().state,
+            "awaiting_confirmation"
+        );
+        let changed = engine
+            .step_with(&script, None, Some(feedback))
+            .await
+            .unwrap();
+        let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+        let plan = store.read_plan().unwrap().unwrap();
+        assert!(plan.frozen.is_none());
+        assert!(!fixture.worktree().exists());
+        if feedback.starts_with("C1=") {
+            assert_eq!(changed.state, "refining");
+            assert!(plan.decision("C2").unwrap().answer.is_none());
+            assert_eq!(
+                engine.step_with(&script, None, None).await.unwrap().state,
+                "deciding"
+            );
+            let current = store.read_plan().unwrap().unwrap();
+            let batch = hwahap::dialogue::QuestionBatch::derive(&current)
+                .unwrap()
+                .unwrap();
+            assert_eq!(batch.questions[0].id, "C2");
+        } else {
+            assert_eq!(changed.state, "inspecting");
+            assert_eq!(plan.adjustments.last().unwrap().text, feedback);
+        }
+    }
+}
