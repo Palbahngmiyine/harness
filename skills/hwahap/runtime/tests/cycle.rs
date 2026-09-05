@@ -167,7 +167,8 @@ fn happy_path_steps() -> Vec<common::Step> {
         step(Role::UnitReviewer, Reply::say(PASS)),
         step(Role::Implementer, build_u2()),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]
 }
 
@@ -453,6 +454,7 @@ async fn each_role_runs_on_its_own_fixed_profile_and_the_writers_run_in_the_work
             Role::Implementer,
             Role::UnitReviewer,
             Role::Implementer,
+            Role::UnitReviewer,
             Role::UnitReviewer,
             Role::FinalReview,
         ]
@@ -824,7 +826,8 @@ async fn accepted_checkpoints_survive_a_restart_and_only_the_current_unit_re_run
     let resumed = Script::new(vec![
         step(Role::Implementer, build_u2()),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]);
     let engine = fixture.engine();
     let mut outcome = engine.step_with(&resumed, None, None).await.unwrap();
@@ -1244,7 +1247,8 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
             Reply::write(&[("src/extra.txt", "extra\n")], DONE),
         ),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]);
     let engine = fixture.engine();
     assert_eq!(
@@ -1404,7 +1408,10 @@ async fn a_draft_made_ready_externally_refuses_adjustment_before_pushing() {
         .write_run(&hwahap::clock::FixedClock::new(NOW), &run)
         .unwrap();
     std::fs::write(fixture.dir.path().join("pr-ready"), "1").unwrap();
-    script.extend(vec![step(Role::FinalReview, Reply::say(PASS))]);
+    script.extend(vec![
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
     match fixture.engine().step_with(&script, None, None).await {
         Err(error) => assert!(error.to_string().contains("ready"), "{error}"),
         Ok(outcome) => assert_eq!(outcome.state, "blocked", "{}", outcome.message),
@@ -1432,7 +1439,9 @@ async fn assert_frozen_plan_tampering_is_refused(phase: &str) {
         assert_eq!(outcome.state, "final_verifying");
     }
     if phase == "ship" {
-        outcome = engine.step_with(&script, None, None).await.unwrap();
+        while outcome.next == "continue" {
+            outcome = engine.step_with(&script, None, None).await.unwrap();
+        }
         assert_eq!(outcome.state, "awaiting_adjust_or_ship");
     }
     let store = hwahap::state::Store::open(&fixture.repo).unwrap();
@@ -1512,7 +1521,8 @@ async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
             Reply::write(&[("docs/added.md", "# revised\n")], DONE),
         ),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]);
     let engine = fixture.engine();
     engine
@@ -1897,17 +1907,20 @@ async fn every_session_leaves_its_own_receipt() {
 }
 
 #[tokio::test]
-async fn a_final_reviewer_that_writes_cannot_create_a_draft_pr() {
+async fn a_final_reviewer_that_writes_cannot_finish_a_published_draft() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps.last_mut().unwrap().reply =
-        Reply::write(&[("src/added.txt", "reviewer changed this\n")], PASS);
+    steps.last_mut().unwrap().reply = Reply::PrDefense {
+        writes: vec![("src/added.txt".into(), "reviewer changed this\n".into())],
+    };
     let script = Script::new(steps);
     let outcomes = run_to_draft_pr(&fixture, &script).await;
     let outcome = outcomes.last().unwrap();
     assert_eq!(outcome.state, "blocked");
     assert!(outcome.message.contains("final_review"));
-    assert!(outcome.pr_url.is_none());
+    assert!(outcome.pr_url.is_some());
+    assert!(fixture.dir.path().join("pr-created").exists());
+    assert!(fixture.engine().ship("SHIP anything").is_err());
 }
 
 #[tokio::test]

@@ -59,6 +59,17 @@ fn review_policy_requires_two_astra_lanes_and_keeps_authorship_separate() {
 
 #[tokio::test]
 async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
+    exercise_repair(false, false).await;
+}
+#[tokio::test]
+async fn exhausted_repair_keeps_the_draft_and_budget() {
+    exercise_repair(true, false).await;
+}
+#[tokio::test]
+async fn same_native_reviewer_cannot_approve_both_pr_teams() {
+    exercise_repair(false, true).await;
+}
+async fn exercise_repair(exhausted: bool, same_agent: bool) {
     let fixture = Fixture::new();
     git(
         &fixture.repo,
@@ -121,6 +132,27 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
             .state,
         "pr_review"
     );
+    if exhausted {
+        let mut p = hwahap::pr_review::ReviewProgress::load(&store)
+            .unwrap()
+            .unwrap();
+        p.repairs = 64;
+        p.save(&store).unwrap();
+        let out = engine
+            .step_with(&Script::new(vec![]), None, None)
+            .await
+            .unwrap();
+        assert_eq!(out.state, "blocked");
+        assert!(out.pr_url.is_some());
+        assert_eq!(
+            hwahap::pr_review::ReviewProgress::load(&store)
+                .unwrap()
+                .unwrap()
+                .repairs,
+            64
+        );
+        return;
+    }
     let fix = Script::new(vec![step(
         Role::Rework,
         Reply::write(
@@ -142,12 +174,28 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
         "ready\n"
     );
     assert_eq!(fix.remaining(), 0);
+    let stale = Script::new(vec![step(Role::UnitReviewer, Reply::say(
+        serde_json::json!({"binding":binding,"findings":[],"evidence":["stale pre-repair head"]}).to_string()
+    ))]);
+    assert!(engine.step_with(&stale, None, None).await.is_err());
+    assert!(engine
+        .ship(&format!("SHIP {}", plan.digest().unwrap().challenge()))
+        .is_err());
     let binding = next.binding;
     let reviews = Script::new(vec![
-        step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"findings":[],"evidence":["checked published feature"]}).to_string())),
-        step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["independently checked published feature"]}).to_string())),
+        step(Role::UnitReviewer, Reply::NativeReview { message: serde_json::json!({"binding":binding,"findings":[],"evidence":["checked published feature"]}).to_string(), agent_id: "attacker".into() }),
+        step(Role::FinalReview, Reply::NativeReview { message: serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["independently checked published feature"]}).to_string(), agent_id: if same_agent { "attacker" } else { "defender" }.into() }),
     ]);
     let reviewed = engine.step_with(&reviews, None, None).await.unwrap();
+    if same_agent {
+        assert_eq!(reviewed.state, "blocked");
+        assert!(reviewed.message.contains("distinct"));
+        assert!(reviewed.pr_url.is_some());
+        assert!(engine
+            .ship(&format!("SHIP {}", plan.digest().unwrap().challenge()))
+            .is_err());
+        return;
+    }
     assert_eq!(
         reviewed.state, "awaiting_adjust_or_ship",
         "{}",
@@ -185,6 +233,28 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
     assert_eq!(recheck.round, completed.round + 1);
     assert_eq!(recheck.repairs, completed.repairs);
     assert_eq!(recheck.binding, completed.binding);
+    let interrupted = Script::new(vec![
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::Fail("connection lost".into())),
+    ]);
+    assert!(engine.step_with(&interrupted, None, None).await.is_err());
+    let resumed = Script::new(vec![step(Role::FinalReview, Reply::pr_defense())]);
+    assert_eq!(
+        fixture
+            .engine()
+            .step_with(&resumed, None, None)
+            .await
+            .unwrap()
+            .state,
+        "awaiting_adjust_or_ship"
+    );
+    assert_eq!(resumed.roles(), vec![Role::FinalReview]);
+    assert_eq!(
+        git(&fixture.repo, &["ls-remote", "origin", &input.branch])
+            .split_whitespace()
+            .next(),
+        Some(completed.binding.head.as_str())
+    );
 }
 
 #[test]
@@ -287,4 +357,20 @@ fn build_rejects_missing_traceability_edges() {
             .iter()
             .any(|e| e.code == "empty_build_trace"));
     }
+}
+
+#[tokio::test]
+async fn tampered_direct_contract_stops_before_any_worker_or_command() {
+    let f = Fixture::new();
+    git(&f.repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    f.engine().start_build(&request()).unwrap();
+    let store = Store::open(&f.repo).unwrap();
+    let mut plan = store.read_plan().unwrap().unwrap();
+    plan.units[0].paths = vec!["outside.txt".into()];
+    store.write_plan(&plan).unwrap();
+    let script = Script::new(vec![]);
+    let out = f.engine().step_with(&script, None, None).await.unwrap();
+    assert_eq!(out.state, "blocked");
+    assert!(script.calls().is_empty());
+    assert!(!f.worktree().join("outside.txt").exists());
 }

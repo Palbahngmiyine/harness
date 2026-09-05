@@ -7,6 +7,7 @@ use hwahap::forge::Forge;
 #[test]
 fn adjusting_a_matching_draft_updates_it_instead_of_creating_another() {
     let fixture = Fixture::new();
+    common::git(&fixture.repo, &["push", "origin", "main"]);
     let forge = Forge::with_program(fixture.gh.to_str().unwrap());
     let first = forge
         .create_draft(&fixture.repo, "main", "main", "first", "body")
@@ -35,6 +36,7 @@ fn adjusting_a_matching_draft_updates_it_instead_of_creating_another() {
 #[test]
 fn ready_ambiguous_or_mismatched_prs_cannot_be_adopted_as_drafts() {
     let fixture = Fixture::new();
+    common::git(&fixture.repo, &["push", "origin", "main"]);
     let forge = Forge::with_program(fixture.gh.to_str().unwrap());
     let first = forge
         .create_draft(&fixture.repo, "main", "main", "first", "body")
