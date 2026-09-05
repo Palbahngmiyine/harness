@@ -1,4 +1,4 @@
-//! Configuration: the adapter to launch and the three role profiles.
+//! Configuration: native execution limits and the three role profiles.
 //!
 //! Everything here has a working default, so an unconfigured repository still runs. What cannot be
 //! defaulted is rejected rather than guessed.
@@ -7,7 +7,6 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use crate::acp::Adapter;
 use crate::error::{Error, Result};
 use crate::profile::Profiles;
 
@@ -17,7 +16,6 @@ pub const CONFIG_FILE: &str = "config.toml";
 /// Everything Hwahap needs beyond the plan itself.
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub adapter: Adapter,
     pub profiles: Profiles,
     /// How long a single test command may run before it counts as failed.
     pub test_timeout_secs: u64,
@@ -29,7 +27,7 @@ pub struct Config {
 #[serde(deny_unknown_fields)]
 struct Document {
     #[serde(default)]
-    adapter: Option<AdapterSection>,
+    adapter: Option<toml::Value>,
     /// Kept as a raw value so that [`Profiles::from_toml`] stays the single parser for profiles;
     /// duplicating its rules here is how a config that passes one check and fails the other gets
     /// created.
@@ -37,16 +35,6 @@ struct Document {
     profiles: Option<toml::Value>,
     #[serde(default)]
     limits: Option<LimitsSection>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-struct AdapterSection {
-    command: String,
-    #[serde(default)]
-    args: Vec<String>,
-    #[serde(default)]
-    env: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -63,9 +51,6 @@ struct LimitsSection {
 impl Default for Config {
     fn default() -> Self {
         Config {
-            // The adapter is expected on PATH and pinned by the installer, not by an `@latest`
-            // argument that would let it move under a frozen plan.
-            adapter: Adapter::new("codex-acp", Vec::new()),
             profiles: Profiles::defaults(),
             test_timeout_secs: 1_800,
             native_max_calls: 64,
@@ -92,16 +77,10 @@ impl Config {
 
         let mut config = Config::default();
 
-        if let Some(adapter) = document.adapter {
-            if adapter.command.trim().is_empty() {
-                return Err(Error::Rejected("[adapter] command is empty".into()));
-            }
-            let mut built = Adapter::new(adapter.command, adapter.args);
-            for (name, value) in adapter.env {
-                built = built.with_env(name, value);
-            }
-            built.require_pinned()?;
-            config.adapter = built;
+        if document.adapter.is_some() {
+            return Err(Error::Rejected(
+                "[adapter] is obsolete; remove it and use Codex native sub-agents".into(),
+            ));
         }
 
         if let Some(profiles) = document.profiles {
@@ -155,7 +134,7 @@ mod tests {
     use crate::profile::{Effort, Profile};
 
     #[test]
-    fn the_defaults_are_the_policy_defaults_and_a_pinned_adapter() {
+    fn the_defaults_are_the_policy_defaults_and_native_limits() {
         let config = Config::default();
         assert_eq!(config.profiles.spec(Profile::Economy).model, "gpt-5.6-luna");
         assert_eq!(
@@ -166,7 +145,8 @@ mod tests {
         assert_eq!(config.profiles.spec(Profile::Critic).effort, Effort::High);
         assert_eq!(config.profiles.spec(Profile::Deep).model, "gpt-6-astra");
         assert_eq!(config.profiles.spec(Profile::Deep).effort, Effort::High);
-        config.adapter.require_pinned().unwrap();
+        assert_eq!(config.native_max_calls, 64);
+        assert_eq!(config.native_timeout_secs, 900);
         assert_eq!(config.test_timeout_secs, 1_800);
     }
 
@@ -190,37 +170,22 @@ mod tests {
     }
 
     #[test]
-    fn the_adapter_section_is_applied() {
-        let config = Config::parse(
-            r#"
-[adapter]
-command = "npx"
-args = ["-y", "@agentclientprotocol/codex-acp@1.7.0"]
-env = { CODEX_HOME = "/home/u/.codex" }
-"#,
-        )
-        .unwrap();
-        config.adapter.require_pinned().unwrap();
-        assert!(format!("{:?}", config.adapter).contains("1.7.0"));
+    fn legacy_adapter_config_requires_explicit_migration() {
+        let error = Config::parse("[adapter]\ncommand = \"codex-acp\"\n").unwrap_err();
+        assert!(error.to_string().contains("obsolete"));
     }
 
     #[test]
-    fn a_floating_adapter_version_is_rejected_at_load_time() {
-        let err = Config::parse(
-            r#"
-[adapter]
-command = "npx"
-args = ["-y", "@agentclientprotocol/codex-acp@latest"]
-"#,
-        )
-        .unwrap_err();
-        assert!(err.to_string().contains("@latest"), "{err}");
-    }
-
-    #[test]
-    fn an_empty_adapter_command_is_rejected() {
-        let err = Config::parse("[adapter]\ncommand = \"  \"\n").unwrap_err();
-        assert!(err.to_string().contains("command is empty"), "{err}");
+    fn native_limits_are_positive_and_configurable() {
+        for key in ["native_max_calls", "native_timeout_secs"] {
+            assert!(Config::parse(&format!("[limits]\n{key} = 0")).is_err());
+        }
+        let config =
+            Config::parse("[limits]\nnative_max_calls = 12\nnative_timeout_secs = 60").unwrap();
+        assert_eq!(
+            (config.native_max_calls, config.native_timeout_secs),
+            (12, 60)
+        );
     }
 
     #[test]

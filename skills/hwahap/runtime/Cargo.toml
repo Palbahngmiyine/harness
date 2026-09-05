@@ -6,7 +6,6 @@ rust-version = "1.90"
 publish = false
 
 [dependencies]
-agent-client-protocol = "2.0.0"
 chrono = { version = "0.4.45", default-features = false, features = ["clock", "std"] }
 hex = "0.4.3"
 rmcp = { version = "3.2.0", features = ["server", "transport-io", "macros"] }

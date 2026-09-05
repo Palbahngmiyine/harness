@@ -1,11 +1,10 @@
 //! Hwahap v3: `PLAN -> PLAN FREEZE -> AUTONOMOUS CODING -> DRAFT PR -> ADJUST | SHIP`.
 //!
 //! The crate is one binary that is two things at once: a local STDIO MCP server exposing exactly
-//! three tools to the host, and an ACP client that drives a pinned `codex-acp` adapter, one session
-//! at a time. Everything between those two edges is a deterministic state machine over files in
+//! three tools to the host, and a durable broker for Codex native sub-agents.
+//! Everything between those two edges is a deterministic state machine over files in
 //! `.hwahap/`.
 
-pub mod acp;
 pub mod agentresult;
 pub mod answer;
 pub mod canonical;
