@@ -13,6 +13,38 @@ use hwahap::profile::{Profiles, Role};
 use hwahap::session::SessionSpec;
 use hwahap::state::Store;
 
+#[tokio::test]
+async fn starting_request_and_user_reply_are_rejected_before_any_state_is_created() {
+    use hwahap::native::{NativeHost, NativeInput};
+
+    for plan_only in [false, true] {
+        for reply in ["Planning only; do not implement", ""] {
+            let temp = tempfile::tempdir().unwrap();
+            let host = NativeHost::default();
+            let error = host
+                .advance(
+                    temp.path(),
+                    NativeInput {
+                        request: Some("Implement log output".into()),
+                        user_input: Some(reply.into()),
+                        plan_only,
+                        host_session_id: Some("input-validation-parent".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .err()
+                .expect("neither message may be silently dropped");
+            assert!(
+                error.to_string().contains("request and user_input"),
+                "{error}"
+            );
+            assert!(!temp.path().join(".hwahap").exists());
+            host.shutdown().await;
+        }
+    }
+}
+
 async fn fixture(
     max_calls: u64,
     timeout: u64,
