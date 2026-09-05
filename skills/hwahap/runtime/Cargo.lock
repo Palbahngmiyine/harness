@@ -675,6 +675,7 @@ dependencies = [
  "agent-client-protocol",
  "chrono",
  "hex",
+ "libc",
  "rmcp",
  "schemars 1.2.2",
  "serde",

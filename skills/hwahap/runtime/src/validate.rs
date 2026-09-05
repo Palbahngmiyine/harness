@@ -51,6 +51,7 @@ pub fn structural_errors(plan: &Plan) -> Result<Vec<Violation>> {
 /// Includes `structural_errors`. Empty means the plan is freezable.
 pub fn freeze_blockers(plan: &Plan) -> Result<Vec<Violation>> {
     let mut out = structural_errors(plan)?;
+    check_substance(plan, &mut out);
     check_surface_coverage(plan, &mut out)?;
     check_answers(plan, &mut out)?;
     check_traceability(plan, &mut out)?;
@@ -163,6 +164,13 @@ fn path_problem(path: &str) -> Option<&'static str> {
     }
     if path.split(['/', '\\']).any(|part| part == "..") {
         return Some("escapes the repository with a `..` component");
+    }
+    // `plan.md` renders a unit's scope as one cell of backtick-quoted, comma-separated paths, and
+    // that cell is the only place the document says what the unit may rewrite. A path carrying
+    // either delimiter would let one path read as two, so the document would understate the scope
+    // the user is about to confirm.
+    if path.contains(',') || path.contains('`') {
+        return Some("carries a comma or a backtick, which separate the paths in plan.md");
     }
     None
 }
@@ -559,6 +567,40 @@ fn cycle_members(graph: &BTreeMap<&str, BTreeSet<&str>>) -> Vec<String> {
     blocked.keys().map(|id| (*id).to_string()).collect()
 }
 
+/// The plan has to build something.
+///
+/// Every other completeness rule walks a collection — `orphan_requirement` over requirements,
+/// `untested_unit` over units, `check_surface_coverage` over applicable surfaces — so all of them
+/// hold vacuously over a plan that states nothing. Closing all twelve surfaces with `S<n>=NA` and
+/// proposing an empty structure is enough to reach that state, and without these four rules the gate
+/// would hand such a plan a `CONFIRM PLAN` line for a run with no unit to implement.
+fn check_substance(plan: &Plan, out: &mut Vec<Violation>) {
+    if plan.requirements.is_empty() {
+        out.push(Violation::new(
+            "no_requirements",
+            "the plan states no requirement to implement",
+        ));
+    }
+    if plan.acceptance.is_empty() {
+        out.push(Violation::new(
+            "no_acceptance",
+            "the plan states no acceptance criterion to meet",
+        ));
+    }
+    if plan.units.is_empty() {
+        out.push(Violation::new(
+            "no_units",
+            "the plan has no unit to implement",
+        ));
+    }
+    if plan.tests.is_empty() {
+        out.push(Violation::new(
+            "no_tests",
+            "the plan has no test to prove any acceptance",
+        ));
+    }
+}
+
 fn check_surface_coverage(plan: &Plan, out: &mut Vec<Violation>) -> Result<()> {
     for surface in plan.applicable_surfaces() {
         let mut answered = false;
@@ -664,6 +706,24 @@ fn check_traceability(plan: &Plan, out: &mut Vec<Violation>) -> Result<()> {
                 "orphan_decision",
                 format!("{} is answered but no requirement cites it", decision.id),
             ));
+        }
+    }
+
+    // The other direction of the same edge. `orphan_decision` asks whether every answer reached a
+    // requirement; this asks whether every requirement came from an answer. Without it a requirement
+    // may claim an origin it does not have — a decision on a closed surface that nobody ever
+    // answered — and the coding engine would implement it unattended.
+    for requirement in &plan.requirements {
+        for id in &requirement.decision_ids {
+            // A decision the plan does not contain is a dangling reference, reported there.
+            if let Some(decision) = plan.decision(id) {
+                if !decision.is_answered()? {
+                    out.push(Violation::new(
+                        "ungrounded_requirement",
+                        format!("{} cites {id}, which is not answered", requirement.id),
+                    ));
+                }
+            }
         }
     }
 
@@ -1559,14 +1619,18 @@ mod tests {
 
     #[test]
     fn an_unanswered_decision_says_why_its_answer_does_not_count() {
+        // An unanswered decision also ungrounds the requirement that cites it, so each assertion
+        // names the code it is about rather than demanding it be the only one reported.
         let missing = mutated(|p| p.decisions[0].answer = None);
-        assert_eq!(sole(&blockers(&missing)).detail, "C1 is unanswered");
-        assert_eq!(sole(&blockers(&missing)).code, "unanswered_decision");
+        assert_eq!(
+            details(&blockers(&missing), "unanswered_decision"),
+            vec!["C1 is unanswered".to_string()]
+        );
 
         let reworded = mutated(|p| p.decisions[0].question = "what should C1 really do?".into());
         assert_eq!(
-            sole(&blockers(&reworded)).detail,
-            AnswerFreshness::StaleQuestion.explain("C1")
+            details(&blockers(&reworded), "unanswered_decision"),
+            vec![AnswerFreshness::StaleQuestion.explain("C1")]
         );
 
         let readvised = mutated(|p| p.decisions[1].recommendation = recommended("ALT2"));
@@ -1575,10 +1639,29 @@ mod tests {
             vec![AnswerFreshness::StaleRecommendation.explain("C2")]
         );
         // The scenario answer was the surface's only one, so losing it reopens the surface too.
+        assert!(codes(&blockers(&readvised)).contains(&"unanswered_surface"));
+    }
+
+    #[test]
+    fn a_requirement_built_on_an_unanswered_decision_is_reported_as_ungrounded() {
+        // The decision rules alone would let this through in the one case that matters most: a
+        // requirement whose decision went stale still looks like a requirement, and the units under
+        // it would be built from an answer the user never gave.
+        let unanswered = mutated(|p| p.decisions[0].answer = None);
         assert_eq!(
-            codes(&blockers(&readvised)),
-            vec!["unanswered_decision", "unanswered_surface"]
+            details(&blockers(&unanswered), "ungrounded_requirement"),
+            vec!["R1 cites C1, which is not answered".to_string()]
         );
+
+        let stale = mutated(|p| p.decisions[0].question = "a different question entirely".into());
+        assert_eq!(
+            details(&blockers(&stale), "ungrounded_requirement"),
+            vec!["R1 cites C1, which is not answered".to_string()],
+            "a stale answer must ground nothing, exactly as a missing one does"
+        );
+
+        // The freezable fixture grounds every requirement, so the rule is not simply always on.
+        assert!(details(&blockers(&fixture()), "ungrounded_requirement").is_empty());
     }
 
     #[test]

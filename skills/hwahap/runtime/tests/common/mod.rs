@@ -254,8 +254,16 @@ impl Fixture {
         )
     }
 
+    /// The run worktree, spelled the way the engine spells it.
+    ///
+    /// The engine roots itself at git's own view of the work tree, which on macOS resolves the
+    /// `/var` symlink to `/private/var`. Comparing against the unresolved temp-dir path would fail
+    /// on a difference that is not a difference.
     pub fn worktree(&self) -> PathBuf {
-        self.repo.join(".hwahap/worktree")
+        self.repo
+            .canonicalize()
+            .unwrap_or_else(|_| self.repo.clone())
+            .join(".hwahap/worktree")
     }
 
     /// Makes the stub `gh` report a failing required check.

@@ -150,6 +150,17 @@ if ! grep -q 'UnsupportedProfile' "$src/acp.rs"; then
 fi
 pass "requested and applied model/effort are compared before every prompt"
 
+# Comparing them is only half the promise: the run has to *stop*. An earlier version of this gate
+# checked only that the words appeared in acp.rs, and passed while `is_terminal_for_run` had no
+# production caller at all and the error escaped as a protocol failure.
+if ! grep -q 'is_terminal_for_run' "$src/engine.rs"; then
+  fail "engine.rs never asks whether an error should stop the run, so nothing becomes blocked"
+fi
+if ! grep -q 'RunState::Blocked' "$src/engine.rs"; then
+  fail "engine.rs never persists a blocked run"
+fi
+pass "an unrecoverable error is written down as a blocked run"
+
 # -------------------------------------------------------- one session at a time
 
 if ! grep -q 'engine_lock' "$src/mcp.rs"; then

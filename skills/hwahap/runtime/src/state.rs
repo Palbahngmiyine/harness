@@ -177,6 +177,13 @@ pub struct Run {
     /// Accepted unit ids, in acceptance order.
     #[serde(default)]
     pub accepted_units: Vec<String>,
+    /// What each accepted unit was accepted against, by [`crate::plan::Plan::unit_fingerprint`].
+    ///
+    /// An adjustment rewrites the plan under work that is already committed. This is how the next
+    /// freeze tells apart the units the change did not touch, which stay accepted, from the ones it
+    /// invalidated, which must be built again.
+    #[serde(default)]
+    pub accepted_fingerprints: std::collections::BTreeMap<String, Digest>,
     /// The frozen plan this run executes.
     #[serde(default)]
     pub plan_digest: Option<Digest>,
@@ -221,11 +228,15 @@ pub struct Store {
 }
 
 impl Store {
-    /// Opens `<repo_root>/.hwahap`, creating it and `artifacts/` if absent.
+    /// Names `<repo_root>/.hwahap` without touching the repository.
+    ///
+    /// Opening creates nothing: reporting a run's status opens a store, and a read-only tool must
+    /// not leave a directory behind in a repository that has never run Hwahap. Every write creates
+    /// what it needs on the way.
     pub fn open(repo_root: &Path) -> Result<Store> {
-        let root = repo_root.join(DIR);
-        std::fs::create_dir_all(root.join("artifacts")).map_err(|e| Error::io(&root, e))?;
-        Ok(Store { root })
+        Ok(Store {
+            root: repo_root.join(DIR),
+        })
     }
 
     pub fn root(&self) -> &Path {
@@ -267,7 +278,7 @@ impl Store {
             Err(e) => return Err(Error::io(&path, e)),
         };
         let run: Run = serde_json::from_str(&text)
-            .map_err(|e| Error::Corrupt(format!("run.json is unreadable: {e}")))?;
+            .map_err(|e| corrupt(format!("run.json is unreadable: {e}")))?;
         if run.schema != SCHEMA {
             return Err(Error::Rejected(format!(
                 "this .hwahap directory holds a {} run, but Hwahap only supports {SCHEMA}. \
@@ -301,7 +312,7 @@ impl Store {
         // A plan whose schema is not v3 still parses far enough to be reported precisely, so the
         // error names what was found instead of "invalid JSON".
         let plan: Plan = serde_json::from_str(&text)
-            .map_err(|e| Error::Corrupt(format!("plan.json is unreadable: {e}")))?;
+            .map_err(|e| corrupt(format!("plan.json is unreadable: {e}")))?;
         Ok(Some(plan))
     }
 
@@ -336,13 +347,30 @@ impl Store {
     }
 
     /// Appends one event, linked to the current tail.
+    ///
+    /// Reading the tail, repairing it and writing happen under an exclusive lock on the journal,
+    /// because `seq` and `prev` are derived from that tail: two writers that read the same tail
+    /// would each commit an event with the same sequence number, and no later read can untangle
+    /// that.
     pub fn append_event(
         &self,
         clock: &dyn Clock,
         kind: &str,
         data: serde_json::Value,
     ) -> Result<Event> {
-        let events = self.read_events()?;
+        std::fs::create_dir_all(&self.root).map_err(|e| Error::io(&self.root, e))?;
+        let path = self.journal_path();
+        use std::io::Write as _;
+        let mut file = std::fs::OpenOptions::new()
+            .create(true)
+            .read(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| Error::io(&path, e))?;
+        lock_exclusive(&file).map_err(|e| Error::io(&path, e))?;
+
+        let journal = Journal::read(&mut file, &path)?;
+        let events = parse_events(&journal.complete)?;
         let (seq, prev) = match events.last() {
             Some(last) => (last.seq + 1, last.hash.clone()),
             None => (1, Digest::zero()),
@@ -357,16 +385,18 @@ impl Store {
         };
         event.hash = event.expected_hash()?;
 
+        // The partial tail [`Store::read_events`] tolerates is cut away before anything is written
+        // after it. Appending onto it would glue two records into one line, which parses as
+        // nonsense and makes the journal — and with it the run — unreadable for good.
+        if journal.partial {
+            file.set_len(journal.complete_len)
+                .and_then(|()| file.sync_all())
+                .map_err(|e| Error::io(&path, e))?;
+        }
+
         // `to_canonical_line` already terminates the line; adding another newline here would
         // interleave blank lines, and a blank line is exactly what a tamper check skips over.
         let line = to_canonical_line(&event)?;
-        let path = self.journal_path();
-        use std::io::Write as _;
-        let mut file = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| Error::io(&path, e))?;
         file.write_all(line.as_bytes())
             .map_err(|e| Error::io(&path, e))?;
         file.sync_all().map_err(|e| Error::io(&path, e))?;
@@ -380,31 +410,12 @@ impl Store {
     /// file was edited, which is not something to recover from silently.
     pub fn read_events(&self) -> Result<Vec<Event>> {
         let path = self.journal_path();
-        let text = match std::fs::read_to_string(&path) {
-            Ok(text) => text,
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
             Err(e) => return Err(Error::io(&path, e)),
         };
-        let complete_lines: Vec<&str> = text.split_inclusive('\n').collect();
-        let mut events = Vec::with_capacity(complete_lines.len());
-        for (index, raw) in complete_lines.iter().enumerate() {
-            if !raw.ends_with('\n') {
-                // Only the final line may be partial.
-                break;
-            }
-            let line = raw.trim_end_matches('\n');
-            if line.is_empty() {
-                continue;
-            }
-            let event: Event = serde_json::from_str(line).map_err(|e| {
-                Error::Corrupt(format!(
-                    "events.jsonl line {} is unreadable: {e}",
-                    index + 1
-                ))
-            })?;
-            events.push(event);
-        }
-        Ok(events)
+        parse_events(&Journal::split(&bytes)?.complete)
     }
 
     /// Verifies sequence continuity and the prev/hash chain.
@@ -414,21 +425,21 @@ impl Store {
         for (index, event) in events.iter().enumerate() {
             let expected_seq = index as u64 + 1;
             if event.seq != expected_seq {
-                return Err(Error::Corrupt(format!(
+                return Err(corrupt(format!(
                     "events.jsonl is out of order: line {} carries sequence {}, expected {expected_seq}",
                     index + 1,
                     event.seq
                 )));
             }
             if event.prev != previous {
-                return Err(Error::Corrupt(format!(
+                return Err(corrupt(format!(
                     "events.jsonl is broken at sequence {}: it links to {} but the previous event \
                      hashes to {previous}",
                     event.seq, event.prev
                 )));
             }
             if event.hash != event.expected_hash()? {
-                return Err(Error::Corrupt(format!(
+                return Err(corrupt(format!(
                     "events.jsonl sequence {} was rewritten: its contents do not hash to the \
                      recorded {}",
                     event.seq, event.hash
@@ -457,7 +468,7 @@ impl Store {
                 })
             })
             .transpose()
-            .map_err(|e| Error::Corrupt(format!("a journalled run snapshot is unreadable: {e}")))?;
+            .map_err(|e| corrupt(format!("a journalled run snapshot is unreadable: {e}")))?;
 
         match (self.read_run()?, journalled) {
             (None, None) => Ok(None),
@@ -466,13 +477,13 @@ impl Store {
                 self.write_atomic(&self.run_path(), &to_canonical_line(&journalled)?)?;
                 Ok(Some(journalled))
             }
-            (Some(snapshot), None) => Err(Error::Corrupt(format!(
+            (Some(snapshot), None) => Err(corrupt(format!(
                 "run.json claims sequence {} but events.jsonl records no run snapshot at all",
                 snapshot.seq
             ))),
             (Some(snapshot), Some(journalled)) => {
                 if snapshot.seq > journalled.seq {
-                    return Err(Error::Corrupt(format!(
+                    return Err(corrupt(format!(
                         "run.json claims sequence {} but the journal ends at {}; the snapshot \
                          describes work that was never recorded",
                         snapshot.seq, journalled.seq
@@ -488,6 +499,10 @@ impl Store {
     }
 
     /// Moves the current run's files aside so a new run can start in the same repository.
+    ///
+    /// `artifacts/` moves with them. Artifact names repeat across runs — every plan's first unit is
+    /// `U1`, so its first attempt is always `U1-attempt-1.md` — and leaving the directory in place
+    /// would let the next run overwrite the evidence the archived journal still points at.
     pub fn archive(&self, clock: &dyn Clock) -> Result<()> {
         let stamp = clock.now().replace(':', "-");
         let target = self.root.join("archive").join(stamp);
@@ -498,6 +513,7 @@ impl Store {
             "plan.json",
             "plan.md",
             "report.md",
+            "artifacts",
         ] {
             let from = self.root.join(name);
             if from.exists() {
@@ -516,31 +532,184 @@ impl Store {
     ///
     /// The directory fsync is what actually makes the rename durable; without it a crash can leave
     /// the old file in place even though the new one was synced.
+    ///
+    /// The temp file is created with `O_EXCL`, which neither follows a symlink nor opens a file
+    /// that is already there. The temp name is derivable by anything that can write inside
+    /// `.hwahap` — an agent's worktree sits in it — and without `O_EXCL` a symlink planted at that
+    /// name would send the write wherever the link points.
     fn write_atomic(&self, path: &Path, contents: &str) -> Result<()> {
         use std::io::Write as _;
         let parent = path.parent().unwrap_or(&self.root);
         std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;
 
-        let temp = parent.join(format!(
-            ".{}.tmp",
-            path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("hwahap")
-        ));
-        {
-            let mut file = std::fs::File::create(&temp).map_err(|e| Error::io(&temp, e))?;
-            file.write_all(contents.as_bytes())
-                .map_err(|e| Error::io(&temp, e))?;
-            file.sync_all().map_err(|e| Error::io(&temp, e))?;
+        for attempt in 0..TEMP_ATTEMPTS {
+            let temp = temp_path(parent, path, attempt);
+            let mut file = match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp)
+            {
+                Ok(file) => file,
+                // Another writer's temp file, or one a crash left behind: step to the next name
+                // rather than opening — or deleting — a file this write did not create.
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(Error::io(&temp, e)),
+            };
+            let written = file
+                .write_all(contents.as_bytes())
+                .and_then(|()| file.sync_all());
+            drop(file);
+            if let Err(e) = written {
+                let _ = std::fs::remove_file(&temp);
+                return Err(Error::io(&temp, e));
+            }
+            if let Err(e) = std::fs::rename(&temp, path) {
+                let _ = std::fs::remove_file(&temp);
+                return Err(Error::io(path, e));
+            }
+            // Best effort: some filesystems refuse to open a directory for sync, and failing the
+            // write for that would be worse than a slightly weaker durability guarantee.
+            if let Ok(dir) = std::fs::File::open(parent) {
+                let _ = dir.sync_all();
+            }
+            return Ok(());
         }
-        std::fs::rename(&temp, path).map_err(|e| Error::io(path, e))?;
-        // Best effort: some filesystems refuse to open a directory for sync, and failing the write
-        // for that would be worse than a slightly weaker durability guarantee.
-        if let Ok(dir) = std::fs::File::open(parent) {
-            let _ = dir.sync_all();
-        }
-        Ok(())
+        Err(Error::io(
+            parent,
+            std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "every temporary name for {} is taken; remove the stale .tmp files in {}",
+                    path.display(),
+                    parent.display()
+                ),
+            ),
+        ))
     }
+}
+
+/// How many temp names one write tries before giving up.
+///
+/// More than one because a name can be taken by a concurrent write or by a crash; few, because a
+/// name that is taken four times over is a directory that needs a human.
+const TEMP_ATTEMPTS: u32 = 4;
+
+/// The name one write attempt gives its temporary file.
+///
+/// Scoped to the process and the attempt so that two writers never share a temp file, and so that a
+/// temp file left behind by a crash is stepped over instead of reused.
+fn temp_path(parent: &Path, path: &Path, attempt: u32) -> PathBuf {
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("hwahap");
+    parent.join(format!(".{name}.{}.{attempt}.tmp", std::process::id()))
+}
+
+/// A journal file split into the lines that were written whole and the partial tail after them.
+struct Journal {
+    /// Every byte up to and including the last newline.
+    complete: String,
+    /// Where the partial tail begins, which is where the next event belongs.
+    complete_len: u64,
+    /// Whether anything follows that offset.
+    partial: bool,
+}
+
+impl Journal {
+    /// Splits raw journal bytes.
+    ///
+    /// The split is on bytes rather than characters because a crash can cut a multi-byte character
+    /// in half; decoding the whole file first would fail the entire journal over an event that
+    /// never happened.
+    fn split(bytes: &[u8]) -> Result<Journal> {
+        let complete_len = bytes
+            .iter()
+            .rposition(|byte| *byte == b'\n')
+            .map_or(0, |index| index + 1);
+        let complete = std::str::from_utf8(&bytes[..complete_len])
+            .map_err(|e| corrupt(format!("events.jsonl is not valid UTF-8: {e}")))?;
+        Ok(Journal {
+            complete: complete.to_string(),
+            complete_len: complete_len as u64,
+            partial: complete_len < bytes.len(),
+        })
+    }
+
+    /// Reads an open journal from its start.
+    fn read(file: &mut std::fs::File, path: &Path) -> Result<Journal> {
+        use std::io::Read as _;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .map_err(|e| Error::io(path, e))?;
+        Journal::split(&bytes)
+    }
+}
+
+/// Parses whole journal lines into events.
+///
+/// A malformed line means the file was edited, which is not something to recover from silently. A
+/// blank one is skipped: it carries nothing, and refusing it would turn a stray newline into a dead
+/// repository.
+fn parse_events(text: &str) -> Result<Vec<Event>> {
+    let mut events = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        if line.is_empty() {
+            continue;
+        }
+        let event: Event = serde_json::from_str(line).map_err(|e| {
+            corrupt(format!(
+                "events.jsonl line {} is unreadable: {e}",
+                index + 1
+            ))
+        })?;
+        events.push(event);
+    }
+    Ok(events)
+}
+
+/// Corruption, with the one instruction that gets the user moving again.
+///
+/// Hwahap refuses to rewrite state it cannot read, so a corrupt directory stops every call until a
+/// human clears it. The schema mismatch in [`Store::read_run`] already says how; every other report
+/// of unreadable state says it too, or the user is told only that they are stuck.
+fn corrupt(detail: impl std::fmt::Display) -> Error {
+    Error::Corrupt(format!(
+        "{detail}. Remove .hwahap to abandon this run and start a new one; Hwahap does not \
+         rewrite state it cannot read."
+    ))
+}
+
+/// Takes an exclusive advisory lock on an open file, waiting for whoever holds it.
+///
+/// `flock` rather than a lock file: the kernel drops it when the holder exits, so a crash cannot
+/// leave a lock nobody can clear. Waiting is bounded because every holder is inside one read and
+/// one write of the journal, and the alternative — refusing — would fail a run over a collision
+/// that resolves itself in microseconds.
+#[cfg(unix)]
+fn lock_exclusive(file: &std::fs::File) -> std::io::Result<()> {
+    use std::os::fd::AsRawFd;
+    loop {
+        // SAFETY: `flock` takes a file descriptor and a flag word and touches no memory. The
+        // descriptor is owned by `file`, which outlives the call.
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } == 0 {
+            return Ok(());
+        }
+        let error = std::io::Error::last_os_error();
+        // A signal arriving mid-wait is not a reason to fail a write.
+        if error.kind() != std::io::ErrorKind::Interrupted {
+            return Err(error);
+        }
+    }
+}
+
+/// Without `flock` there is nothing portable to serialise writers on.
+///
+/// Hwahap is unix-only for other reasons already — it runs a plan's commands through `sh -c`; see
+/// PLATFORM.md §4 — so this is a stub rather than a gap someone relies on.
+#[cfg(not(unix))]
+fn lock_exclusive(_file: &std::fs::File) -> std::io::Result<()> {
+    Ok(())
 }
 
 /// Canonical JSON plus a trailing newline, so two writes of the same content are byte-identical.
@@ -572,6 +741,7 @@ mod tests {
             revision: 1,
             state: RunState::Deciding,
             accepted_units: Vec::new(),
+            accepted_fingerprints: Default::default(),
             plan_digest: None,
             branch: String::new(),
             reviewed_head: None,
@@ -590,11 +760,23 @@ mod tests {
     }
 
     #[test]
-    fn open_creates_the_artifacts_directory_but_never_the_worktree() {
+    fn opening_a_store_writes_nothing_into_the_repository() {
         let (dir, store) = store();
+        assert_eq!(store.root(), dir.path().join(DIR));
+        assert!(
+            !dir.path().join(DIR).exists(),
+            "`hwahap_status` opens a store and promises to change nothing"
+        );
+        assert!(!store.has_run());
+        assert_eq!(store.read_run().unwrap(), None);
+    }
+
+    #[test]
+    fn the_first_write_creates_the_artifacts_directory_but_never_the_worktree() {
+        let (_dir, store) = store();
+        store.write_artifact("F1.md", "content").unwrap();
         assert!(store.artifacts_path().is_dir());
         assert!(!store.worktree_path().exists());
-        assert_eq!(store.root(), dir.path().join(DIR));
     }
 
     #[test]
@@ -1089,6 +1271,7 @@ mod tests {
     #[test]
     fn a_corrupt_plan_is_reported_as_corruption() {
         let (_dir, store) = store();
+        std::fs::create_dir_all(store.root()).unwrap();
         std::fs::write(store.plan_path(), "{not json").unwrap();
         let err = store.read_plan().unwrap_err();
         assert!(matches!(err, Error::Corrupt(_)), "{err:?}");
@@ -1143,5 +1326,113 @@ mod tests {
             std::fs::read_to_string(store.artifacts_path().join("결정-C1.md")).unwrap(),
             "내용 ✅"
         );
+    }
+
+    #[test]
+    fn p1_appending_after_a_partial_tail_destroys_the_journal() {
+        let (_dir, store) = store();
+        for n in 0..3 {
+            store
+                .append_event(&clock(), "test", serde_json::json!({ "n": n }))
+                .unwrap();
+        }
+        let path = store.journal_path();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::write(&path, format!("{text}{{\"seq\":4,\"ts\":\"2026")).unwrap();
+
+        store
+            .append_event(&clock(), "test", serde_json::json!({ "n": 3 }))
+            .unwrap();
+        let events = store.read_events().unwrap();
+        assert_eq!(events.len(), 4);
+        store.verify_chain().unwrap();
+    }
+
+    #[test]
+    fn p1b_a_tail_cut_through_a_multi_byte_character_is_repaired() {
+        let (_dir, store) = store();
+        store
+            .append_event(&clock(), "test", serde_json::json!({ "n": 0 }))
+            .unwrap();
+        let path = store.journal_path();
+        let mut bytes = std::fs::read(&path).unwrap();
+        bytes.extend_from_slice(b"{\"data\":\"\xea\xb2");
+        std::fs::write(&path, &bytes).unwrap();
+        assert_eq!(store.read_events().unwrap().len(), 1);
+        store
+            .append_event(&clock(), "test", serde_json::json!({ "n": 1 }))
+            .unwrap();
+        store.verify_chain().unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn p3_a_planted_temp_symlink_steers_the_write_out_of_the_directory() {
+        let (dir, store) = store();
+        let outside = dir.path().join("outside.txt");
+        std::fs::write(&outside, "original\n").unwrap();
+        std::fs::create_dir_all(store.artifacts_path()).unwrap();
+        std::os::unix::fs::symlink(&outside, store.artifacts_path().join(".F1.md.tmp")).unwrap();
+        store.write_artifact("F1.md", "steered").unwrap();
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "original\n");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn p3b_a_planted_temp_symlink_turns_run_json_into_a_symlink() {
+        let (dir, store) = store();
+        let outside = dir.path().join("outside.json");
+        std::fs::write(&outside, "{}\n").unwrap();
+        std::fs::create_dir_all(store.root()).unwrap();
+        std::os::unix::fs::symlink(&outside, store.root().join(".run.json.tmp")).unwrap();
+        store.write_run(&clock(), &a_run()).unwrap();
+        let meta = std::fs::symlink_metadata(store.run_path()).unwrap();
+        assert!(!meta.file_type().is_symlink());
+    }
+
+    #[test]
+    fn p7_two_writers_collide_and_brick_the_journal() {
+        let (_dir, store) = store();
+        let barrier = std::sync::Arc::new(std::sync::Barrier::new(4));
+        let mut handles = Vec::new();
+        for _ in 0..4 {
+            let store = store.clone();
+            let barrier = barrier.clone();
+            handles.push(std::thread::spawn(move || {
+                barrier.wait();
+                for _ in 0..40 {
+                    let _ = store.write_run(&FixedClock::new("2026-09-04T00:00:00Z"), &a_run());
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        store.verify_chain().unwrap();
+    }
+
+    #[test]
+    fn p8_a_new_run_overwrites_the_archived_runs_evidence() {
+        let (_dir, store) = store();
+        store.write_run(&clock(), &a_run()).unwrap();
+        store
+            .write_artifact("U1-attempt-1.md", "the first run")
+            .unwrap();
+        store.archive(&clock()).unwrap();
+        store.write_run(&clock(), &a_run()).unwrap();
+        store
+            .write_artifact("U1-attempt-1.md", "the second run")
+            .unwrap();
+        assert!(store
+            .root()
+            .join("archive/2026-09-04T00-00-00Z/artifacts/U1-attempt-1.md")
+            .exists());
+    }
+
+    #[test]
+    fn p9_merely_opening_the_store_creates_the_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let _store = Store::open(dir.path()).unwrap();
+        assert!(!dir.path().join(DIR).exists());
     }
 }

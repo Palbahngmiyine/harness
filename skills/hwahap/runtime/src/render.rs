@@ -16,9 +16,11 @@
 //!   fallback. Rendering fails only when the plan is self-inconsistent in a way that would make the
 //!   document lie: a missing or unknown surface row, or a schema this renderer does not implement.
 //!
-//! `unit_order` and `freeze_blockers` are computed here rather than imported from `validate`, which
-//! is not part of this crate copy; each is a single private function, so delegating later is a
-//! one-line change.
+//! What may be frozen is asked of [`crate::validate::freeze_blockers`], never re-derived here. It is
+//! the predicate the engine gates the real freeze on, and a second implementation of it would let
+//! this document invite a confirmation the gate refuses — or withhold one the gate would have taken.
+//! `unit_order` is the one thing computed locally, because `validate::unit_order` errs on a cycle
+//! and a cycle is exactly what the reader opened `plan.md` to find.
 
 use std::collections::BTreeMap;
 
@@ -28,6 +30,7 @@ use crate::plan::{
     AnswerFreshness, Confidence, Decision, DecisionKind, Plan, PlanReview, Recommendation, Surface,
     SurfaceStatus, Unit, SURFACES,
 };
+use crate::validate;
 
 /// Renders the plan the user reviews before freezing. Byte-stable for a given plan.
 pub fn plan_markdown(plan: &Plan) -> Result<String> {
@@ -141,7 +144,7 @@ fn render_facts(plan: &Plan, md: &mut Md) {
     md.blank();
     md.table_header(&["Id", "Question", "Answer", "Sources"]);
     for fact in sorted_by_id(&plan.facts, |f| f.id.as_str()) {
-        let sources = sorted_join(&fact.sources);
+        let sources = quoted_join(&fact.sources);
         md.row(&[&fact.id, &fact.question, &fact.answer, &sources]);
     }
 }
@@ -305,7 +308,7 @@ fn render_units(plan: &Plan, md: &mut Md) {
     for unit in unit_order(plan).0 {
         let acceptance = sorted_join(&unit.acceptance_ids);
         let depends_on = sorted_join(&unit.depends_on);
-        let paths = sorted_join(&unit.paths);
+        let paths = quoted_join(&unit.paths);
         md.row(&[
             &unit.id,
             &unit.title,
@@ -379,7 +382,7 @@ fn render_review(label: &str, review: Option<&PlanReview>, reviewed: &Digest, md
 }
 
 fn render_confirm(plan: &Plan, md: &mut Md) -> Result<()> {
-    let blockers = freeze_blockers(plan)?;
+    let blockers = validate::freeze_blockers(plan)?;
     md.blank();
     md.line("## Confirm");
     md.blank();
@@ -391,72 +394,16 @@ fn render_confirm(plan: &Plan, md: &mut Md) -> Result<()> {
         md.line("```");
     } else {
         md.line("The plan cannot be frozen yet:");
-        for (code, detail) in blockers {
-            md.line(format!("- {code}: {}", inline(&detail)));
+        for violation in blockers {
+            // The code is the stable half, so a host can act on it while the wording changes.
+            md.line(format!(
+                "- {}: {}",
+                violation.code,
+                inline(&violation.detail)
+            ));
         }
     }
     Ok(())
-}
-
-/// What still stands between this plan and `CONFIRM PLAN`, as `(code, detail)` pairs.
-///
-/// Mirrors what `validate::freeze_blockers` owes the user; the codes are the stable half, so a host
-/// can act on them while the wording changes.
-fn freeze_blockers(plan: &Plan) -> Result<Vec<(&'static str, String)>> {
-    let mut blockers: Vec<(&'static str, String)> = Vec::new();
-    if plan.goal.statement.trim().is_empty() {
-        blockers.push((
-            "missing_goal_statement",
-            "the goal has no statement".to_string(),
-        ));
-    }
-    for decision in sorted_by_id(&plan.decisions, |d| d.id.as_str()) {
-        let freshness = decision.answer_freshness()?;
-        if freshness != AnswerFreshness::Fresh {
-            blockers.push(("unanswered_decision", freshness.explain(&decision.id)));
-        }
-    }
-    for item in sorted_by_id(&plan.open_items, |i| i.id.as_str()) {
-        blockers.push((
-            "open_item",
-            format!("{} ({}): {}", item.id, item.decision_id, item.detail),
-        ));
-    }
-    if plan.units.is_empty() {
-        blockers.push(("no_units", "the plan has no units to implement".to_string()));
-    } else if !unit_order(plan).1 {
-        blockers.push((
-            "unit_cycle",
-            "the unit dependency graph has a cycle".to_string(),
-        ));
-    }
-    if plan.tests.is_empty() {
-        blockers.push(("no_tests", "no test proves any acceptance".to_string()));
-    }
-    if plan.full_suite.trim().is_empty() {
-        blockers.push((
-            "missing_full_suite",
-            "the plan names no full-suite command".to_string(),
-        ));
-    }
-    let reviewed = plan.review_digest()?;
-    for (label, review) in [
-        ("cold consumer", &plan.reviews.cold_consumer),
-        ("critic", &plan.reviews.critic),
-    ] {
-        match review {
-            None => blockers.push(("review_missing", format!("the {label} review has not run"))),
-            Some(review) if !review.passed => {
-                blockers.push(("review_failed", format!("the {label} review failed")))
-            }
-            Some(review) if review.plan_digest != reviewed => blockers.push((
-                "review_stale",
-                format!("the {label} review looked at an older plan"),
-            )),
-            Some(_) => {}
-        }
-    }
-    Ok(blockers)
 }
 
 /// The units in dependency order, and whether that order is a real topological one.
@@ -541,6 +488,21 @@ fn sorted_ids(ids: &[String]) -> Vec<&str> {
 
 fn sorted_join(ids: &[String]) -> String {
     sorted_ids(ids).join(", ")
+}
+
+/// Joins values that are not identifiers, each one in backticks.
+///
+/// A comma is content in a path or a source location, so joining them the way identifiers are joined
+/// would render the single path `docs, src` and the two paths `docs` and `src` as the same cell —
+/// and the Paths cell is the only place the document says what a unit is allowed to rewrite.
+/// [`crate::validate`] refuses a path carrying either delimiter, so for units the cell is unambiguous
+/// by the time it can be frozen.
+fn quoted_join(values: &[String]) -> String {
+    sorted_ids(values)
+        .into_iter()
+        .map(|value| format!("`{value}`"))
+        .collect::<Vec<String>>()
+        .join(", ")
 }
 
 /// Flattens a value so it can occupy one line of the document.
@@ -736,11 +698,35 @@ mod tests {
         }
     }
 
-    /// A plan that is complete enough to freeze, so a test can take away exactly one thing.
+    /// Closes a surface the way a user closes one, with `S<n>=NA`.
+    fn close(plan: &mut Plan, surface: Surface) {
+        plan.surfaces.insert(
+            surface.id().into(),
+            SurfaceStatus::NotApplicable {
+                reason: format!("{surface} does not apply to a dry-run flag"),
+                answer: Answer {
+                    text: format!("{surface}=NA"),
+                    selection: Selection::NotApplicable,
+                    ts: ts(),
+                    identity: Digest::zero(),
+                    recommendation: None,
+                },
+            },
+        );
+    }
+
+    /// A plan `validate::freeze_blockers` accepts, so a test can take away exactly one thing.
+    ///
+    /// Only S2 stays open. The gate wants an answered decision — and an answered scenario — on every
+    /// surface the user left applicable, and twelve surfaces' worth of decisions would bury the
+    /// layout the rest of these tests are about.
     fn freezable_plan() -> Plan {
         let mut plan = Plan::new("2026-09-04-dry-run", "main", "add a dry-run mode to apply");
         plan.goal.success = vec!["apply --dry-run prints the diff".into()];
         plan.goal.non_goals = vec!["no server-side dry-run".into()];
+        for surface in SURFACES.into_iter().filter(|s| *s != Surface::S2) {
+            close(&mut plan, surface);
+        }
         plan.facts.push(Fact {
             id: "F7".into(),
             question: "does apply call the webhook?".into(),
@@ -749,24 +735,56 @@ mod tests {
         });
         let mut first = decision("C1");
         answer_it(&mut first, Selection::Recommendation, "C1=REC");
-        plan.decisions.push(first);
-        plan.requirements.push(Requirement {
-            id: "R1".into(),
-            statement: "dry-run calls the webhook".into(),
-            decision_ids: vec!["C1".into()],
-        });
-        plan.acceptance.push(Acceptance {
-            id: "A1".into(),
-            requirement_ids: vec!["R1".into()],
-            observable: "the webhook receives a dry-run request".into(),
-        });
-        plan.units.push(unit("U1", &[]));
-        plan.tests.push(Test {
-            id: "T1".into(),
-            command: "cargo test webhook".into(),
-            acceptance_ids: vec!["A1".into()],
-            unit_id: "U1".into(),
-        });
+        let mut second = decision("C2");
+        second.kind = DecisionKind::Scenario;
+        second.question = "What must happen when the webhook times out?".into();
+        answer_it(
+            &mut second,
+            Selection::Alternative { id: "ALT2".into() },
+            "C2=ALT2",
+        );
+        plan.decisions = vec![first, second];
+        plan.requirements = vec![
+            Requirement {
+                id: "R1".into(),
+                statement: "dry-run calls the webhook".into(),
+                decision_ids: vec!["C1".into()],
+            },
+            Requirement {
+                id: "R2".into(),
+                statement: "a webhook timeout fails the dry-run".into(),
+                decision_ids: vec!["C2".into()],
+            },
+        ];
+        plan.acceptance = vec![
+            Acceptance {
+                id: "A1".into(),
+                requirement_ids: vec!["R1".into()],
+                observable: "the webhook receives a dry-run request".into(),
+            },
+            Acceptance {
+                id: "A2".into(),
+                requirement_ids: vec!["R2".into()],
+                observable: "a timed-out webhook exits non-zero".into(),
+            },
+        ];
+        let mut covers_a2 = unit("U2", &["U1"]);
+        covers_a2.acceptance_ids = vec!["A2".into()];
+        plan.units = vec![unit("U1", &[]), covers_a2];
+        plan.tests = vec![
+            Test {
+                id: "T1".into(),
+                command: "cargo test webhook".into(),
+                acceptance_ids: vec!["A1".into()],
+                unit_id: "U1".into(),
+            },
+            Test {
+                id: "T2".into(),
+                command: "cargo test timeout".into(),
+                acceptance_ids: vec!["A2".into()],
+                unit_id: "U2".into(),
+            },
+        ];
         plan.full_suite = "cargo test".into();
         pass_reviews(&mut plan);
         plan
@@ -855,26 +873,27 @@ mod tests {
     #[test]
     fn shuffling_identifier_lists_does_not_change_a_single_byte_of_the_body() {
         let mut plan = freezable_plan();
-        plan.decisions.push(decision("C2"));
+        plan.decisions.push(decision("C3"));
         plan.facts.push(Fact {
             id: "F2".into(),
             question: "second".into(),
             answer: "yes".into(),
             sources: vec!["a.rs:1".into(), "b.rs:2".into()],
         });
-        plan.units.push(unit("U2", &["U1"]));
-        plan.units[1].paths = vec!["tests/".into(), "src/".into()];
-        plan.units[1].acceptance_ids = vec!["A2".into(), "A1".into()];
+        let mut extra = unit("U3", &["U1"]);
+        extra.paths = vec!["tests/".into(), "src/".into()];
+        extra.acceptance_ids = vec!["A3".into(), "A1".into()];
+        plan.units.push(extra);
         plan.acceptance.push(Acceptance {
-            id: "A2".into(),
+            id: "A3".into(),
             requirement_ids: vec!["R1".into()],
             observable: "the diff is printed".into(),
         });
         plan.tests.push(Test {
-            id: "T2".into(),
+            id: "T3".into(),
             command: "cargo test diff".into(),
-            acceptance_ids: vec!["A2".into(), "A1".into()],
-            unit_id: "U2".into(),
+            acceptance_ids: vec!["A3".into(), "A1".into()],
+            unit_id: "U3".into(),
         });
         // A review binds to the plan's canonical JSON, in which array order is content, so a shuffled
         // plan is a different plan to a reviewer. Reviews are left out to keep this test about layout.
@@ -971,10 +990,16 @@ mod tests {
         let rows: Vec<&str> = surfaces.lines().skip(4).collect();
         assert_eq!(rows.len(), 12, "{surfaces}");
         for (row, surface) in rows.iter().zip(SURFACES) {
-            assert_eq!(
-                *row,
+            let expected = if surface == Surface::S2 {
                 format!("| {} | {} | applicable |  |", surface.id(), surface.title())
-            );
+            } else {
+                format!(
+                    "| {} | {} | not applicable | {surface} does not apply to a dry-run flag |",
+                    surface.id(),
+                    surface.title()
+                )
+            };
+            assert_eq!(*row, expected);
         }
     }
 
@@ -1043,13 +1068,14 @@ mod tests {
     }
 
     #[test]
-    fn facts_carry_their_sources_joined_by_commas() {
+    fn facts_carry_their_sources_as_a_backtick_quoted_list() {
         let mut plan = freezable_plan();
         plan.facts[0].sources = vec!["src/b.rs:2".into(), "src/a.rs:1".into()];
         let rendered = plan_markdown(&plan).unwrap();
         assert!(
-            rendered
-                .contains("| F7 | does apply call the webhook? | yes | src/a.rs:1, src/b.rs:2 |"),
+            rendered.contains(
+                "| F7 | does apply call the webhook? | yes | `src/a.rs:1`, `src/b.rs:2` |"
+            ),
             "{rendered}"
         );
     }
@@ -1065,7 +1091,7 @@ mod tests {
     #[test]
     fn identifiers_are_ordered_numerically_not_lexicographically() {
         let mut plan = freezable_plan();
-        for id in ["C10", "C2"] {
+        for id in ["C10", "C3"] {
             let mut extra = decision(id);
             answer_it(
                 &mut extra,
@@ -1083,7 +1109,8 @@ mod tests {
             headings,
             vec![
                 "### C1 · S2 · decision",
-                "### C2 · S2 · decision",
+                "### C2 · S2 · scenario",
+                "### C3 · S2 · decision",
                 "### C10 · S2 · decision",
             ]
         );
@@ -1102,7 +1129,11 @@ mod tests {
             .collect();
         assert_eq!(
             headings,
-            vec!["### C1 · S2 · decision", "### Cx · S2 · decision"]
+            vec![
+                "### C1 · S2 · decision",
+                "### C2 · S2 · scenario",
+                "### Cx · S2 · decision",
+            ]
         );
     }
 
@@ -1136,6 +1167,7 @@ mod tests {
     #[test]
     fn a_decision_with_no_recommendation_says_none_and_shows_only_its_rationale() {
         let mut plan = freezable_plan();
+        plan.decisions.truncate(1);
         plan.decisions[0].recommendation = Recommendation::NoRecommendation {
             rationale: vec!["both are defensible".into()],
         };
@@ -1170,6 +1202,7 @@ mod tests {
     #[test]
     fn a_recommendation_with_no_rationale_omits_the_heading_instead_of_an_empty_bullet() {
         let mut plan = freezable_plan();
+        plan.decisions.truncate(1);
         plan.decisions[0].recommendation = Recommendation::NoRecommendation { rationale: vec![] };
         plan.decisions[0].answer = None;
         let rendered = plan_markdown(&plan).unwrap();
@@ -1268,6 +1301,7 @@ mod tests {
     #[test]
     fn a_decision_with_no_alternatives_still_renders_its_question() {
         let mut plan = freezable_plan();
+        plan.decisions.truncate(1);
         plan.decisions[0].alternatives.clear();
         plan.decisions[0].answer = None;
         let rendered = plan_markdown(&plan).unwrap();
@@ -1350,7 +1384,7 @@ mod tests {
             "{rendered}"
         );
         assert!(
-            rendered.contains("| U1 | build U1 | no | A1, A2 |  | src/, tests/ |"),
+            rendered.contains("| U1 | build U1 | no | A1, A2 |  | `src/`, `tests/` |"),
             "{rendered}"
         );
     }
@@ -1361,7 +1395,7 @@ mod tests {
         plan.units[0].probe = true;
         let rendered = plan_markdown(&plan).unwrap();
         assert!(
-            rendered.contains("| U1 | build U1 | yes | A1 |  | src/ |"),
+            rendered.contains("| U1 | build U1 | yes | A1 |  | `src/` |"),
             "{rendered}"
         );
     }
@@ -1396,7 +1430,7 @@ mod tests {
             .collect();
         assert_eq!(ids, vec!["U2", "U1", "U3"]);
         assert!(
-            rendered.contains("- unit_cycle: the unit dependency graph has a cycle"),
+            rendered.contains("- unit_cycle: unit dependencies cycle through U1, U2"),
             "{rendered}"
         );
     }
@@ -1408,7 +1442,7 @@ mod tests {
         let rendered = plan_markdown(&plan).unwrap();
         assert!(rendered.contains("- unit_cycle:"), "{rendered}");
         assert!(
-            rendered.contains("| U1 | build U1 | no | A1 | U1 | src/ |"),
+            rendered.contains("| U1 | build U1 | no | A1 | U1 | `src/` |"),
             "{rendered}"
         );
     }
@@ -1442,7 +1476,9 @@ mod tests {
             "{rendered}"
         );
         assert!(
-            rendered.contains("- open_item: O1 (C1): needs a latency measurement"),
+            rendered.contains(
+                "- open_item: open item O1 on C1 is unresolved: needs a latency measurement"
+            ),
             "{rendered}"
         );
     }
@@ -1536,7 +1572,7 @@ mod tests {
 
         let cases: Vec<(&str, Break)> = vec![
             (
-                "missing_goal_statement",
+                "empty_field",
                 Box::new(|p: &mut Plan| p.goal.statement = "   ".into()),
             ),
             (
@@ -1562,15 +1598,15 @@ mod tests {
             ),
             ("no_tests", Box::new(|p: &mut Plan| p.tests.clear())),
             (
-                "missing_full_suite",
+                "empty_full_suite",
                 Box::new(|p: &mut Plan| p.full_suite = " ".into()),
             ),
             (
-                "review_missing",
+                "missing_review",
                 Box::new(|p: &mut Plan| p.reviews.critic = None),
             ),
             (
-                "review_failed",
+                "failed_review",
                 Box::new(|p: &mut Plan| {
                     if let Some(review) = p.reviews.critic.as_mut() {
                         review.passed = false;
@@ -1578,7 +1614,7 @@ mod tests {
                 }),
             ),
             (
-                "review_stale",
+                "stale_review",
                 Box::new(|p: &mut Plan| {
                     if let Some(review) = p.reviews.critic.as_mut() {
                         review.plan_digest = Digest::zero();
@@ -1601,22 +1637,41 @@ mod tests {
     #[test]
     fn blockers_are_reported_in_a_fixed_order() {
         let mut plan = freezable_plan();
-        plan.decisions.push(decision("C2"));
+        plan.decisions.push(decision("C9"));
         plan.decisions[0].answer = None;
         plan.tests.clear();
-        // Re-read the plan as mutated, so only the missing critic review is left to report.
         pass_reviews(&mut plan);
         plan.reviews.critic = None;
+
         let rendered = plan_markdown(&plan).unwrap();
         let blockers: Vec<&str> = section(&rendered, "## Confirm").lines().skip(3).collect();
+
+        // Derived from the gate rather than restated, because that agreement is the property worth
+        // holding: a renderer with its own opinion about freezability is how a user ends up
+        // confirming a plan the gate rejects.
+        let expected: Vec<String> = crate::validate::freeze_blockers(&plan)
+            .unwrap()
+            .iter()
+            .map(|v| format!("- {}: {}", v.code, v.detail))
+            .collect();
+        assert_eq!(blockers, expected);
+
+        // And the agreement is not vacuous: the substance really is reported.
+        for expected_prefix in [
+            "- unanswered_decision: C1",
+            "- missing_review: ",
+            "- untested_unit: ",
+        ] {
+            assert!(
+                blockers.iter().any(|b| b.starts_with(expected_prefix)),
+                "{expected_prefix:?} is missing from {blockers:#?}"
+            );
+        }
+
         assert_eq!(
-            blockers,
-            vec![
-                "- unanswered_decision: C1 is unanswered",
-                "- unanswered_decision: C2 is unanswered",
-                "- no_tests: no test proves any acceptance",
-                "- review_missing: the critic review has not run",
-            ]
+            plan_markdown(&plan).unwrap(),
+            rendered,
+            "the blocker order is not stable across renders"
         );
     }
 
@@ -1695,13 +1750,17 @@ mod tests {
         expected.push_str("Answer: (unanswered)\n\n");
         expected.push_str("## Reviews\n\nCold consumer: absent\n\nCritic: absent\n\n");
         expected.push_str("## Confirm\n\nThe plan cannot be frozen yet:\n");
-        expected.push_str("- unanswered_decision: C1 is unanswered\n");
-        expected.push_str("- no_units: the plan has no units to implement\n");
-        expected.push_str("- no_tests: no test proves any acceptance\n");
-        expected.push_str("- missing_full_suite: the plan names no full-suite command\n");
-        expected.push_str("- review_missing: the cold consumer review has not run\n");
-        expected.push_str("- review_missing: the critic review has not run\n");
+        // The blockers themselves are the gate's words, not the renderer's, so they are derived
+        // rather than restated here — `blockers_are_reported_in_a_fixed_order` is what holds the
+        // renderer and the gate to the same answer. Everything above this line is the document
+        // shape, and that is what this test exists to pin byte for byte.
+        for violation in crate::validate::freeze_blockers(&plan).unwrap() {
+            expected.push_str(&format!("- {}: {}\n", violation.code, violation.detail));
+        }
         assert_eq!(rendered, expected);
+
+        // A plan this incomplete must not be one line away from being confirmed.
+        assert!(!rendered.contains("CONFIRM PLAN"));
     }
 
     #[test]
@@ -1747,9 +1806,9 @@ mod tests {
     #[test]
     fn the_frontier_keeps_the_callers_order_and_skips_ids_the_plan_does_not_have() {
         let mut plan = freezable_plan();
-        plan.decisions.push(decision("C2"));
+        plan.decisions.push(decision("C3"));
         let rendered =
-            frontier_markdown(&plan, &["C2".into(), "C404".into(), "C1".into()]).unwrap();
+            frontier_markdown(&plan, &["C3".into(), "C404".into(), "C1".into()]).unwrap();
         let questions: Vec<&str> = rendered
             .lines()
             .filter(|line| line.starts_with("C") && line.contains(". "))
@@ -1757,7 +1816,7 @@ mod tests {
         assert_eq!(
             questions,
             vec![
-                "C2. Call the admission webhook during dry-run?",
+                "C3. Call the admission webhook during dry-run?",
                 "C1. Call the admission webhook during dry-run?",
             ]
         );

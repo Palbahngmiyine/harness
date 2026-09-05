@@ -419,6 +419,19 @@ pub struct PlanReviews {
     pub critic: Option<PlanReview>,
 }
 
+/// A change the user asked for after seeing the draft pull request.
+///
+/// Kept on the plan rather than only echoed back, because the next planning round has to be able to
+/// read it. An adjustment that only appears in a message is an adjustment the machine never saw.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Adjustment {
+    /// The revision this feedback opened.
+    pub revision: u32,
+    /// The user's words, verbatim.
+    pub text: String,
+    pub ts: String,
+}
+
 /// The user's `CONFIRM PLAN <challenge>`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Frozen {
@@ -456,6 +469,9 @@ pub struct Plan {
     pub tests: Vec<Test>,
     #[serde(default)]
     pub open_items: Vec<OpenItem>,
+    /// What the user asked for after seeing a draft pull request, oldest first.
+    #[serde(default)]
+    pub adjustments: Vec<Adjustment>,
     /// The command run once, after every unit is accepted.
     pub full_suite: String,
     #[serde(default)]
@@ -503,6 +519,7 @@ impl Plan {
             units: Vec::new(),
             tests: Vec::new(),
             open_items: Vec::new(),
+            adjustments: Vec::new(),
             full_suite: String::new(),
             reviews: PlanReviews::default(),
             frozen: None,
@@ -579,6 +596,55 @@ impl Plan {
     /// The tests belonging to a unit.
     pub fn tests_for(&self, unit_id: &str) -> Vec<&Test> {
         self.tests.iter().filter(|t| t.unit_id == unit_id).collect()
+    }
+
+    /// A digest of everything a unit was built to satisfy.
+    ///
+    /// Covers the unit itself, the acceptance criteria it delivers, the requirements behind them,
+    /// the resolved value of every decision those requirements rest on, and the commands that prove
+    /// it. An adjustment changes some of those and not others, and this is what tells the two
+    /// apart: a unit whose fingerprint still matches is work the new revision did not touch, and
+    /// rebuilding it would waste the user's time; a unit whose fingerprint moved was accepted
+    /// against something that is no longer true.
+    pub fn unit_fingerprint(&self, unit_id: &str) -> Result<Digest> {
+        let unit = self
+            .unit(unit_id)
+            .ok_or_else(|| Error::Rejected(format!("{unit_id} is not a unit in this plan")))?;
+
+        let acceptance: Vec<&Acceptance> = self
+            .acceptance
+            .iter()
+            .filter(|a| unit.acceptance_ids.contains(&a.id))
+            .collect();
+        let requirements: Vec<&Requirement> = self
+            .requirements
+            .iter()
+            .filter(|r| acceptance.iter().any(|a| a.requirement_ids.contains(&r.id)))
+            .collect();
+        let mut decisions: Vec<serde_json::Value> = Vec::new();
+        for decision in &self.decisions {
+            if !requirements
+                .iter()
+                .any(|r| r.decision_ids.contains(&decision.id))
+            {
+                continue;
+            }
+            decisions.push(serde_json::json!({
+                "id": decision.id,
+                "question": decision.question,
+                "resolved": decision.resolved_value()?,
+            }));
+        }
+        let mut tests: Vec<&Test> = self.tests_for(unit_id);
+        tests.sort_by(|a, b| a.id.cmp(&b.id));
+
+        Digest::of(&serde_json::json!({
+            "unit": unit,
+            "acceptance": acceptance,
+            "requirements": requirements,
+            "decisions": decisions,
+            "tests": tests,
+        }))
     }
 
     /// Rejects a plan whose schema tag is not `hwahap/v3`.
