@@ -238,7 +238,8 @@ impl Engine {
         }
 
         // Everything below is re-checked now rather than trusted from when the PR was opened.
-        if plan.frozen.as_ref().map(|f| &f.digest) != run.plan_digest.as_ref() {
+        if !plan.is_frozen()? || plan.frozen.as_ref().map(|f| &f.digest) != run.plan_digest.as_ref()
+        {
             return Err(Error::Rejected(
                 "the frozen plan has changed since this pull request was created; ship is refused"
                     .into(),
@@ -748,7 +749,7 @@ impl Engine {
     // ------------------------------------------------------------------ coding
 
     async fn code(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
-        let plan = self.require_plan()?;
+        let plan = self.require_frozen_plan(&run)?;
         let worktree = self.store.worktree_path();
         let order = validate::unit_order(&plan)?;
 
@@ -982,7 +983,7 @@ impl Engine {
     }
 
     async fn finalize(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
-        let plan = self.require_plan()?;
+        let plan = self.require_frozen_plan(&run)?;
         let worktree = self.store.worktree_path();
 
         let suite_tree = self.git.fingerprint(&worktree)?;
@@ -1347,6 +1348,17 @@ impl Engine {
         self.store.write_plan(plan)?;
         self.store
             .write_plan_markdown(&render::plan_markdown(plan)?)
+    }
+
+    fn require_frozen_plan(&self, run: &Run) -> Result<Plan> {
+        let plan = self.require_plan()?;
+        if !plan.is_frozen()? || plan.frozen.as_ref().map(|f| &f.digest) != run.plan_digest.as_ref()
+        {
+            return Err(Error::BoundaryViolation(
+                "the plan content no longer matches the user's confirmation; reopen planning before execution".into(),
+            ));
+        }
+        Ok(plan)
     }
 
     fn require_plan(&self) -> Result<Plan> {
