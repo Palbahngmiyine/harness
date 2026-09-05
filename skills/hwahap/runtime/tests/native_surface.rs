@@ -241,6 +241,141 @@ async fn deadline_does_not_claim_the_child_was_stopped() {
 }
 
 #[tokio::test]
+async fn timing_immediate_completion_does_not_wait_for_the_hard_deadline() {
+    let (temp, broker, spec) = fixture(5, 180).await;
+    let worker = broker.clone();
+    let task = tokio::spawn(async move { worker.execute(&spec).await });
+    let request = dispatch(&broker).await;
+    assert_eq!(request.hard_timeout_secs, 180);
+    broker
+        .register(&NativeRegistration {
+            dispatch_id: request.dispatch_id.clone(),
+            agent_id: "fast-child".into(),
+        })
+        .unwrap();
+    let message = r#"{"facts":[]}"#;
+    broker
+        .complete(NativeCompletion {
+            dispatch_id: request.dispatch_id.clone(),
+            agent_id: "fast-child".into(),
+            final_message: message.into(),
+            agent_stopped: true,
+            reported_usage: None,
+        })
+        .unwrap();
+    let result = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(result.final_message, message);
+    let store = Store::open(temp.path()).unwrap();
+    let timing = hwahap::native::timing::read(&store, &request.dispatch_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(timing.outcome.as_deref(), Some("completed"));
+    assert_eq!(timing.output_bytes, Some(message.len() as u64));
+    assert!(timing.registered_at_ms.unwrap() >= timing.offered_at_ms);
+    assert!(timing.finished_at_ms.unwrap() >= timing.registered_at_ms.unwrap());
+    broker.finish().unwrap();
+    assert!(orphan(&store).unwrap().is_none());
+}
+
+#[tokio::test]
+async fn timing_short_deadline_keeps_a_registered_child_behind_the_stop_barrier() {
+    let (temp, broker, spec) = fixture(5, 1).await;
+    let worker = broker.clone();
+    let task = tokio::spawn(async move { worker.execute(&spec).await });
+    let request = dispatch(&broker).await;
+    broker
+        .register(&NativeRegistration {
+            dispatch_id: request.dispatch_id.clone(),
+            agent_id: "slow-child".into(),
+        })
+        .unwrap();
+    let error = tokio::time::timeout(Duration::from_secs(5), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap_err();
+    assert!(error.to_string().contains("deadline"), "{error}");
+    let store = Store::open(temp.path()).unwrap();
+    let progress = hwahap::native::NativeHost::default()
+        .status(temp.path())
+        .await
+        .unwrap();
+    assert_eq!(progress.outcome.next, "native_stop");
+    assert_eq!(
+        progress.dispatch.unwrap().agent_id.as_deref(),
+        Some("slow-child")
+    );
+    let timing = hwahap::native::timing::read(&store, &request.dispatch_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(timing.outcome.as_deref(), Some("deadline"));
+    assert!(timing.registered_at_ms.is_some());
+    assert!(timing.finished_at_ms.is_some());
+    assert!(timing.output_bytes.is_none());
+    assert!(!store
+        .artifacts_path()
+        .join(format!("native-completion-{}.json", request.dispatch_id))
+        .exists());
+    assert!(broker.finish().is_err());
+    let mut ack = NativeStopped {
+        dispatch_id: request.dispatch_id.clone(),
+        agent_id: None,
+        all_work_stopped: true,
+    };
+    assert!(acknowledge_stopped(&store, &ack).is_err());
+    ack.agent_id = Some("slow-child".into());
+    acknowledge_stopped(&store, &ack).unwrap();
+    assert!(orphan(&store).unwrap().is_none());
+    assert_eq!(
+        hwahap::native::timing::read(&store, &request.dispatch_id)
+            .unwrap()
+            .unwrap(),
+        timing
+    );
+}
+
+#[tokio::test]
+async fn timing_spawn_failure_records_no_registration_or_completion() {
+    let (temp, broker, spec) = fixture(5, 180).await;
+    let worker = broker.clone();
+    let task = tokio::spawn(async move { worker.execute(&spec).await });
+    let request = dispatch(&broker).await;
+    task.abort();
+    assert!(task.await.unwrap_err().is_cancelled());
+    let store = Store::open(temp.path()).unwrap();
+    hwahap::native::record_failure(
+        &store,
+        &hwahap::native::NativeFailure {
+            dispatch_id: request.dispatch_id.clone(),
+            message: "agent thread limit reached".into(),
+            no_agent_created: true,
+        },
+    )
+    .unwrap();
+    let timing = hwahap::native::timing::read(&store, &request.dispatch_id)
+        .unwrap()
+        .unwrap();
+    assert_eq!(timing.outcome.as_deref(), Some("spawn_failed"));
+    assert!(timing.registered_at_ms.is_none());
+    assert!(timing.finished_at_ms.unwrap() >= timing.offered_at_ms);
+    assert!(timing.output_bytes.is_none());
+    assert!(!store
+        .artifacts_path()
+        .join(format!("native-completion-{}.json", request.dispatch_id))
+        .exists());
+    let progress = hwahap::native::NativeHost::default()
+        .status(temp.path())
+        .await
+        .unwrap();
+    assert_eq!(progress.outcome.next, "native_paused");
+    assert!(progress.dispatch.unwrap().agent_id.is_none());
+}
+
+#[tokio::test]
 async fn coordinator_is_limited_to_astra_planning_roles() {
     let (_temp, broker, mut spec) = fixture(5, 30).await;
     spec.role = Role::Recommender;
