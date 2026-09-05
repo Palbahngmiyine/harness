@@ -2,7 +2,9 @@ use std::sync::Mutex;
 
 use tokio::sync::oneshot;
 
-use super::{json, load, save, NativeCompletion, NativeDispatch, NativeRegistration, Pending};
+use super::{
+    json, load, save, timing, NativeCompletion, NativeDispatch, NativeRegistration, Pending,
+};
 use crate::error::{Error, Result};
 use crate::profile::Profiles;
 use crate::state::Store;
@@ -90,7 +92,8 @@ impl NativeSessions {
             &self.store,
             &waiting.pending.dispatch,
             &registration.agent_id,
-        )
+        )?;
+        timing::observe(&self.store, &waiting.pending.dispatch, None, None)
     }
 
     /// Durable recording precedes delivery. Identical retries do not deliver twice.
@@ -121,7 +124,10 @@ impl NativeSessions {
                 "completion does not match the registered native dispatch".into(),
             ));
         }
-        super::reply::result(&completion, dispatch.reuse_agent_id.is_some())?;
+        super::reply::result(
+            &completion,
+            dispatch.reuse_agent_id.is_some() || dispatch.lane == super::NativeLane::Coordinator,
+        )?;
         if let Some(previous) = &waiting.pending.completion {
             if previous != &completion {
                 return Err(Error::Rejected(
@@ -139,6 +145,12 @@ impl NativeSessions {
         waiting.pending.completion = Some(completion.clone());
         save(&self.store, &waiting.pending)?;
         super::pool::stopped(&self.store, &waiting.pending.dispatch)?;
+        timing::observe(
+            &self.store,
+            &waiting.pending.dispatch,
+            Some("completed"),
+            Some(completion.final_message.len() as u64),
+        )?;
         let sender = waiting
             .sender
             .take()
@@ -199,11 +211,12 @@ impl NativeSessions {
         super::clear(&self.store)
     }
 
-    pub(super) fn expire(&self) -> Result<()> {
+    pub(super) fn expire(&self, outcome: &str) -> Result<()> {
         let mut guard = self.waiting.lock().map_err(poisoned)?;
         if let Some(waiting) = guard.as_mut() {
             waiting.pending.dispatch.stop_required = true;
             save(&self.store, &waiting.pending)?;
+            timing::observe(&self.store, &waiting.pending.dispatch, Some(outcome), None)?;
         }
         Ok(())
     }

@@ -130,6 +130,26 @@ fn stamp(store: &Store, id: &str, now: i64, terminal: Option<(&str, Option<u64>)
     save(store, &value)
 }
 
+/// Missing timing is compatible only with dispatches created before timing fields existed.
+pub(super) fn observe(
+    store: &Store,
+    dispatch: &super::NativeDispatch,
+    outcome: Option<&str>,
+    bytes: Option<u64>,
+) -> Result<()> {
+    if read(store, &dispatch.dispatch_id)?.is_none() {
+        return if dispatch.hard_timeout_secs == 0 {
+            Ok(())
+        } else {
+            Err(Error::Corrupt("native dispatch timing is missing".into()))
+        };
+    }
+    match outcome {
+        Some(outcome) => finish(store, &dispatch.dispatch_id, outcome, bytes),
+        None => registered(store, &dispatch.dispatch_id),
+    }
+}
+
 pub fn elapsed_since_offer(store: &Store, id: &str) -> Result<Option<u64>> {
     Ok(read(store, id)?
         .and_then(|v| elapsed_at(v.offered_at_ms, chrono::Utc::now().timestamp_millis())))
@@ -143,6 +163,33 @@ fn elapsed_at(offered: i64, now: i64) -> Option<u64> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn observation_requires_new_timing_but_accepts_a_legacy_dispatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::open(dir.path()).unwrap();
+        let id = "b".repeat(64);
+        let mut dispatch: super::super::NativeDispatch =
+            serde_json::from_value(serde_json::json!({
+                "dispatch_id": id, "run_id": "r", "role": "fact_finder", "profile": "economy",
+                "model": "m", "effort": "medium", "cwd": "/tmp", "access": "read_only",
+                "coordinator_allowed": false, "prompt_digest": "p", "base_head": "h",
+                "brief": "facts", "stop_required": false
+            }))
+            .unwrap();
+        observe(&store, &dispatch, None, None).unwrap();
+        dispatch.hard_timeout_secs = 180;
+        assert!(observe(&store, &dispatch, None, None).is_err());
+        begin(&store, &id, Role::FactFinder, 5, 60, 180).unwrap();
+        observe(&store, &dispatch, None, None).unwrap();
+        observe(&store, &dispatch, Some("completed"), Some(7)).unwrap();
+        let saved = read(&store, &id).unwrap().unwrap();
+        assert!(saved.registered_at_ms.is_some());
+        assert_eq!(saved.outcome.as_deref(), Some("completed"));
+        assert_eq!(saved.output_bytes, Some(7));
+        store.write_artifact(&name(&id).unwrap(), "broken").unwrap();
+        assert!(observe(&store, &dispatch, Some("stopped"), None).is_err());
+    }
 
     #[test]
     fn replay_preserves_first_observations_and_failure() {

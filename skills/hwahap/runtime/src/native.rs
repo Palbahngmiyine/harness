@@ -54,6 +54,10 @@ pub struct NativeDispatch {
     /// Register this identity before sending exactly one follow-up turn.
     #[serde(default)]
     pub reuse_agent_id: Option<String>,
+    #[serde(default)]
+    pub soft_budget_secs: u64,
+    #[serde(default)]
+    pub hard_timeout_secs: u64,
 }
 
 /// Persist the child identity immediately after spawn, before waiting for its answer.
@@ -145,6 +149,7 @@ pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
         &json(ack)?,
     )?;
     pool::stopped(store, &pending.dispatch)?;
+    timing::observe(store, &pending.dispatch, Some("stopped"), None)?;
     clear(store)
 }
 

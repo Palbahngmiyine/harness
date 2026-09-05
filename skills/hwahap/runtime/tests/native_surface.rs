@@ -254,18 +254,35 @@ async fn coordinator_is_limited_to_astra_planning_roles() {
             agent_id: "coordinator".into(),
         })
         .unwrap();
+    for text in [
+        r#"{"recommendations":[]}"#.to_owned(),
+        serde_json::json!({"dispatch_id":"stale", "result":{"recommendations":[]}}).to_string(),
+    ] {
+        assert!(broker
+            .complete(NativeCompletion {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: "coordinator".into(),
+                final_message: text,
+                agent_stopped: true,
+                reported_usage: None,
+            })
+            .is_err());
+    }
+    let envelope = serde_json::json!({"dispatch_id":request.dispatch_id,
+        "result":{"recommendations":[]}})
+    .to_string();
     broker
         .complete(NativeCompletion {
             dispatch_id: request.dispatch_id,
             agent_id: "coordinator".into(),
-            final_message: "recommendations".into(),
+            final_message: envelope,
             agent_stopped: true,
             reported_usage: None,
         })
         .unwrap();
     assert_eq!(
         task.await.unwrap().unwrap().final_message,
-        "recommendations"
+        r#"{"recommendations":[]}"#
     );
     broker.finish().unwrap();
     let (_temp, broker, spec) = fixture(5, 30).await;

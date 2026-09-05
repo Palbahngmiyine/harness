@@ -33,6 +33,12 @@ pub fn record_failure(store: &Store, failure: &NativeFailure) -> Result<NativeDi
     pending.dispatch.stop_required = !failure.no_agent_created;
     pending.dispatch.failure = Some(failure.clone());
     save(store, &pending)?;
+    let outcome = if failure.no_agent_created {
+        "spawn_failed"
+    } else {
+        "spawn_unknown"
+    };
+    super::timing::observe(store, &pending.dispatch, Some(outcome), None)?;
     Ok(pending.dispatch)
 }
 
