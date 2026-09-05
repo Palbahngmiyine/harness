@@ -278,7 +278,13 @@ impl Engine {
             ));
         }
         let base_branch = self.git.current_branch()?;
-        let goal_id = goal_id(&self.clock.now(), request);
+        let stem = goal_id(&self.clock.now(), request);
+        let mut goal_id = stem.clone();
+        let mut incarnation = 2;
+        while self.git.branch_exists(&format!("hwahap/{goal_id}"))? {
+            goal_id = format!("{stem}-{incarnation}");
+            incarnation += 1;
+        }
         let plan = Plan::new(&goal_id, &base_branch, request.trim());
         self.store.write_plan(&plan)?;
         self.store

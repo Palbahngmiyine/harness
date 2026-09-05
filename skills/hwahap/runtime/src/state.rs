@@ -515,8 +515,20 @@ impl Store {
     /// would let the next run overwrite the evidence the archived journal still points at.
     pub fn archive(&self, clock: &dyn Clock) -> Result<()> {
         let stamp = clock.now().replace(':', "-");
-        let target = self.root.join("archive").join(stamp);
-        std::fs::create_dir_all(&target).map_err(|e| Error::io(&target, e))?;
+        let archive = self.root.join("archive");
+        std::fs::create_dir_all(&archive).map_err(|e| Error::io(&archive, e))?;
+        let mut target = archive.join(&stamp);
+        let mut incarnation = 2;
+        loop {
+            match std::fs::create_dir(&target) {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                    target = archive.join(format!("{stamp}-{incarnation}"));
+                    incarnation += 1;
+                }
+                Err(e) => return Err(Error::io(&target, e)),
+            }
+        }
         for name in [
             "run.json",
             "events.jsonl",

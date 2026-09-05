@@ -346,6 +346,14 @@ case "$1 ${2:-}" in
     exit 0
     ;;
   "pr create")
+    shift 2
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = "--head" ]; then
+        printf '%s\n' "$2" > "$control/pr-branch"
+        break
+      fi
+      shift
+    done
     echo "https://github.com/example/repo/pull/1"
     exit 0
     ;;
@@ -358,7 +366,7 @@ case "$1 ${2:-}" in
           # The run branch, not HEAD: the real `gh` resolves a pull request by URL, so the answer
           # must not depend on which directory Hwahap happened to call from.
           printf '{"headRefOid":"%s"}\n' \
-            "$(git for-each-ref --format='%(objectname)' --count=1 refs/heads/hwahap/)"
+            "$(git rev-parse "$(cat "$control/pr-branch")")"
         fi
         ;;
       *statusCheckRollup*)

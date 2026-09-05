@@ -1149,6 +1149,49 @@ async fn a_finished_run_is_archived_before_the_next_one_starts() {
 }
 
 #[tokio::test]
+async fn identical_requests_on_one_day_build_three_distinct_runs_and_keep_archives() {
+    let fixture = Fixture::new();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let mut ids = Vec::new();
+    let mut branches = std::collections::BTreeSet::new();
+    for index in 0..3 {
+        let script = Script::new(happy_path_steps());
+        let outcomes = run_to_draft_pr(&fixture, &script).await;
+        let draft = outcomes.last().unwrap();
+        assert_eq!(draft.state, "awaiting_adjust_or_ship", "{}", draft.message);
+        let run = store.read_run().unwrap().unwrap();
+        assert!(!ids.contains(&run.run_id));
+        ids.push(run.run_id);
+        assert!(branches.insert(run.branch.clone()));
+        let worktree = fixture.worktree();
+        assert!(worktree.is_dir());
+        assert_eq!(git(&worktree, &["branch", "--show-current"]), run.branch);
+        assert_eq!(git(&worktree, &["show", "HEAD:src/added.txt"]), "generated");
+        assert_eq!(git(&worktree, &["show", "HEAD:docs/added.md"]), "# added");
+        assert_eq!(script.remaining(), 0);
+        if index < 2 {
+            let challenge = challenge_in(&draft.message, "SHIP ");
+            fixture.engine().ship(&format!("SHIP {challenge}")).unwrap();
+        }
+    }
+    let mut archived_ids = Vec::new();
+    for entry in fixture.repo.join(".hwahap/archive").read_dir().unwrap() {
+        let path = entry.unwrap().path();
+        let run: hwahap::state::Run =
+            serde_json::from_slice(&std::fs::read(path.join("run.json")).unwrap()).unwrap();
+        archived_ids.push(run.run_id);
+        for name in ["events.jsonl", "plan.json", "report.md"] {
+            assert!(std::fs::metadata(path.join(name)).unwrap().len() > 0);
+        }
+        assert!(path.join("artifacts").read_dir().unwrap().next().is_some());
+    }
+    archived_ids.sort();
+    ids.truncate(2);
+    ids.sort();
+    assert_eq!(archived_ids, ids);
+}
+
+#[tokio::test]
 async fn advancing_with_no_run_and_no_request_says_what_is_missing() {
     let fixture = Fixture::new();
     let script = Script::new(vec![]);
