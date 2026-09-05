@@ -127,6 +127,74 @@ async fn registered_result_is_durable_bound_and_consumed_once() {
 }
 
 #[tokio::test]
+async fn completion_write_failures_do_not_deliver_and_exact_retry_delivers_once() {
+    use std::future::Future;
+    use std::task::{Context, Poll, Waker};
+
+    for fail_pending in [false, true] {
+        let (temp, broker, spec) = fixture(5, 30).await;
+        let store = Store::open(temp.path()).unwrap();
+        let mut execution = Box::pin(broker.execute(&spec));
+        let mut cx = Context::from_waker(Waker::noop());
+        assert!(execution.as_mut().poll(&mut cx).is_pending());
+        let request = broker.dispatch().unwrap().unwrap();
+        broker
+            .register(&NativeRegistration {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: "child-1".into(),
+            })
+            .unwrap();
+        let completion = NativeCompletion {
+            dispatch_id: request.dispatch_id.clone(),
+            agent_id: "child-1".into(),
+            final_message: "facts".into(),
+            agent_stopped: true,
+            reported_usage: None,
+        };
+        let result_path = store
+            .artifacts_path()
+            .join(format!("native-completion-{}.json", request.dispatch_id));
+        let pending_path = store.artifacts_path().join("native-pending.json");
+        let blocked_path = if fail_pending {
+            &pending_path
+        } else {
+            &result_path
+        };
+        if blocked_path.exists() {
+            std::fs::remove_file(blocked_path).unwrap();
+        }
+        std::fs::create_dir(blocked_path).unwrap();
+        assert!(broker.complete(completion.clone()).is_err());
+        assert!(
+            execution.as_mut().poll(&mut cx).is_pending(),
+            "delivered after failed persistence"
+        );
+        assert_eq!(result_path.is_file(), fail_pending);
+        std::fs::remove_dir(blocked_path).unwrap();
+
+        broker.complete(completion.clone()).unwrap();
+        let outcome = match execution.as_mut().poll(&mut cx) {
+            Poll::Ready(Ok(outcome)) => outcome,
+            other => panic!("retry did not deliver: {other:?}"),
+        };
+        assert_eq!(outcome.final_message, completion.final_message);
+        broker.complete(completion.clone()).unwrap();
+        let saved: NativeCompletion =
+            serde_json::from_slice(&std::fs::read(&result_path).unwrap()).unwrap();
+        assert_eq!(saved, completion);
+        let pending: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(pending_path).unwrap()).unwrap();
+        assert_eq!(
+            pending["completion"],
+            serde_json::to_value(&completion).unwrap()
+        );
+        broker.finish().unwrap();
+        assert!(orphan(&store).unwrap().is_none());
+        assert!(broker.dispatch().unwrap().is_none());
+    }
+}
+
+#[tokio::test]
 async fn restart_requires_exact_stop_acknowledgment_before_recovery() {
     let (temp, broker, spec) = fixture(5, 30).await;
     let worker = broker.clone();
@@ -306,6 +374,60 @@ async fn host_polling_preserves_one_dispatch_and_excludes_a_second_server() {
     assert!(orphan(&Store::open(temp.path()).unwrap())
         .unwrap()
         .is_none());
+}
+
+#[tokio::test]
+async fn stop_ack_keeps_lock_and_pending_until_task_cancellation_finishes() {
+    use hwahap::native::{NativeHost, NativeInput, RepoLock};
+    use std::future::Future;
+    use std::task::{Context, Waker};
+
+    let (temp, _broker, _spec) = fixture(5, 30).await;
+    let store = Store::open(temp.path()).unwrap();
+    let host = NativeHost::default();
+    let request = host_dispatch(&host, temp.path()).await;
+    host.advance(
+        temp.path(),
+        NativeInput {
+            registration: Some(NativeRegistration {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: "child-1".into(),
+            }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let stopped_path = store
+        .artifacts_path()
+        .join(format!("native-stopped-{}.json", request.dispatch_id));
+    let mut stopping = Box::pin(host.advance(
+        temp.path(),
+        NativeInput {
+            stopped: Some(NativeStopped {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: Some("child-1".into()),
+                all_work_stopped: true,
+            }),
+            ..Default::default()
+        },
+    ));
+    // This current-thread runtime cannot deliver cancellation until we yield to the task.
+    assert!(stopping
+        .as_mut()
+        .poll(&mut Context::from_waker(Waker::noop()))
+        .is_pending());
+    assert!(RepoLock::acquire(temp.path()).is_err());
+    assert_eq!(
+        orphan(&store).unwrap().unwrap().dispatch_id,
+        request.dispatch_id
+    );
+    assert!(!stopped_path.exists());
+
+    stopping.await.unwrap();
+    assert!(orphan(&store).unwrap().is_none());
+    assert!(stopped_path.is_file());
+    RepoLock::acquire(temp.path()).unwrap();
 }
 
 #[tokio::test]
