@@ -508,6 +508,35 @@ impl Store {
         }
     }
 
+    /// Archived attempts reserve an incarnation even when they stopped before making a branch.
+    pub fn archived_run_ids(&self) -> Result<std::collections::BTreeSet<String>> {
+        let archive = self.root.join("archive");
+        let mut ids = std::collections::BTreeSet::new();
+        match std::fs::read_dir(&archive) {
+            Ok(entries) => {
+                for entry in entries {
+                    let path = entry
+                        .map_err(|e| Error::io(&archive, e))?
+                        .path()
+                        .join("run.json");
+                    if path.is_file() {
+                        let json = std::fs::read(&path).map_err(|e| Error::io(&path, e))?;
+                        let run: Run = serde_json::from_slice(&json).map_err(|e| {
+                            Error::Rejected(format!(
+                                "invalid archived run at {}: {e}",
+                                path.display()
+                            ))
+                        })?;
+                        ids.insert(run.run_id);
+                    }
+                }
+                Ok(ids)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(ids),
+            Err(e) => Err(Error::io(&archive, e)),
+        }
+    }
+
     /// Moves the current run's files aside so a new run can start in the same repository.
     ///
     /// `artifacts/` moves with them. Artifact names repeat across runs — every plan's first unit is

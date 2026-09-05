@@ -279,11 +279,12 @@ impl Engine {
         }
         let base_branch = self.git.current_branch()?;
         let stem = goal_id(&self.clock.now(), request);
+        let archived = self.store.archived_run_ids()?;
+        let mut incarnation = 1;
         let mut goal_id = stem.clone();
-        let mut incarnation = 2;
-        while self.git.branch_exists(&format!("hwahap/{goal_id}"))? {
-            goal_id = format!("{stem}-{incarnation}");
+        while archived.contains(&goal_id) || self.git.branch_exists(&format!("hwahap/{goal_id}"))? {
             incarnation += 1;
+            goal_id = format!("{stem}-{incarnation}");
         }
         let plan = Plan::new(&goal_id, &base_branch, request.trim());
         self.store.write_plan(&plan)?;
@@ -728,6 +729,17 @@ impl Engine {
             };
             if !still_valid {
                 invalidated.push(id.clone());
+            }
+        }
+        // A dependent's own contract can be unchanged while its input is no longer the input
+        // it was tested against. Propagate invalidation in dependency order.
+        for id in validate::unit_order(plan)? {
+            let unit = plan.unit(&id).expect("validated unit order");
+            if (!run.accepted_units.contains(&id)
+                || unit.depends_on.iter().any(|dep| invalidated.contains(dep)))
+                && !invalidated.contains(&id)
+            {
+                invalidated.push(id);
             }
         }
         Ok(invalidated)

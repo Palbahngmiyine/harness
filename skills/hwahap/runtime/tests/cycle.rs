@@ -1345,6 +1345,136 @@ async fn advancing_with_no_run_and_no_request_says_what_is_missing() {
 }
 
 #[tokio::test]
+async fn identical_requests_blocked_before_freeze_still_have_distinct_run_ids() {
+    let fixture = Fixture::new();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let mut ids = std::collections::BTreeSet::new();
+    for _ in 0..3 {
+        let script = Script::new(vec![step(
+            Role::FactFinder,
+            Reply::SayWithSkewedReceipt(facts()),
+        )]);
+        let engine = fixture.engine();
+        engine
+            .step_with(&script, Some(REQUEST), None)
+            .await
+            .unwrap();
+        let blocked = engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(blocked.state, "blocked");
+        assert!(blocked.message.contains("unsupported_profile"));
+        assert!(!fixture.worktree().exists());
+        assert_eq!(git(&fixture.repo, &["branch", "--list", "hwahap/*"]), "");
+        assert!(ids.insert(store.read_run().unwrap().unwrap().run_id));
+        assert_eq!(script.remaining(), 0);
+    }
+    let mut archived = std::collections::BTreeSet::new();
+    for entry in fixture.repo.join(".hwahap/archive").read_dir().unwrap() {
+        let path = entry.unwrap().path();
+        let run: hwahap::state::Run =
+            serde_json::from_slice(&std::fs::read(path.join("run.json")).unwrap()).unwrap();
+        assert!(run.state.is_terminal());
+        assert!(archived.insert(run.run_id));
+        assert!(std::fs::metadata(path.join("events.jsonl")).unwrap().len() > 0);
+    }
+    assert_eq!(archived.len(), 2);
+    assert!(archived.is_subset(&ids));
+    assert!(!archived.contains(&store.read_run().unwrap().unwrap().run_id));
+}
+
+#[tokio::test]
+async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    run_to_draft_pr(&fixture, &script).await;
+    let old_head = fixture.head_sha(&fixture.worktree());
+    let mut proposed: serde_json::Value = serde_json::from_str(&structure()).unwrap();
+    proposed["requirements"][0]["statement"] =
+        serde_json::json!("the generated file has revised contents");
+    script.extend(vec![
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+        step(Role::PlanSynthesis, Reply::say(proposed.to_string())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+        step(
+            Role::Implementer,
+            Reply::write(&[("src/added.txt", "revised\n")], DONE),
+        ),
+        step(Role::UnitReviewer, Reply::say(PASS)),
+        step(
+            Role::Implementer,
+            Reply::write(&[("docs/added.md", "# revised\n")], DONE),
+        ),
+        step(Role::UnitReviewer, Reply::say(PASS)),
+        step(Role::FinalReview, Reply::say(PASS)),
+    ]);
+    let engine = fixture.engine();
+    engine
+        .step_with(&script, None, Some("C1=ALT2"))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        preview.state, "awaiting_confirmation",
+        "{}",
+        preview.message
+    );
+    let challenge = challenge_in(&preview.message, "CONFIRM PLAN ");
+    let mut outcome = engine
+        .step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}")))
+        .await
+        .unwrap();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    assert!(
+        store.read_run().unwrap().unwrap().accepted_units.is_empty(),
+        "U2 depends on changed U1 and must lose acceptance"
+    );
+    while outcome.next == "continue" {
+        outcome = engine.step_with(&script, None, None).await.unwrap();
+    }
+    assert_eq!(
+        outcome.state, "awaiting_adjust_or_ship",
+        "{}",
+        outcome.message
+    );
+    assert_eq!(
+        git(&fixture.worktree(), &["show", "HEAD:src/added.txt"]),
+        "revised"
+    );
+    assert_eq!(
+        git(&fixture.worktree(), &["show", "HEAD:docs/added.md"]),
+        "# revised"
+    );
+    assert_eq!(
+        git(
+            &fixture.worktree(),
+            &["rev-list", "--count", &format!("{old_head}..HEAD")]
+        ),
+        "2"
+    );
+    assert_eq!(
+        script
+            .calls()
+            .iter()
+            .filter(|c| c.role == Role::Implementer)
+            .map(|c| c.unit.clone().unwrap())
+            .collect::<Vec<_>>(),
+        vec!["U1", "U2", "U1", "U2"]
+    );
+    assert_eq!(script.remaining(), 0);
+}
+
+#[tokio::test]
 async fn an_empty_request_is_refused() {
     let fixture = Fixture::new();
     let script = Script::new(vec![]);
