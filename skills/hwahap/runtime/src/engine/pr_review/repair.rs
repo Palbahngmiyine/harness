@@ -232,6 +232,7 @@ impl Engine {
             .ok_or_else(|| Error::ExecutionLimit("PR round overflow".into()))?;
         p.stage = ReviewStage::Attack;
         p.save(&self.store)?;
+        self.refresh_review_report(&run, &plan, &p)?;
         Ok(self.report(&run, "Verified repair published to the same draft; both Astra teams must review the new commit.".into()))
     }
 }

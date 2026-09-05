@@ -12,6 +12,32 @@ struct ReviewRecord<T> {
 }
 
 impl Engine {
+    pub(super) fn refresh_review_report(
+        &self,
+        run: &Run,
+        plan: &Plan,
+        progress: &ReviewProgress,
+    ) -> Result<()> {
+        let cost = crate::cost::summary(&self.store)?;
+        let report = format!("{}\n## PR review\n\nHead: `{}`; round: {}; repairs: {}; stage: {:?}.\n\nDetailed review and reproduction evidence remains local in `.hwahap/artifacts`.\n\n## Cost evidence\n\n```json\n{}\n```\n",
+            self.report_markdown(plan, run), progress.binding.head, progress.round,
+            progress.repairs, progress.stage, serde_json::to_string_pretty(&cost).map_err(|e| Error::Internal(e.to_string()))?);
+        let pr = self.forge.update_draft(
+            &self.store.worktree_path(),
+            &plan.base_branch,
+            &run.branch,
+            &progress.binding.pr_url,
+            &plan.goal.statement,
+            &report,
+        )?;
+        if pr.head_sha != progress.binding.head {
+            return Err(Error::BoundaryViolation(
+                "PR head changed while refreshing report".into(),
+            ));
+        }
+        self.store.write_report(&report)
+    }
+
     /// Recheck only this run's published draft, including one created by an older pinned runtime.
     pub fn recheck_pr(&self) -> Result<StepOutcome> {
         let mut run = self
@@ -206,6 +232,7 @@ impl Engine {
             };
         }
         progress.save(&self.store)?;
+        self.refresh_review_report(&run, &plan, &progress)?;
         self.store.write_run(&*self.clock, &run)?;
         Ok(self.report(&run, self.describe(&run, Some(&plan))?))
     }
@@ -262,7 +289,7 @@ impl Engine {
         }
     }
 
-    fn require_review_progress(&self, run: &Run, plan: &Plan) -> Result<ReviewProgress> {
+    pub(super) fn require_review_progress(&self, run: &Run, plan: &Plan) -> Result<ReviewProgress> {
         let progress = ReviewProgress::load(&self.store)?
             .ok_or_else(|| Error::Corrupt("missing published PR review state".into()))?;
         let worktree = self.store.worktree_path();
