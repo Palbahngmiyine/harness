@@ -368,6 +368,8 @@ impl Engine {
                 .await?;
             let facts = proposal::FactsProposal::parse(&facts.final_message, &plan)?;
             plan.facts.extend(facts.facts);
+            // A later native spawn refusal must not discard already verified repository facts.
+            self.save_plan(&plan)?;
         }
 
         let decisions = self
