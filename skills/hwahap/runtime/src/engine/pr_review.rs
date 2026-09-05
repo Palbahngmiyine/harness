@@ -69,6 +69,27 @@ impl Engine {
                 repairs: 0,
             }
             .save(&self.store)?;
+        } else if let Some(mut previous) = saved {
+            // Explicit recovery must not replay an immutable incomplete/legacy verdict.
+            // Preserve repair checkpoints: their commit may already be prepared or published.
+            let mut legacy = false;
+            for team in ["attack", "defense"] {
+                if let Some(record) =
+                    read_evidence::<serde_json::Value>(&self.store, &previous.artifact(team)?)?
+                {
+                    legacy |= record.pointer("/report/security").is_none();
+                }
+            }
+            if previous.stage != ReviewStage::Repair
+                && (matches!(run.state, RunState::Blocked { .. }) || legacy)
+            {
+                previous.round = previous
+                    .round
+                    .checked_add(1)
+                    .ok_or_else(|| Error::ExecutionLimit("review round overflow".into()))?;
+                previous.stage = ReviewStage::Attack;
+                previous.save(&self.store)?;
+            }
         }
         run.reviewed_head = None;
         run.state = RunState::FinalVerifying;

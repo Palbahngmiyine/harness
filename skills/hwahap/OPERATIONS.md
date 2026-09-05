@@ -161,6 +161,8 @@ ready 이후 코드 소유자 리뷰, merge, 배포, 마이그레이션, 실제 
 검토 재개는 `hwahap_step`에 같은 `cwd`, `host_session_id`와 `recheck_pr=true`만 보낸다.
 이 run의 draft URL·브랜치·깨끗한 worktree·원격 head·계약이 맞아야 full suite로 돌아간다.
 완료한 검토는 새 round에서 다시 받고, 단절된 검토의 저장 보고서와 누적 수정 횟수는 보존한다.
+보안 미확인·미해결로 중단된 검토와 예전 보안 필드 없는 검토는 명시적 재검토 시 새 round를 연다.
+진행 중인 repair의 commit 복구 기록은 유지한다. 버전 변경은 그 복구를 마친 뒤 수행한다.
 PR이 닫혔거나 ready로 바뀌었으면 다른 PR을 자동 생성하지 않는다. dirty 수정은 자동 폐기하지 않는다.
 수정 commit은 예정 SHA를 저장한 뒤 branch를 이동하므로 commit·push 사이 단절을 같은 PR에서 복구한다.
 예정 commit을 저장하기 전 중단된 dirty 수정은 이 자동 복구에 포함되지 않는다.
