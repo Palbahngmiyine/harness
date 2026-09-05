@@ -192,26 +192,72 @@ impl Git {
     }
 
     /// Observe HEAD, the index, tracked diff and untracked content without staging user files.
+    /// Exclude the root `.hwahap` runtime directory, which the host writes during a session.
+    /// This checks repository changes, not the integrity of Hwahap's own state.
     /// This is a repository postcondition, not a filesystem sandbox or an external-effect audit.
     pub fn fingerprint(&self, cwd: &Path) -> Result<crate::canonical::Digest> {
+        const WITHOUT_RUNTIME: &str = ":(top,exclude,literal).hwahap";
         let head = self.run_in(cwd, &["rev-parse", "HEAD"])?;
         let branch = self.run_in(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
-        let index = self.stdout_of(cwd, &["ls-files", "--stage", "-z"])?;
-        let diff = self.stdout_of(cwd, &["diff", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", "--"])?;
-        let paths = parse_nul_paths(&self.stdout_of(cwd, &["ls-files", "--others", "--exclude-standard", "-z"])?)?;
+        let index = self.stdout_of(cwd, &["ls-files", "--stage", "-z", "--", WITHOUT_RUNTIME])?;
+        let diff = self.stdout_of(
+            cwd,
+            &[
+                "diff",
+                "--no-ext-diff",
+                "--no-textconv",
+                "--binary",
+                "HEAD",
+                "--",
+                WITHOUT_RUNTIME,
+            ],
+        )?;
+        let paths = parse_nul_paths(&self.stdout_of(
+            cwd,
+            &[
+                "ls-files",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                WITHOUT_RUNTIME,
+            ],
+        )?)?;
         let mut untracked = Vec::new();
         for path in paths {
             let absolute = cwd.join(&path);
-            let metadata = std::fs::symlink_metadata(&absolute).map_err(|e| Error::io(&absolute, e))?;
+            let metadata =
+                std::fs::symlink_metadata(&absolute).map_err(|e| Error::io(&absolute, e))?;
+            #[cfg(unix)]
+            let mode = {
+                use std::os::unix::fs::PermissionsExt;
+                metadata.permissions().mode()
+            };
+            #[cfg(not(unix))]
+            let mode = u32::from(metadata.permissions().readonly());
             let bytes = if metadata.file_type().is_symlink() {
-                std::fs::read_link(&absolute).map_err(|e| Error::io(&absolute, e))?
-                    .to_string_lossy().as_bytes().to_vec()
+                std::fs::read_link(&absolute)
+                    .map_err(|e| Error::io(&absolute, e))?
+                    .to_string_lossy()
+                    .as_bytes()
+                    .to_vec()
             } else {
                 std::fs::read(&absolute).map_err(|e| Error::io(&absolute, e))?
             };
-            untracked.push((path, metadata.file_type().is_symlink(), crate::canonical::Digest::of_bytes(&bytes)));
+            untracked.push((
+                path,
+                metadata.file_type().is_symlink(),
+                mode,
+                crate::canonical::Digest::of_bytes(&bytes),
+            ));
         }
-        crate::canonical::Digest::of(&(head, branch, hex::encode(index), hex::encode(diff), untracked))
+        crate::canonical::Digest::of(&(
+            head,
+            branch,
+            hex::encode(index),
+            hex::encode(diff),
+            untracked,
+        ))
     }
 
     /// Repository-relative paths that differ between two commits.

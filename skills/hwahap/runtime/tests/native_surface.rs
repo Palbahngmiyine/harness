@@ -216,14 +216,24 @@ async fn coordinator_is_limited_to_astra_planning_roles() {
     let _ = task.await;
 }
 
-async fn host_dispatch(host: &hwahap::native::NativeHost, root: &std::path::Path) -> NativeDispatch {
+async fn host_dispatch(
+    host: &hwahap::native::NativeHost,
+    root: &std::path::Path,
+) -> NativeDispatch {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
-            let result = host.advance(root, hwahap::native::NativeInput::default()).await.unwrap();
-            if let Some(dispatch) = result.dispatch { break dispatch; }
+            let result = host
+                .advance(root, hwahap::native::NativeInput::default())
+                .await
+                .unwrap();
+            if let Some(dispatch) = result.dispatch {
+                break dispatch;
+            }
             tokio::task::yield_now().await;
         }
-    }).await.unwrap()
+    })
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -232,21 +242,70 @@ async fn host_polling_preserves_one_dispatch_and_excludes_a_second_server() {
     let (temp, _broker, _spec) = fixture(5, 30).await;
     let host = NativeHost::default();
     let request = host_dispatch(&host, temp.path()).await;
-    let again = host.advance(temp.path(), NativeInput::default()).await.unwrap().dispatch.unwrap();
+    let again = host
+        .advance(temp.path(), NativeInput::default())
+        .await
+        .unwrap()
+        .dispatch
+        .unwrap();
     assert_eq!(request.dispatch_id, again.dispatch_id);
-    assert!(NativeHost::default().advance(temp.path(), NativeInput::default()).await.is_err());
+    assert!(NativeHost::default()
+        .advance(temp.path(), NativeInput::default())
+        .await
+        .is_err());
     assert!(host.ship(temp.path(), "anything").await.is_err());
-    assert!(host.advance(temp.path(), NativeInput { user_input: Some("change it".into()), ..Default::default() }).await.is_err());
-    host.advance(temp.path(), NativeInput { registration: Some(NativeRegistration { dispatch_id: request.dispatch_id.clone(), agent_id: "native-1".into() }), ..Default::default() }).await.unwrap();
-    assert_eq!(host.status(temp.path()).await.unwrap().outcome.next, "native_wait");
+    assert!(host
+        .advance(
+            temp.path(),
+            NativeInput {
+                user_input: Some("change it".into()),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    host.advance(
+        temp.path(),
+        NativeInput {
+            registration: Some(NativeRegistration {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: "native-1".into(),
+            }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        host.status(temp.path()).await.unwrap().outcome.next,
+        "native_wait"
+    );
     drop(host);
     tokio::task::yield_now().await;
     let replacement = NativeHost::default();
-    let result = replacement.advance(temp.path(), NativeInput::default()).await.unwrap();
+    let result = replacement
+        .advance(temp.path(), NativeInput::default())
+        .await
+        .unwrap();
     assert_eq!(result.outcome.next, "native_stop");
     assert_eq!(result.dispatch.unwrap().dispatch_id, request.dispatch_id);
-    replacement.advance(temp.path(), NativeInput { stopped: Some(NativeStopped { dispatch_id: request.dispatch_id, agent_id: Some("native-1".into()), all_work_stopped: true }), ..Default::default() }).await.unwrap();
-    assert!(orphan(&Store::open(temp.path()).unwrap()).unwrap().is_none());
+    replacement
+        .advance(
+            temp.path(),
+            NativeInput {
+                stopped: Some(NativeStopped {
+                    dispatch_id: request.dispatch_id,
+                    agent_id: Some("native-1".into()),
+                    all_work_stopped: true,
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert!(orphan(&Store::open(temp.path()).unwrap())
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -255,12 +314,137 @@ async fn host_consumes_registered_output_and_accepts_identical_replay() {
     let (temp, _broker, _spec) = fixture(5, 30).await;
     let host = NativeHost::default();
     let request = host_dispatch(&host, temp.path()).await;
-    host.advance(temp.path(), NativeInput { registration: Some(NativeRegistration { dispatch_id: request.dispatch_id.clone(), agent_id: "native-1".into() }), ..Default::default() }).await.unwrap();
+    host.advance(
+        temp.path(),
+        NativeInput {
+            registration: Some(NativeRegistration {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: "native-1".into(),
+            }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     let completion = NativeCompletion { dispatch_id: request.dispatch_id, agent_id: "native-1".into(), final_message: r#"{"facts":[{"id":"F1","question":"what exists?","answer":"empty repository","sources":["git HEAD"]}]}"#.into(), agent_stopped: true, reported_usage: None };
-    host.advance(temp.path(), NativeInput { completion: Some(completion.clone()), ..Default::default() }).await.unwrap();
+    host.advance(
+        temp.path(),
+        NativeInput {
+            completion: Some(completion.clone()),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
     tokio::task::yield_now().await;
-    host.advance(temp.path(), NativeInput { completion: Some(completion), ..Default::default() }).await.unwrap();
-    let count = std::fs::read_dir(Store::open(temp.path()).unwrap().artifacts_path()).unwrap()
-        .filter_map(|entry| entry.ok()).filter(|entry| entry.file_name().to_string_lossy().starts_with("native-completion-")).count();
+    host.advance(
+        temp.path(),
+        NativeInput {
+            completion: Some(completion),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let count = std::fs::read_dir(Store::open(temp.path()).unwrap().artifacts_path())
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with("native-completion-")
+        })
+        .count();
     assert_eq!(count, 1);
+}
+
+#[tokio::test]
+async fn native_fact_finder_ignores_runtime_writes_but_detects_user_file_changes() {
+    use hwahap::native::{NativeHost, NativeInput};
+    for changed_path in [None, Some(".hwahap-other/new.txt"), Some("new.txt")] {
+        let (temp, _broker, _spec) = fixture(5, 30).await;
+        std::fs::write(temp.path().join("README.md"), "# Minimal repository\n").unwrap();
+        for args in [vec!["add", "README.md"], vec!["commit", "-m", "readme"]] {
+            assert!(std::process::Command::new("git")
+                .args(args)
+                .current_dir(temp.path())
+                .output()
+                .unwrap()
+                .status
+                .success());
+        }
+        assert!(!temp.path().join(".gitignore").exists());
+        let host = NativeHost::default();
+        let request = host_dispatch(&host, temp.path()).await;
+        assert_eq!(request.role, "fact_finder");
+        host.advance(
+            temp.path(),
+            NativeInput {
+                registration: Some(NativeRegistration {
+                    dispatch_id: request.dispatch_id.clone(),
+                    agent_id: "reader".into(),
+                }),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+        if let Some(path) = changed_path {
+            let path = temp.path().join(path);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "unexpected child change").unwrap();
+        }
+        let mut progress = host.advance(temp.path(), NativeInput {
+            completion: Some(NativeCompletion {
+                dispatch_id: request.dispatch_id, agent_id: "reader".into(),
+                final_message: r#"{"facts":[{"id":"F1","question":"what exists?","answer":"README.md","sources":["README.md"]}]}"#.into(),
+                agent_stopped: true, reported_usage: None,
+            }), ..Default::default()
+        }).await.unwrap();
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while progress.dispatch.is_none() && progress.outcome.next != "blocked" {
+                tokio::task::yield_now().await;
+                progress = host
+                    .advance(temp.path(), NativeInput::default())
+                    .await
+                    .unwrap();
+            }
+        })
+        .await
+        .unwrap();
+        if changed_path.is_some() {
+            assert_eq!(progress.outcome.next, "blocked");
+            assert!(progress.outcome.message.contains("read-only fact_finder"));
+        } else {
+            assert_eq!(
+                progress.outcome.next, "native_dispatch",
+                "{}",
+                progress.outcome.message
+            );
+            assert_eq!(progress.dispatch.unwrap().role, "recommender");
+        }
+    }
+}
+
+#[tokio::test]
+async fn fingerprint_excludes_only_root_runtime_and_observes_untracked_modes() {
+    use std::os::unix::fs::PermissionsExt;
+    let (temp, _broker, _spec) = fixture(5, 30).await;
+    let git = hwahap::git::Git::open(temp.path()).unwrap();
+    let baseline = git.fingerprint(temp.path()).unwrap();
+    Store::open(temp.path())
+        .unwrap()
+        .write_artifact("host-write.json", "{}")
+        .unwrap();
+    assert_eq!(git.fingerprint(temp.path()).unwrap(), baseline);
+
+    let nested = temp.path().join("nested/.hwahap/user.txt");
+    std::fs::create_dir_all(nested.parent().unwrap()).unwrap();
+    std::fs::write(&nested, "user-owned nested directory").unwrap();
+    let with_nested = git.fingerprint(temp.path()).unwrap();
+    assert_ne!(with_nested, baseline);
+    let mode = std::fs::metadata(&nested).unwrap().permissions().mode();
+    std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(mode ^ 0o100)).unwrap();
+    assert_ne!(git.fingerprint(temp.path()).unwrap(), with_nested);
 }
