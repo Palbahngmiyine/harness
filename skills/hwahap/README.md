@@ -142,7 +142,7 @@ direct BUILD에는 Worker가 필요 없고 Critic·Auditor 두 자식만 유지�
 
 `.hwahap/config.toml`의 `[profiles.*]`에서 model과 effort를 함께 지정할 수 있지만 이미 유지 중인 pool과 다르면 실행을 거부한다.
 부모가 처리하는 Deep 역할과 두 검토자는 `gpt-6-astra`를 요구하며 다른 모델 설정은 dispatch 전에 거부한다.
-direct BUILD는 Economy 역할도 부모 Astra로 고정한다. `native-owner.json`이 run의 부모 소유권을 유지한다.
+direct BUILD는 Economy 역할도 부모 Astra로 고정한다. `build-request.json`에 BUILD를 시작한 부모를 즉시 결속하고, `native-owner.json`으로 소유권을 유지한다.
 `[limits]`의 기본값은 `native_max_calls=64`, `native_timeout_secs=180`이다. 요청 한도에는
 재시도와 follow-up도 포함된다. soft 목표는 역할별 60/90/120초이며 native 요청의 hard 제한은 180초다.
 이는 테스트·Git·GitHub 명령을 포함한 전체 작업의 시간 상한이 아니다.
@@ -152,12 +152,17 @@ direct BUILD는 Economy 역할도 부모 Astra로 고정한다. `native-owner.js
 
 총비용 개선은 불필요한 계획용 하위 에이전트 생성과 반복 실패를 줄이는 방향이다. 상태·보고서에는
 요청·완료·중단·미완료·생성 실패·복구 수, requested model별 보고 토큰과 보고 비율을 남긴다. 호스트 처리와 하위
-에이전트의 사용량 보고 비율은 구분한다. 도구가 제공하지 않은 사용량과 호스트의 전달 토큰은
-`unknown`이며, 전체 청구금액이나 실제 비용 절감을 계산했다고 주장하지 않는다.
+에이전트의 사용량 보고 비율은 구분한다. 명시적으로 등록한 부모·자식 세션의 누적 카운터 차이를 `.hwahap/usage.json`에 저장한다.
+등록 전 작업과 수집 실패는 누락으로 표시하며, 세션 합계와 dispatch 합계는 중복되므로 더하지 않는다.
+선택한 단가표로 추정 비용을 계산할 수 있다. 실제 청구액과 모델별 절감 효과는 별도 검증이 필요하다.
+명령, 단가표와 Terra Economy 설정은 [사용량 계측](USAGE.md)을 따른다.
 
 PR 공격·방어 결과는 PR URL·head SHA·계약 digest에 결속한다. 방어자는 공격 항목마다
 `confirmed/refuted/unresolved`와 근거를 제출한다. 미해결은 중단하고, 확인된 결함은 부모가 수정해
-full suite·commit·같은 PR push 이후 두 팀이 다시 검토한다. 저장된 공격 보고서는 방어 단절 후 재사용한다.
+모든 구현 unit의 고정 테스트와 full suite·commit·같은 PR push 이후 두 팀이 다시 검토한다.
+테스트 실패 시 명령·출력·patch를 보존한 뒤 해당 시도를 초기화하고 남은 예산으로 재시도한다.
+리뷰 요청은 commit 범위와 파일 목록을 전달하며, 각 검토자가 로컬에서 전체 diff를 읽는다.
+PR 보고서는 검토·수정 후와 SHIP 직전에 현재 검토·사용량 근거로 갱신한다. 저장된 공격 보고서는 방어 단절 후 재사용한다.
 `hwahap_step(recheck_pr=true)`는 이 run의 기존 draft를 다시 검증하며 수정 예산을 초기화하지 않는다.
 
 ## 6. 테스트 규칙

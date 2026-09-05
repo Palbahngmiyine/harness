@@ -18,7 +18,7 @@ struct Card {
 struct Rates {
     input: f64,
     cached_input: f64,
-    cache_write_input: f64,
+    cache_write_input: Option<f64>,
     output: f64,
 }
 
@@ -43,9 +43,14 @@ pub fn estimate(store: &Store, measured: &serde_json::Value) -> Result<serde_jso
     .iter()
     .any(|s| s.trim().is_empty())
         || card.per_million.values().any(|r| {
-            [r.input, r.cached_input, r.cache_write_input, r.output]
-                .iter()
-                .any(|n| !n.is_finite() || *n < 0.0)
+            [
+                r.input,
+                r.cached_input,
+                r.cache_write_input.unwrap_or(0.0),
+                r.output,
+            ]
+            .iter()
+            .any(|n| !n.is_finite() || *n < 0.0)
         })
     {
         return Err(Error::Rejected(
@@ -60,6 +65,10 @@ pub fn estimate(store: &Store, measured: &serde_json::Value) -> Result<serde_jso
             unpriced.push(model);
             continue;
         };
+        if tokens.cache_write_input_tokens > 0 && rate.cache_write_input.is_none() {
+            unpriced.push(model);
+            continue;
+        }
         let uncached = tokens
             .input_tokens
             .checked_sub(tokens.cached_input_tokens)
@@ -67,7 +76,7 @@ pub fn estimate(store: &Store, measured: &serde_json::Value) -> Result<serde_jso
             .ok_or_else(|| Error::Corrupt("invalid metered cache counts".into()))?;
         let cost = (uncached as f64 * rate.input
             + tokens.cached_input_tokens as f64 * rate.cached_input
-            + tokens.cache_write_input_tokens as f64 * rate.cache_write_input
+            + tokens.cache_write_input_tokens as f64 * rate.cache_write_input.unwrap_or(0.0)
             + tokens.output_tokens as f64 * rate.output)
             / 1_000_000.0;
         subtotal += cost;

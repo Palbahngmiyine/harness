@@ -191,6 +191,13 @@ pub fn summary(store: &Store) -> Result<serde_json::Value> {
     // A bad optional rate card must not strand an implementation or hide token evidence.
     let estimate = pricing::estimate(store, &measured).unwrap_or_else(|error|
         serde_json::json!({"status":"invalid_configuration","priced_subtotal":null,"error":error.to_string()}));
+    let run = store.read_run()?;
+    let config = crate::config::Config::for_run(store)?;
+    let role_policy: BTreeMap<_, _> = crate::profile::Role::ALL
+        .iter()
+        .map(|role| (role.as_str(), config.profiles.for_role(*role)))
+        .collect();
+    let progress = crate::pr_review::ReviewProgress::load(store)?;
     Ok(serde_json::json!({
         "scope": "retained native requests for this run; receipts are not counted again",
         "evidence": "caller-reported tokens grouped by requested model; actual model unverified",
@@ -199,16 +206,26 @@ pub fn summary(store: &Store) -> Result<serde_json::Value> {
         "native_thread_release": "unknown; completed or interrupted work does not prove a host thread was released",
         "pool_scope": "at most three retained children for the same repository and parent task; initial capacity is host-owned",
         "latency": latency::summary(store)?,
-        "parent_relay_usage": "unknown; separate from any reported coordinator dispatch usage",
-        "limits": "Missing usage is unknown, not zero. Parent relay tokens are not measured. Token subtotals are reported evidence only; cached input is part of input.",
+        "parent_relay_usage": "covered only when the parent session is explicitly attached; overlaps coordinator dispatch usage",
+        "limits": "Missing usage is unknown, not zero. Session and dispatch totals overlap; never add them. Unattached sessions and work before attachment are excluded. Cached input is part of input.",
         "total": total, "by_requested_model": models,
         "observed_session_usage": measured, "cost_estimate":estimate,
+        "evaluation": {
+            "run_id":run.as_ref().map(|r| &r.run_id), "state":run.as_ref().map(|r| r.state.name()),
+            "accepted_units":run.as_ref().map(|r| r.accepted_units.len()),
+            "pr_repair_attempts":progress.as_ref().map(|p| p.repairs),
+            "contract_digest":run.as_ref().and_then(|r| r.plan_digest.as_ref()),
+            "reviewed_head":progress.as_ref().map(|p| &p.binding.head),
+            "requested_role_policy":role_policy,
+            "comparison":"Compare the same task, base commit and acceptance tests across separate runs; include failures and missing usage. These observations are not a model benchmark."
+        },
     }))
 }
 
 /// Mutating step/ship paths persist a readable snapshot; status remains read-only.
 pub fn persist(store: &Store) -> Result<serde_json::Value> {
-    let value = summary(store)?;
+    let mut value = summary(store)?;
+    value["observed_at"] = serde_json::json!(chrono::Utc::now().to_rfc3339());
     store.write_usage(
         &serde_json::to_string_pretty(&value).map_err(|e| Error::Internal(e.to_string()))?,
     )?;

@@ -36,5 +36,5 @@ Record spawn failures or unavailable native tools through the server protocol; n
 use ACP/CLI substitutes, or fabricate results. Requested settings and read-only instructions are
 not independent proof of the applied model or OS isolation. Unknown usage is never zero cost.
 
-Use `hwahap_status` for progress and cost evidence. Installation and scope are in [README.md](README.md).
+Use `hwahap_status` for progress; host-side [usage metering](USAGE.md) is allowed. See [README.md](README.md).
 For staged runs and capacity recovery, read [OPERATIONS.md](OPERATIONS.md).

@@ -86,6 +86,9 @@ with dispatch_id and new observed host recovery evidence; elapsed time or reword
 is not recovery. New dispatches still spend native_max_calls. Do not change global thread limits, \
 close unrelated tasks, fabricate results or launch an ACP/CLI replacement. Hwahap owns code edits, \
 tests, commits and PRs; outside the exact dispatch, do not perform that work independently. \
+Host-side `hwahap usage attach <repo> <session.jsonl>` and `usage sync <repo>` are allowed for \
+local token observation in .hwahap/usage.json; see USAGE.md. Attach parent and retained children \
+before their first work in this run. Missing counters remain unknown; never invent reported_usage. \
 The auditor is always a separate child that never participates in implementation.
 
 There are two human gates and no others. `CONFIRM PLAN <challenge>` freezes the plan; after that, a \
