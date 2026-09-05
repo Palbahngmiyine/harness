@@ -306,7 +306,7 @@ impl Git {
     }
 
     /// Raw stdout of a successful invocation, kept as bytes for the NUL-separated forms.
-    fn stdout_of(&self, cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
+    pub(crate) fn stdout_of(&self, cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
         let out = raw(cwd, args)?;
         if out.status.success() {
             return Ok(out.stdout);
