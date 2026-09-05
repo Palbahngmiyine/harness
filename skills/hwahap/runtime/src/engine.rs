@@ -1407,6 +1407,15 @@ impl Engine {
     }
 
     async fn run_command(&self, cwd: &Path, command: &str) -> Result<CommandOutput> {
+        self.run_command_with_limit(cwd, command, 1024 * 1024).await
+    }
+
+    async fn run_command_with_limit(
+        &self,
+        cwd: &Path,
+        command: &str,
+        limit: usize,
+    ) -> Result<CommandOutput> {
         // Run through a shell because the plan's commands are written the way a person writes
         // them, with pipes and flags. The command comes from a frozen plan the user confirmed.
         let mut builder = tokio::process::Command::new("sh");
@@ -1426,23 +1435,43 @@ impl Engine {
         #[cfg(unix)]
         builder.process_group(0);
 
-        let child = builder
+        let mut child = builder
             .spawn()
             .map_err(|e| Error::command(command, e.to_string()))?;
         let pid = child.id();
-        let _group = CommandGroup(pid);
+        let group = CommandGroup(pid);
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
 
         let timeout = std::time::Duration::from_secs(self.config.test_timeout_secs);
-        match tokio::time::timeout(timeout, child.wait_with_output()).await {
-            Ok(Ok(output)) => Ok(CommandOutput {
-                success: output.status.success(),
+        let collect = async {
+            tokio::try_join!(
+                read_command_stream(stdout, limit, "stdout"),
+                read_command_stream(stderr, limit, "stderr"),
+                async { child.wait().await.map_err(CommandReadError::Io) },
+            )
+        };
+        let result = tokio::time::timeout(timeout, collect).await;
+        if !matches!(&result, Ok(Ok(_))) {
+            // End descendants before reaping the shell on timeout, overflow or a read failure.
+            drop(group);
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+        }
+        match result {
+            Ok(Ok((stdout, stderr, status))) => Ok(CommandOutput {
+                success: status.success(),
                 combined: format!(
                     "{}{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&stdout),
+                    String::from_utf8_lossy(&stderr)
                 ),
             }),
-            Ok(Err(e)) => Err(Error::command(command, e.to_string())),
+            Ok(Err(CommandReadError::Io(e))) => Err(Error::command(command, e.to_string())),
+            Ok(Err(e @ CommandReadError::Limit { .. })) => Ok(CommandOutput {
+                success: false,
+                combined: e.to_string(),
+            }),
             Err(_) => Ok(CommandOutput {
                 success: false,
                 combined: format!(
@@ -1584,6 +1613,32 @@ struct CommandOutput {
     combined: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+enum CommandReadError {
+    #[error("{stream} output exceeded {limit} bytes and the command was killed")]
+    Limit { stream: &'static str, limit: usize },
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+async fn read_command_stream(
+    reader: impl tokio::io::AsyncRead + Unpin,
+    limit: usize,
+    stream: &'static str,
+) -> std::result::Result<Vec<u8>, CommandReadError> {
+    use tokio::io::AsyncReadExt;
+    let mut bytes = Vec::new();
+    // One extra byte distinguishes exact-limit success from overflow without draining a flood.
+    reader
+        .take((limit as u64).saturating_add(1))
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() > limit {
+        return Err(CommandReadError::Limit { stream, limit });
+    }
+    Ok(bytes)
+}
+
 fn describe_selection(selection: &Selection) -> String {
     match selection {
         Selection::Recommendation => "REC".into(),
@@ -1673,6 +1728,47 @@ impl Next {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn command_output_budget_bounds_both_streams_and_preserves_availability() {
+        let dir = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        let engine = Engine::open(dir.path()).unwrap();
+        for output in [
+            "printf '%01025d' 0",
+            "printf '%01025d' 0 >&2",
+            "printf '%01025d' 0 & printf '%01025d' 0 >&2; wait",
+        ] {
+            let result = engine
+                .run_command_with_limit(dir.path(), output, 1024)
+                .await
+                .unwrap();
+            assert!(!result.success, "oversized output was accepted");
+            assert!(result.combined.contains("output exceeded"));
+            assert!(result.combined.len() < 200);
+        }
+        let normal = engine
+            .run_command_with_limit(dir.path(), "printf '%01024d' 0; printf ok >&2", 1024)
+            .await
+            .unwrap();
+        assert!(normal.success);
+        assert_eq!(normal.combined.len(), 1026);
+        let late = "sh -c 'sleep 1; touch overflow-marker' & printf '%01025d' 0; wait";
+        assert!(
+            !engine
+                .run_command_with_limit(dir.path(), late, 1024)
+                .await
+                .unwrap()
+                .success
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        assert!(!dir.path().join("overflow-marker").exists());
+    }
 
     /// PROOF: a command that outruns its timeout keeps running after `run_command` returns.
     ///
