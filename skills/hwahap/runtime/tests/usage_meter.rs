@@ -103,3 +103,69 @@ fn explicit_whole_session_counts_model_changes_and_ignores_partial_writes() {
     assert_eq!(value["by_model"]["gpt-5.6-terra"]["input_tokens"], 20);
     assert_eq!(value["by_model"]["gpt-6-astra"]["output_tokens"], 2);
 }
+
+#[test]
+fn usage_cli_persists_measurements_but_show_does_not_write() {
+    let (dir, store, log) = fixture();
+    assert!(std::process::Command::new("git")
+        .args(["init", "--quiet"])
+        .current_dir(dir.path())
+        .status()
+        .unwrap()
+        .success());
+    let call = |args: &[&str]| {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_hwahap"))
+            .arg("usage")
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        serde_json::from_slice::<serde_json::Value>(&output.stdout).unwrap()
+    };
+    let cwd = dir.path().to_str().unwrap();
+    event(&log, 100, 80, 10);
+    call(&["attach", cwd, log.to_str().unwrap()]);
+    let snapshot = std::fs::read(store.root().join("usage.json")).unwrap();
+    event(&log, 120, 90, 13);
+    let shown = call(&["show", cwd]);
+    assert_eq!(shown["observed_session_usage"]["total"]["input_tokens"], 20);
+    assert_eq!(
+        std::fs::read(store.root().join("usage.json")).unwrap(),
+        snapshot
+    );
+    let synced = call(&["sync", cwd]);
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(store.root().join("usage.json")).unwrap()).unwrap();
+    assert_eq!(synced, saved);
+    assert_eq!(
+        synced["observed_session_usage"]["total"]["output_tokens"],
+        3
+    );
+}
+
+#[test]
+fn explicit_rates_price_cached_input_once_and_never_claim_a_bill() {
+    let (_dir, store, log) = fixture();
+    meter::attach(&store, &log, false).unwrap();
+    event(&log, 1_000_000, 700_000, 20_000);
+    let card = json!({"currency":"test-units","source":"synthetic regression rates",
+        "effective_date":"2026-09-06","assumptions":"flat test tariff",
+        "per_million":{"gpt-6-astra":{"input":2.0,"cached_input":0.2,"cache_write_input":2.5,"output":10.0}}});
+    std::fs::write(store.root().join("pricing.json"), card.to_string()).unwrap();
+    let value = hwahap::cost::persist(&store).unwrap();
+    assert!((value["cost_estimate"]["priced_subtotal"].as_f64().unwrap() - 0.94).abs() < 1e-9);
+    assert!(value["cost_estimate"]["total_billed_cost"].is_null());
+    let mut invalid = card;
+    invalid["per_million"]["gpt-6-astra"]["input"] = json!(-1);
+    std::fs::write(store.root().join("pricing.json"), invalid.to_string()).unwrap();
+    let value = hwahap::cost::summary(&store).unwrap();
+    assert_eq!(value["cost_estimate"]["status"], "invalid_configuration");
+    assert_eq!(
+        value["observed_session_usage"]["total"]["input_tokens"],
+        1_000_000
+    );
+}

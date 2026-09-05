@@ -336,6 +336,10 @@ impl Store {
         self.write_atomic(&self.root.join("report.md"), markdown)
     }
 
+    pub fn write_usage(&self, json: &str) -> Result<()> {
+        self.write_atomic(&self.root.join("usage.json"), json)
+    }
+
     /// Writes `artifacts/<name>`.
     ///
     /// The name comes from an agent's role and a unit id, so it is checked rather than trusted:
@@ -572,6 +576,7 @@ impl Store {
             "plan.json",
             "plan.md",
             "report.md",
+            "usage.json",
             "artifacts",
         ] {
             let from = self.root.join(name);
