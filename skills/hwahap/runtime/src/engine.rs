@@ -257,6 +257,7 @@ impl Engine {
                 run.reviewed_head.as_deref().unwrap_or("nothing")
             )));
         }
+        self.require_completed_reviews(&run, &plan)?;
         if !self.forge.checks_passed(&self.repo_root, &pr_url)? {
             return Err(Error::Rejected(
                 "the pull request's required checks have not all succeeded; ship is refused".into(),
@@ -1015,8 +1016,18 @@ impl Engine {
         }
 
         let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
-        self.forge
+        let previous = crate::pr_review::ReviewProgress::load(&self.store)?;
+        let existing = self
+            .forge
             .existing_draft(&worktree, &plan.base_branch, &run.branch)?;
+        if previous
+            .as_ref()
+            .is_some_and(|p| existing.as_deref() != Some(p.binding.pr_url.as_str()))
+        {
+            return Err(Error::BoundaryViolation(
+                "recorded draft was closed, replaced or changed externally".into(),
+            ));
+        }
         self.git.push(&worktree, "origin", &run.branch)?;
         let report = format!(
             "{}\n## Cost evidence\n\n```json\n{}\n```\n",
@@ -1032,7 +1043,7 @@ impl Engine {
             &report,
         )?;
 
-        let progress = crate::pr_review::ReviewProgress {
+        let mut progress = crate::pr_review::ReviewProgress {
             binding: crate::pr_review::ReviewBinding {
                 pr_url: pr.url.clone(),
                 head: head.clone(),
@@ -1042,6 +1053,19 @@ impl Engine {
             stage: crate::pr_review::ReviewStage::Attack,
             repairs: 0,
         };
+        if let Some(previous) = previous {
+            progress.repairs = previous.repairs;
+            if previous.binding == progress.binding
+                && previous.stage != crate::pr_review::ReviewStage::Complete
+            {
+                progress = previous;
+            } else {
+                progress.round = previous
+                    .round
+                    .checked_add(1)
+                    .ok_or_else(|| Error::ExecutionLimit("review round overflow".into()))?;
+            }
+        }
         progress.save(&self.store)?;
         run.reviewed_head = None;
         run.state = RunState::PrReview {

@@ -22,6 +22,26 @@ fn request() -> BuildRequest {
     }
 }
 
+#[tokio::test]
+async fn recheck_rejects_mixed_actions_before_any_work() {
+    let fixture = Fixture::new();
+    let host = hwahap::native::NativeHost::default();
+    let error = host
+        .advance(
+            &fixture.repo,
+            hwahap::native::NativeInput {
+                recheck_pr: true,
+                request: Some("new work".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("exactly one"));
+    assert!(!fixture.worktree().exists());
+}
+
 #[test]
 fn review_policy_requires_two_astra_lanes_and_keeps_authorship_separate() {
     use hwahap::native::NativeLane;
@@ -144,6 +164,27 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
     assert_eq!(script.remaining(), 0);
     assert!(git(&fixture.worktree(), &["log", "--format=%s"]).contains("U1"));
     assert!(done.pr_url.is_some());
+    let completed = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(engine.recheck_pr().unwrap().state, "final_verifying");
+    assert!(engine
+        .ship(&format!("SHIP {}", plan.digest().unwrap().challenge()))
+        .is_err());
+    assert_eq!(
+        engine
+            .step_with(&Script::new(vec![]), None, None)
+            .await
+            .unwrap()
+            .state,
+        "pr_review"
+    );
+    let recheck = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(recheck.round, completed.round + 1);
+    assert_eq!(recheck.repairs, completed.repairs);
+    assert_eq!(recheck.binding, completed.binding);
 }
 
 #[test]

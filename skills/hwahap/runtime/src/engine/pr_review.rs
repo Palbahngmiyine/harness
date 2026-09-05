@@ -12,6 +12,95 @@ struct ReviewRecord<T> {
 }
 
 impl Engine {
+    /// Recheck only this run's published draft, including one created by an older pinned runtime.
+    pub fn recheck_pr(&self) -> Result<StepOutcome> {
+        let mut run = self
+            .store
+            .recover()?
+            .ok_or_else(|| Error::Rejected("no run to recheck".into()))?;
+        if !matches!(
+            run.state,
+            RunState::AwaitingAdjustOrShip { .. }
+                | RunState::PrReview { .. }
+                | RunState::Blocked { .. }
+        ) {
+            return Err(Error::Rejected("this run has no reviewable draft".into()));
+        }
+        let plan = self.require_frozen_plan(&run)?;
+        let saved = ReviewProgress::load(&self.store)?;
+        let digest = plan.digest()?;
+        let url = run
+            .state
+            .pr_url()
+            .map(str::to_string)
+            .or_else(|| saved.as_ref().map(|p| p.binding.pr_url.clone()))
+            .ok_or_else(|| Error::Rejected("no recorded draft to recheck".into()))?;
+        let worktree = self.store.worktree_path();
+        let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
+        if !self.git.is_clean(&worktree)?
+            || self
+                .git
+                .run_in(&worktree, &["rev-parse", "--abbrev-ref", "HEAD"])?
+                != run.branch
+            || self
+                .forge
+                .existing_draft(&worktree, &plan.base_branch, &run.branch)?
+                .as_deref()
+                != Some(url.as_str())
+            || self.forge.head_sha(&worktree, &url)? != head
+            || saved
+                .as_ref()
+                .is_some_and(|p| p.binding.contract_digest != digest)
+        {
+            return Err(Error::BoundaryViolation(
+                "recheck PR ownership, head or contract mismatch".into(),
+            ));
+        }
+        run.reviewed_head = None;
+        run.state = RunState::FinalVerifying;
+        self.store.write_run(&*self.clock, &run)?;
+        Ok(self.report(
+            &run,
+            "Rechecking the existing draft: full suite, then independent Astra attack and defense."
+                .into(),
+        ))
+    }
+
+    pub(super) fn require_completed_reviews(&self, run: &Run, plan: &Plan) -> Result<()> {
+        let p = self.require_review_progress(run, plan)?;
+        if p.stage != ReviewStage::Complete || run.reviewed_head.as_ref() != Some(&p.binding.head) {
+            return Err(Error::Rejected(
+                "both current-head PR reviews must complete before SHIP".into(),
+            ));
+        }
+        let a: ReviewRecord<AttackReport> = read_evidence(&self.store, &p.artifact("attack")?)?
+            .ok_or_else(|| Error::Corrupt("missing attack report".into()))?;
+        let d: ReviewRecord<DefenseReport> =
+            read_evidence(&self.store, &p.artifact("defense")?)?
+                .ok_or_else(|| Error::Corrupt("missing defense report".into()))?;
+        d.report.validate(&a.report, &p.binding)?;
+        Self::separate_reviewers(&a.receipt, &d.receipt)?;
+        for (receipt, role) in [
+            (&a.receipt, Role::UnitReviewer),
+            (&d.receipt, Role::FinalReview),
+        ] {
+            receipt.verify_for(
+                &SessionSpec {
+                    cwd: self.store.worktree_path(),
+                    role,
+                    unit: None,
+                    prompt: String::new(),
+                },
+                &self.config.profiles,
+            )?;
+        }
+        if d.report.unresolved() || !d.report.repair_findings(&a.report).is_empty() {
+            return Err(Error::Rejected(
+                "unresolved or confirmed PR findings prevent SHIP".into(),
+            ));
+        }
+        Ok(())
+    }
     pub(super) async fn review_pr(
         &self,
         mut run: Run,

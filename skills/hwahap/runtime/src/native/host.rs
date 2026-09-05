@@ -16,6 +16,7 @@ use crate::state::Store;
 
 #[derive(Default)]
 pub struct NativeInput {
+    pub recheck_pr: bool,
     pub build: Option<crate::engine::BuildRequest>,
     pub host_session_id: Option<String>,
     pub request: Option<String>,
@@ -69,7 +70,8 @@ impl NativeHost {
             + usize::from(input.completion.is_some())
             + usize::from(input.stopped.is_some())
             + usize::from(input.dispatch_failure.is_some())
-            + usize::from(input.resume.is_some());
+            + usize::from(input.resume.is_some())
+            + usize::from(input.recheck_pr);
         if actions > 1 || (actions > 0 && (input.request.is_some() || input.user_input.is_some())) {
             return Err(Error::Rejected(
                 "send exactly one native action, without request or user_input".into(),
@@ -97,6 +99,18 @@ impl NativeHost {
                 "native work belongs to another parent task; do not reuse or stop its agents"
                     .into(),
             ));
+        }
+        if input.recheck_pr {
+            if active.contains_key(root) || orphan(&store)?.is_some() {
+                return Err(Error::Rejected(
+                    "finish or recover native work before PR recheck".into(),
+                ));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            return Ok(NativeProgress {
+                outcome: Engine::open(root)?.recheck_pr()?,
+                dispatch: None,
+            });
         }
         if let Some(build) = &input.build {
             if active.contains_key(root) || orphan(&store)?.is_some() {

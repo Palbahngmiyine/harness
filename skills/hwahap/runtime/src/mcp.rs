@@ -41,12 +41,15 @@ Its user_instruction must be that user's exact authorization; specify the object
 branch, remote base branch, scoped units with observable acceptance and test commands, and full_suite. \
 Direct BUILD assigns authorship to this Astra parent and uses separate Astra Critic/Auditor children, \
 requiring two child slots. It records direct BUILD authority without claiming planning reviews or a CONFIRM PLAN message. \
-Normal requests still use the planning and confirmation flow. Never infer direct BUILD permission.
+Normal requests still use the planning and confirmation flow. Never infer direct BUILD permission. \
+Every BUILD publishes a draft before independent Astra attack and defense. Confirmed findings go to \
+parent repair; both teams review the changed commit. Use recheck_pr:true alone to revalidate this \
+run's existing draft after a runtime upgrade; it preserves the contract and retry budget.
 
 Use Astra as the parent coordinator. Include the same host_session_id in every hwahap_step call: \
 the current parent task ID, or one UUID created once for this parent if the host exposes no ID. \
 Never copy another task's identity. In this repository the pool retains at most three children \
-across units and runs for this parent: Luna worker, Terra critic, Astra auditor. Authors never become reviewers. \
+across units and runs for this parent: Luna worker, Astra critic, Astra auditor. Authors never become reviewers. \
 Inspect native spawn, follow-up, wait and interrupt capabilities before execution; do not probe \
 capacity with disposable children or silently substitute models.
 
@@ -97,6 +100,9 @@ checks pass, and the final review is still fresh.";
 /// Arguments to `hwahap_step`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct StepArgs {
+    /// Revalidate this run's existing draft and resume both Astra reviews without planning.
+    #[serde(default)]
+    pub recheck_pr: bool,
     /// Explicitly authorized execution without planning. Never set merely to avoid confirmation.
     #[serde(default)]
     pub build: Option<crate::engine::BuildRequest>,
@@ -249,6 +255,7 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    recheck_pr: args.recheck_pr,
                     build: args.build,
                     host_session_id: Some(args.host_session_id),
                     request: args.request,
