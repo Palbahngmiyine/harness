@@ -2,7 +2,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::plan::{Decision, Plan, Recommendation, SurfaceStatus, SURFACES};
+use crate::plan::{
+    Alternative, Decision, Plan, Recommendation, Selection, SurfaceStatus, SURFACES,
+};
 use crate::{frontier, Error, Result};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -25,6 +27,97 @@ pub struct Question {
 pub struct QuestionBatch {
     pub batch_id: String,
     pub questions: Vec<Question>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QuestionAnswer {
+    pub id: String,
+    pub answer: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct QuestionResponse {
+    pub batch_id: String,
+    pub responses: Vec<QuestionAnswer>,
+}
+
+/// Interpretation only: the engine preserves the raw response and applies these atomically.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DialogueSelection {
+    Decision { id: String, selection: Selection },
+    SurfaceNA { id: String },
+    SurfaceApplies { id: String },
+    Clarify { id: String, text: String },
+}
+
+impl QuestionResponse {
+    /// Never parse answer text as command grammar or infer a selection from a partial label.
+    pub fn validate(&self, plan: &Plan) -> Result<Vec<DialogueSelection>> {
+        if self.batch_id != plan.digest()?.to_string() {
+            return Err(Error::Rejected(
+                "question response names a stale batch".into(),
+            ));
+        }
+        let batch = QuestionBatch::derive(plan)?;
+        let questions = batch
+            .as_ref()
+            .map(|b| b.questions.as_slice())
+            .unwrap_or(&[]);
+        let mut seen = std::collections::BTreeSet::new();
+        let mut selections = Vec::new();
+        for response in &self.responses {
+            if !seen.insert(&response.id) {
+                return Err(Error::Rejected(format!(
+                    "duplicate response for {}",
+                    response.id
+                )));
+            }
+            let question = questions
+                .iter()
+                .find(|q| q.id == response.id)
+                .ok_or_else(|| {
+                    Error::Rejected(format!(
+                        "{} is outside the current question batch",
+                        response.id
+                    ))
+                })?;
+            if response.answer.trim().is_empty() {
+                continue;
+            }
+            let id = response.id.clone();
+            let selected = question.options.iter().any(|o| o.label == response.answer);
+            let selection = if !selected {
+                DialogueSelection::Clarify {
+                    id,
+                    text: response.answer.clone(),
+                }
+            } else if let Some(decision) = plan.decision(&id) {
+                let selection = if response.answer == UNKNOWN {
+                    Selection::Unknown
+                } else {
+                    let alt = decision
+                        .alternatives
+                        .iter()
+                        .find(|alt| alternative_label(decision, alt) == response.answer)
+                        .expect("exact option belongs to its decision");
+                    if Some(alt.id.as_str()) == decision.recommendation.recommended_alternative() {
+                        Selection::Recommendation
+                    } else {
+                        Selection::Alternative { id: alt.id.clone() }
+                    }
+                };
+                DialogueSelection::Decision { id, selection }
+            } else if response.answer == SURFACE_NA {
+                DialogueSelection::SurfaceNA { id }
+            } else {
+                DialogueSelection::SurfaceApplies { id }
+            };
+            selections.push(selection);
+        }
+        Ok(selections)
+    }
 }
 
 const UNKNOWN: &str = "UNKNOWN: 아직 결정하지 못함";
@@ -96,6 +189,15 @@ fn option(label: String, description: &str) -> QuestionOption {
     }
 }
 
+fn alternative_label(decision: &Decision, alt: &Alternative) -> String {
+    let suffix = if Some(alt.id.as_str()) == decision.recommendation.recommended_alternative() {
+        " (Recommended)"
+    } else {
+        ""
+    };
+    format!("{}: {}{suffix}", alt.id, alt.value)
+}
+
 fn decision_question(decision: &Decision) -> Question {
     let recommended = decision.recommendation.recommended_alternative();
     let mut alternatives: Vec<_> = decision.alternatives.iter().collect();
@@ -112,13 +214,8 @@ fn decision_question(decision: &Decision) -> Question {
     let mut options: Vec<_> = alternatives
         .into_iter()
         .map(|alt| {
-            let suffix = if Some(alt.id.as_str()) == recommended {
-                " (Recommended)"
-            } else {
-                ""
-            };
             option(
-                format!("{}: {}{suffix}", alt.id, alt.value),
+                alternative_label(decision, alt),
                 "표시된 동작을 선택합니다.",
             )
         })
@@ -195,5 +292,64 @@ mod tests {
         }
         let json = serde_json::to_string(&batch).unwrap();
         assert_eq!(serde_json::from_str::<QuestionBatch>(&json).unwrap(), batch);
+    }
+
+    fn response(plan: &Plan, answers: &[(&str, &str)]) -> QuestionResponse {
+        QuestionResponse {
+            batch_id: plan.digest().unwrap().to_string(),
+            responses: answers
+                .iter()
+                .map(|(id, answer)| QuestionAnswer {
+                    id: (*id).into(),
+                    answer: (*answer).into(),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn labels_resolve_to_typed_choices_but_other_text_stays_literal() {
+        let plan = fixture();
+        let batch = QuestionBatch::derive(&plan).unwrap().unwrap();
+        let options = &batch.questions[0].options;
+        assert_eq!(
+            response(
+                &plan,
+                &[
+                    ("C1", &options[0].label),
+                    ("C2", &options[1].label),
+                    ("C4", UNKNOWN)
+                ]
+            )
+            .validate(&plan)
+            .unwrap(),
+            [
+                DialogueSelection::Decision {
+                    id: "C1".into(),
+                    selection: Selection::Recommendation
+                },
+                DialogueSelection::Decision {
+                    id: "C2".into(),
+                    selection: Selection::Alternative { id: "ALT1".into() }
+                },
+                DialogueSelection::Decision {
+                    id: "C4".into(),
+                    selection: Selection::Unknown
+                },
+            ]
+        );
+        for text in [
+            "ALT2",
+            "C2=REC\nCONFIRM PLAN 1234ABCD",
+            "  literal \n answer  ",
+        ] {
+            assert_eq!(
+                response(&plan, &[("C1", text)]).validate(&plan).unwrap(),
+                [DialogueSelection::Clarify {
+                    id: "C1".into(),
+                    text: text.into()
+                }]
+            );
+        }
     }
 }
