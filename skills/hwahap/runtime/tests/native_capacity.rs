@@ -487,3 +487,70 @@ async fn failure_and_resume_write_errors_preserve_ownership_and_exact_replays() 
     assert_eq!(requests(&fixture), 2);
     replacement.shutdown().await;
 }
+
+#[tokio::test]
+async fn explicit_capacity_recoveries_still_exhaust_the_durable_request_budget() {
+    let fixture = Fixture::new();
+    fixture
+        .engine()
+        .step(Some("Inspect this repository"), None)
+        .await
+        .unwrap();
+    std::fs::write(
+        fixture.repo.join(".hwahap/config.toml"),
+        "[limits]\nnative_max_calls = 2\n",
+    )
+    .unwrap();
+    let mut host = NativeHost::default();
+    let mut run_id = String::new();
+    for expected in 1..=2 {
+        let request = dispatch(&host, &fixture).await;
+        assert_eq!(requests(&fixture), expected);
+        assert!(request.agent_id.is_none());
+        if run_id.is_empty() {
+            run_id = request.run_id.clone();
+        }
+        assert_eq!(request.run_id, run_id);
+        host.advance(&fixture.repo, failed_input(&request))
+            .await
+            .unwrap();
+        host.advance(&fixture.repo, resume(&request)).await.unwrap();
+        // A replacement host must count earlier dispatches, including failed spawn requests.
+        host.shutdown().await;
+        host = NativeHost::default();
+    }
+    let blocked = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let progress = host
+                .advance(&fixture.repo, NativeInput::default())
+                .await
+                .unwrap();
+            assert!(
+                progress.dispatch.is_none(),
+                "a third request escaped the budget"
+            );
+            if progress.outcome.next == "blocked" {
+                break progress.outcome;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(
+        blocked.message.contains("budget 2 is exhausted"),
+        "{}",
+        blocked.message
+    );
+    assert_eq!(blocked.run_id, run_id);
+    assert_eq!(requests(&fixture), 2);
+    assert_eq!(
+        host.status(&fixture.repo).await.unwrap().outcome.state,
+        "blocked"
+    );
+    let evidence =
+        hwahap::cost::summary(&hwahap::state::Store::open(&fixture.repo).unwrap()).unwrap();
+    assert_eq!(evidence["total"]["completions"], 0);
+    assert_eq!(evidence["total"]["dispatch_failures"], 2);
+    host.shutdown().await;
+}
