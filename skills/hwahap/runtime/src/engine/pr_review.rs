@@ -56,6 +56,20 @@ impl Engine {
                 "recheck PR ownership, head or contract mismatch".into(),
             ));
         }
+        // Retain the validated legacy draft before replacing its URL-bearing run state.
+        if saved.is_none() {
+            ReviewProgress {
+                binding: crate::pr_review::ReviewBinding {
+                    pr_url: url,
+                    head,
+                    contract_digest: digest,
+                },
+                round: 1,
+                stage: ReviewStage::Attack,
+                repairs: 0,
+            }
+            .save(&self.store)?;
+        }
         run.reviewed_head = None;
         run.state = RunState::FinalVerifying;
         self.store.write_run(&*self.clock, &run)?;

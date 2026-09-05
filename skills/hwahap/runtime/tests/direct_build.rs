@@ -374,3 +374,88 @@ async fn tampered_direct_contract_stops_before_any_worker_or_command() {
     assert!(script.calls().is_empty());
     assert!(!f.worktree().join("outside.txt").exists());
 }
+
+#[tokio::test]
+async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failure() {
+    for failure in ["closed", "replacement", "suite"] {
+        let f = Fixture::new();
+        git(&f.repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        let fail_file = f.dir.path().join("fail-recheck");
+        let mut input = request();
+        input.full_suite = format!("test ! -e '{}'", fail_file.display());
+        let engine = f.engine();
+        engine.start_build(&input).unwrap();
+        let script = Script::new(vec![
+            step(
+                Role::Implementer,
+                Reply::write(
+                    &[("feature.txt", "ready\n")],
+                    r#"{"status":"completed","summary":"feature","conflict":null}"#,
+                ),
+            ),
+            step(
+                Role::UnitReviewer,
+                Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+            ),
+        ]);
+        assert_eq!(
+            engine.step_with(&script, None, None).await.unwrap().state,
+            "final_verifying"
+        );
+        let draft = engine.step_with(&script, None, None).await.unwrap();
+        let url = draft.pr_url.unwrap();
+        let store = Store::open(&f.repo).unwrap();
+        let plan = store.read_plan().unwrap().unwrap();
+        let mut run = store.read_run().unwrap().unwrap();
+        run.state = hwahap::state::RunState::AwaitingAdjustOrShip {
+            pr_url: url.clone(),
+            challenge: plan.digest().unwrap().challenge(),
+        };
+        store
+            .write_run(&hwahap::clock::FixedClock::new(common::NOW), &run)
+            .unwrap();
+        // Legacy pinned runtimes recorded the URL only in the run state.
+        std::fs::remove_file(store.artifacts_path().join("pr-review.json")).unwrap();
+        assert_eq!(engine.recheck_pr().unwrap().pr_url.as_ref(), Some(&url));
+        match failure {
+            "closed" => std::fs::write(f.dir.path().join("pr-list-json"), "[]").unwrap(),
+            "replacement" => std::fs::write(
+                f.dir.path().join("pr-list-json"),
+                serde_json::json!([{"url":"https://github.com/example/repo/pull/2","isDraft":true,
+                "headRefName":input.branch,"baseRefName":"main"}])
+                .to_string(),
+            )
+            .unwrap(),
+            _ => std::fs::write(&fail_file, "fail").unwrap(),
+        }
+        let blocked = engine
+            .step_with(&Script::new(vec![]), None, None)
+            .await
+            .unwrap();
+        assert_eq!(blocked.state, "blocked", "{failure}: {}", blocked.message);
+        assert_eq!(blocked.pr_url.as_ref(), Some(&url));
+        assert_eq!(
+            std::fs::read_to_string(f.dir.path().join("pr-created"))
+                .unwrap()
+                .lines()
+                .count(),
+            1
+        );
+        assert!(engine
+            .ship(&format!("SHIP {}", plan.digest().unwrap().challenge()))
+            .is_err());
+        if failure == "suite" {
+            std::fs::remove_file(fail_file).unwrap();
+            assert_eq!(engine.recheck_pr().unwrap().pr_url.as_ref(), Some(&url));
+            assert_eq!(
+                engine
+                    .step_with(&Script::new(vec![]), None, None)
+                    .await
+                    .unwrap()
+                    .pr_url
+                    .as_ref(),
+                Some(&url)
+            );
+        }
+    }
+}
