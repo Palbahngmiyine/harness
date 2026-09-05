@@ -38,14 +38,14 @@ expect_count() {
 # test asserting that a v2 directory is refused has to name `hwahap/v2` in order to assert it.
 production_matches() {
   local pattern=$1 total=0 file count
-  for file in "$src"/*.rs; do
+  while IFS= read -r file; do
     count=$(
       awk '/^#\[cfg\(test\)\]/ { exit } { print }' "$file" \
         | grep -vE '^[[:space:]]*(//|///|//!)' \
         | grep -cE "$pattern" || true
     )
     total=$((total + count))
-  done
+  done < <(find "$src" -type f -name '*.rs')
   printf '%s' "$total"
 }
 

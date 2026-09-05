@@ -60,9 +60,10 @@ fn artifacts<T: DeserializeOwned>(store: &Store, prefix: &str) -> Result<BTreeMa
 
 fn collect(store: &Store) -> Result<(Counts, BTreeMap<String, Counts>)> {
     let run = store.read_run()?;
-    let requests = artifacts::<NativeDispatch>(store, "native-request-")?;
     let completions = artifacts::<NativeCompletion>(store, "native-completion-")?;
     let stopped = artifacts::<NativeStopped>(store, "native-stopped-")?;
+    // Requests are durable before results: read them last while the engine may be progressing.
+    let requests = artifacts::<NativeDispatch>(store, "native-request-")?;
     for (id, completion) in &completions {
         if id != &completion.dispatch_id || !requests.contains_key(id) || !completion.agent_stopped
         {

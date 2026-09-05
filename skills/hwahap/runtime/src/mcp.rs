@@ -43,15 +43,17 @@ fork_turns=none, the specified model \
 and effort, and the exact brief. Never silently substitute models or inherit conversation history. \
 If native spawn/wait tools are unavailable, report that limitation; never fabricate a child result \
 or launch an ACP/CLI replacement. \
-Immediately call hwahap_step with registration={dispatch_id,agent_id}, then wait for that child. \
-Do not spawn a second child for a dispatch with an agent_id. For `native_wait`, wait on the registered \
+Immediately call hwahap_step with registration={dispatch_id,agent_id}. \
+Do not spawn a second child for a dispatch with an agent_id. For `native_wait` with agent_id \
+`coordinator`, perform that planning role in this Astra session and send completion; do not wait \
+for a child named coordinator. Otherwise wait on the registered \
 child, or poll hwahap_step after one second when no child is pending. Once the child has stopped and \
 its commands have ended, pass its exact final text via completion={dispatch_id,agent_id,final_message,\
 agent_stopped:true,reported_usage:null}. Report token usage only if native tools actually expose it; \
 never estimate or ask the child to invent counters. Model/effort and read-only access are host \
 requests, not independently verified sandbox or applied-model evidence.
 
-For `native_stop`, stop the named child and all remaining commands before sending \
+For `native_stop`, stop the named child (or your own coordinator task) and all its commands before sending \
 stopped={dispatch_id,agent_id,all_work_stopped:true}. If no agent_id was registered, locate and stop \
 any child you may have spawned for this exact dispatch. Never acknowledge an uncertain stop. \
 Hwahap owns code edits, test execution, commits and PRs. Outside a dispatch, do not edit files, \

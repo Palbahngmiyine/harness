@@ -325,7 +325,7 @@ impl Engine {
         }
     }
 
-    /// Runs the states that need a live adapter.
+    /// Runs the states that need native agents.
     /// The state dispatch that needs sessions. Split out so tests can drive it with a script.
     pub async fn drive(&self, run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         match run.state.clone() {
@@ -813,9 +813,9 @@ impl Engine {
                 &outcome.transcript,
             )?;
 
-            // A malformed result is a rejection like any other, and it must reach the diagnosis
+            // A malformed result is a rejection like any other, and it must reach the repair
             // below rather than jumping past it — an attempt that never parses is exactly the
-            // repeated failure the diagnosis exists to explain.
+            // repeated failure the repair attempt needs to explain.
             let parsed = WorkerResult::parse(&outcome.final_message);
             let mut rejected: Option<Vec<String>> = None;
             let result = match parsed {
@@ -1580,6 +1580,7 @@ mod tests {
     /// `wait_with_output()` future on timeout drops the `Child` without signalling it. The shell
     /// and everything it spawned survive — still holding, and still writing into, the run worktree
     /// that Hwahap is about to reset for the next attempt.
+    #[cfg(unix)]
     #[tokio::test]
     async fn timed_out_or_cancelled_commands_kill_their_process_groups() {
         let dir = tempfile::tempdir().unwrap();

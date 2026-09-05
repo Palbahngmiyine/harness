@@ -18,9 +18,10 @@ Follow `next`:
   Use one Codex native child with `fork_turns=none`, the requested model/effort and exact brief.
   Only an already-Astra host may handle a `coordinator_allowed` planning role itself.
   Register the returned agent ID immediately; never create two children for one dispatch.
-- `native_wait`: wait for the registered child, or poll after one second during host validation.
+- `native_wait`: for `agent_id=coordinator`, perform the planning role here and send completion;
+  otherwise wait for the registered child, or poll after one second during host validation.
   Relay exact final text after the child and its commands stop. Usage is null unless tools report it.
-- `native_stop`: stop the exact child and remaining commands, then acknowledge the dispatch.
+- `native_stop`: stop the exact child (or this coordinator task) and its commands, then acknowledge.
   Do not acknowledge an uncertain stop; locate unregistered children by `hwahap_<dispatch_id>`.
 - `await_user`: show `message` and wait for the user.
 - `completed` or `blocked`: show `message` and stop.
