@@ -921,7 +921,9 @@ impl Engine {
         }
         let outside = paths_outside(&unit.paths, &self.git.changed_paths(worktree)?);
         if !outside.is_empty() {
-            return Ok(Err(vec![format!("test commands changed paths outside the unit: {outside:?}")]));
+            return Ok(Err(vec![format!(
+                "test commands changed paths outside the unit: {outside:?}"
+            )]));
         }
 
         // The reviewer is read-only. That is enforced by comparing the tree before and after,
@@ -942,10 +944,11 @@ impl Engine {
                 Some(unit.id.clone()),
                 prompts::unit_reviewer(plan, unit, &tail(&diff, 200_000)),
             )
-            .await {
-                Err(Error::BoundaryViolation(detail)) => return Ok(Err(vec![detail])),
-                result => result?,
-            };
+            .await
+        {
+            Err(Error::BoundaryViolation(detail)) => return Ok(Err(vec![detail])),
+            result => result?,
+        };
         let review = ReviewResult::parse(&review.final_message)?;
         if review.verdict == Verdict::Fail {
             return Ok(Err(review.findings));
@@ -1001,7 +1004,11 @@ impl Engine {
 
         let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
         self.git.push(&worktree, "origin", &run.branch)?;
-        let report = self.report_markdown(&plan, &run);
+        let report = format!(
+            "{}\n## Cost evidence\n\n```json\n{}\n```\n",
+            self.report_markdown(&plan, &run),
+            crate::cost::summary(&self.store)?
+        );
         self.store.write_report(&report)?;
         let pr = self.forge.create_draft(
             &worktree,
@@ -1154,12 +1161,21 @@ impl Engine {
         let head = self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])?;
         let before = if crate::session::access_for(role) == crate::session::Access::ReadOnly {
             Some(self.git.fingerprint(&spec.cwd)?)
-        } else { None };
-        let sequence = self.store.append_event(&*self.clock, "session_requested", serde_json::json!({
-            "role": role.as_str(), "unit": spec.unit,
-            "model_requested": self.config.profiles.for_role(role).model,
-            "prompt_digest": Digest::of_bytes(spec.prompt.as_bytes()),
-        }))?.seq;
+        } else {
+            None
+        };
+        let sequence = self
+            .store
+            .append_event(
+                &*self.clock,
+                "session_requested",
+                serde_json::json!({
+                    "role": role.as_str(), "unit": spec.unit,
+                    "model_requested": self.config.profiles.for_role(role).model,
+                    "prompt_digest": Digest::of_bytes(spec.prompt.as_bytes()),
+                }),
+            )?
+            .seq;
         let outcome = sessions.run(&spec).await?;
         outcome.receipt.verify_for(&spec, &self.config.profiles)?;
         self.store.write_artifact(
@@ -1168,7 +1184,10 @@ impl Engine {
                 .map_err(|e| Error::Internal(e.to_string()))?,
         )?;
         if self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])? != head {
-            return Err(Error::BoundaryViolation(format!("{} changed HEAD; the host owns checkpoints", role.as_str())));
+            return Err(Error::BoundaryViolation(format!(
+                "{} changed HEAD; the host owns checkpoints",
+                role.as_str()
+            )));
         }
         if let Some(before) = before {
             if self.git.fingerprint(&spec.cwd)? != before {
