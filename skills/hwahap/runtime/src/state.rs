@@ -66,6 +66,8 @@ pub enum RunState {
     AwaitingConfirmation {
         challenge: String,
     },
+    /// A confirmed plan retained without starting implementation.
+    PlanReady,
     /// Building one unit.
     Coding {
         unit: String,
@@ -103,6 +105,7 @@ impl RunState {
             RunState::Deciding => "deciding",
             RunState::Proving => "proving",
             RunState::AwaitingConfirmation { .. } => "awaiting_confirmation",
+            RunState::PlanReady => "plan_ready",
             RunState::Coding { .. } => "coding",
             RunState::FinalVerifying => "final_verifying",
             RunState::PrReview { .. } => "pr_review",
@@ -119,6 +122,7 @@ impl RunState {
             | RunState::Deciding
             | RunState::Proving
             | RunState::AwaitingConfirmation { .. }
+            | RunState::PlanReady
             | RunState::PlanConflict { .. } => Phase::Plan,
             RunState::Coding { .. } => Phase::Build,
             RunState::FinalVerifying
@@ -139,6 +143,7 @@ impl RunState {
             | RunState::PrReview { .. } => Next::Continue,
             RunState::Deciding
             | RunState::AwaitingConfirmation { .. }
+            | RunState::PlanReady
             | RunState::AwaitingAdjustOrShip { .. }
             | RunState::PlanConflict { .. } => Next::AwaitUser,
             RunState::Shipped { .. } => Next::Completed,

@@ -446,6 +446,15 @@ pub struct Frozen {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub schema: String,
+    /// Stop after confirmation; BUILD is a separate explicit action.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub plan_only: bool,
+    /// New native runs use answer-driven interviewing; old saved contracts retain their digest.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub interactive: bool,
+    /// Repository commit inspected by a new PLAN, fixed before user confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_head: Option<String>,
     /// Verbatim instruction explicitly authorizing BUILD without the planning interview.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_authorization: Option<String>,
@@ -510,6 +519,9 @@ impl Plan {
     ) -> Self {
         Plan {
             schema: SCHEMA.to_string(),
+            plan_only: false,
+            interactive: false,
+            source_head: None,
             execution_authorization: None,
             base_commit: None,
             goal_id: goal_id.into(),

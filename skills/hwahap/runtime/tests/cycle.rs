@@ -2202,3 +2202,72 @@ async fn direct_build_adjust_preserves_branch_and_enters_plan() {
         input.branch
     );
 }
+
+#[tokio::test]
+async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine().with_parts(
+        Box::new(hwahap::clock::FixedClock::new(NOW)),
+        hwahap::forge::Forge::with_program("/missing-forge-for-plan-only"),
+    );
+    let script = Script::new(happy_path_steps()[..5].to_vec());
+    assert_eq!(
+        engine.start_planning(REQUEST, true).unwrap().state,
+        "inspecting"
+    );
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    let confirmation = format!(
+        "CONFIRM PLAN {}",
+        challenge_in(&preview.message, "CONFIRM PLAN ")
+    );
+    let saved = engine
+        .step_with(&script, None, Some(&confirmation))
+        .await
+        .unwrap();
+    assert_eq!(saved.state, "plan_ready");
+    assert!(!fixture.worktree().exists());
+    let digest = saved.plan_digest.unwrap();
+    assert!(fixture.engine().build_confirmed("stale").is_err());
+    assert!(!fixture.worktree().exists());
+    let started = fixture.engine().build_confirmed(&digest).unwrap();
+    assert_eq!(started.state, "coding");
+    assert_eq!(started.plan_digest.as_deref(), Some(digest.as_str()));
+    assert!(fixture.engine().build_confirmed(&digest).is_err());
+}
+
+#[tokio::test]
+async fn delayed_build_rejects_changed_source() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(happy_path_steps()[..5].to_vec());
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    let confirmation = format!(
+        "CONFIRM PLAN {}",
+        challenge_in(&preview.message, "CONFIRM PLAN ")
+    );
+    let saved = engine
+        .step_with(&script, None, Some(&confirmation))
+        .await
+        .unwrap();
+    git(
+        &fixture.repo,
+        &["commit", "--allow-empty", "-m", "source changed"],
+    );
+    let error = engine
+        .build_confirmed(&saved.plan_digest.unwrap())
+        .unwrap_err();
+    assert!(error.to_string().contains("source changed"));
+    assert!(!fixture.worktree().exists());
+    assert_eq!(engine.status().unwrap().state, "plan_ready");
+}
