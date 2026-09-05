@@ -33,8 +33,10 @@ use crate::{frontier, prompts, proposal, render, validate};
 /// diagnosis call, and no repeated same-model retry loop.
 const MAX_ATTEMPTS: u32 = 2;
 
+mod adjust_build;
 mod build;
 mod pr_review;
+pub use adjust_build::AdjustBuildRequest;
 pub use build::{BuildRequest, BuildUnit};
 
 /// A source of agent sessions.
@@ -915,7 +917,7 @@ impl Engine {
         sessions: &dyn Sessions,
     ) -> Result<UnitOutcome> {
         let checkpoint = self.git.run_in(worktree, &["rev-parse", "HEAD"])?;
-        let mut findings: Vec<String> = Vec::new();
+        let mut findings = self.build_adjustment_findings(plan, unit)?;
 
         for attempt in 1..=MAX_ATTEMPTS {
             self.git.reset_hard(worktree, &checkpoint)?;
