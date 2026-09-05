@@ -1,6 +1,6 @@
 //! The three fixed model/effort profiles.
 //!
-//! Hwahap has no router and no escalation. Every agent it starts plays one [`Role`], every role maps
+//! Hwahap uses explicit role mappings, including one Deep repair after Economy fails. Each role maps
 //! to exactly one [`Profile`], and every profile pins one model at one effort. The mapping is data
 //! the user can read in one table, not a heuristic that decides differently on the second attempt.
 //!
@@ -11,9 +11,9 @@
 //!   without the other is the skew the policy exists to prevent, so [`Profiles::from_toml`] rejects
 //!   a `model` or `effort` key that sits anywhere but inside a `[profiles.<name>]` table.
 //!
-//! A [`Receipt`] closes the loop: what the run asked the adapter for, and what the adapter said it
-//! applied. They must be equal, because a silent downgrade turns a review the user paid for into a
-//! review that never happened.
+//! [`Receipt`] retains legacy adapter-echo validation for scripted regression fixtures.
+//! Production uses [`crate::session::NativeReceipt`]: requested settings and native agent identity,
+//! without claiming an independently observed applied model.
 
 use std::collections::BTreeMap;
 

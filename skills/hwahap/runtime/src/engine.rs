@@ -4,8 +4,8 @@
 //! [`Engine::status`], [`Engine::ship`] — and every decision about what happens next is made here
 //! rather than by the calling model. That is the point of having only three tools.
 //!
-//! Agent sessions reach the engine through the [`Sessions`] trait, not through the ACP client
-//! directly. In production that trait is a live `codex-acp` session; in tests it is a script. The
+//! Agent sessions reach the engine through the [`Sessions`] trait. Production uses a durable
+//! broker for native Codex children; tests use scripts with deterministic results. The
 //! engine cannot tell the difference, which is what makes the whole cycle — including crash
 //! recovery, out-of-scope resets, rework, and plan conflicts — testable without a model.
 
@@ -36,7 +36,7 @@ const MAX_ATTEMPTS: u32 = 2;
 /// A source of agent sessions.
 ///
 /// Boxed futures rather than `async fn` in the trait, because the engine holds it behind `dyn` so
-/// that a scripted implementation can stand in for a live adapter.
+/// that a scripted implementation can stand in for native dispatch.
 pub trait Sessions: Send + Sync {
     fn run<'a>(
         &'a self,
@@ -116,7 +116,7 @@ impl Engine {
         }
     }
 
-    /// Starts or advances the run, opening a live adapter only for the states that need one.
+    /// Advances states without agents; use the native MCP dispatcher for agent work.
     pub async fn step(
         &self,
         request: Option<&str>,
@@ -124,13 +124,9 @@ impl Engine {
     ) -> Result<StepOutcome> {
         match self.resolve(request)? {
             Resolved::Started(outcome) => Ok(outcome),
-            Resolved::Advance(run) if run.state.needs_sessions() => {
-                let resumable = run.clone();
-                let _ = resumable;
-                Err(Error::Rejected(
-                    "agent work must use the native MCP dispatcher".into(),
-                ))
-            }
+            Resolved::Advance(run) if run.state.needs_sessions() => Err(Error::Rejected(
+                "agent work must use the native MCP dispatcher".into(),
+            )),
             Resolved::Advance(run) => {
                 let resumable = run.clone();
                 self.block_if_terminal(resumable, self.advance(run, user_input))
@@ -161,7 +157,7 @@ impl Engine {
     /// The same dispatch against a supplied session source.
     ///
     /// This is what makes the whole cycle testable: a scripted `Sessions` drives crash recovery,
-    /// out-of-scope resets, rework, and plan conflicts without a model or an adapter process.
+    /// out-of-scope resets, rework, and plan conflicts without a model.
     pub async fn step_with(
         &self,
         sessions: &dyn Sessions,
@@ -960,7 +956,18 @@ impl Engine {
         let plan = self.require_plan()?;
         let worktree = self.store.worktree_path();
 
+        let suite_tree = self.git.fingerprint(&worktree)?;
+        if !self.git.is_clean(&worktree)? {
+            return Err(Error::BoundaryViolation(
+                "accepted branch is not clean before the full suite".into(),
+            ));
+        }
         let suite = self.run_command(&worktree, &plan.full_suite).await?;
+        if self.git.fingerprint(&worktree)? != suite_tree {
+            return Err(Error::BoundaryViolation(
+                "full suite changed the accepted branch or files".into(),
+            ));
+        }
         if !suite.success {
             run.state = RunState::Blocked {
                 reason: format!(
@@ -1159,6 +1166,9 @@ impl Engine {
             prompt,
         };
         let head = self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])?;
+        let branch = self
+            .git
+            .run_in(&spec.cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
         let before = if crate::session::access_for(role) == crate::session::Access::ReadOnly {
             Some(self.git.fingerprint(&spec.cwd)?)
         } else {
@@ -1176,16 +1186,15 @@ impl Engine {
                 }),
             )?
             .seq;
-        let outcome = sessions.run(&spec).await?;
-        outcome.receipt.verify_for(&spec, &self.config.profiles)?;
-        self.store.write_artifact(
-            &format!("receipt-{sequence:04}-{}.json", role.as_str()),
-            &serde_json::to_string_pretty(&outcome.receipt)
-                .map_err(|e| Error::Internal(e.to_string()))?,
-        )?;
-        if self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])? != head {
+        let outcome = sessions.run(&spec).await;
+        if self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])? != head
+            || self
+                .git
+                .run_in(&spec.cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?
+                != branch
+        {
             return Err(Error::BoundaryViolation(format!(
-                "{} changed HEAD; the host owns checkpoints",
+                "{} changed HEAD or branch; the host owns checkpoints",
                 role.as_str()
             )));
         }
@@ -1194,6 +1203,13 @@ impl Engine {
                 return Err(Error::BoundaryViolation(format!("the read-only {} session changed the working tree or index; its result was discarded", role.as_str())));
             }
         }
+        let outcome = outcome?;
+        outcome.receipt.verify_for(&spec, &self.config.profiles)?;
+        self.store.write_artifact(
+            &format!("receipt-{sequence:04}-{}.json", role.as_str()),
+            &serde_json::to_string_pretty(&outcome.receipt)
+                .map_err(|e| Error::Internal(e.to_string()))?,
+        )?;
         Ok(outcome)
     }
 
@@ -1323,6 +1339,7 @@ impl Engine {
             .spawn()
             .map_err(|e| Error::command(command, e.to_string()))?;
         let pid = child.id();
+        let _group = CommandGroup(pid);
 
         let timeout = std::time::Duration::from_secs(self.config.test_timeout_secs);
         match tokio::time::timeout(timeout, child.wait_with_output()).await {
@@ -1335,18 +1352,13 @@ impl Engine {
                 ),
             }),
             Ok(Err(e)) => Err(Error::command(command, e.to_string())),
-            Err(_) => {
-                if let Some(pid) = pid {
-                    kill_process_group(pid);
-                }
-                Ok(CommandOutput {
-                    success: false,
-                    combined: format!(
-                        "the command did not finish within {}s and was killed",
-                        self.config.test_timeout_secs
-                    ),
-                })
-            }
+            Err(_) => Ok(CommandOutput {
+                success: false,
+                combined: format!(
+                    "the command did not finish within {}s and was killed",
+                    self.config.test_timeout_secs
+                ),
+            }),
         }
     }
 
@@ -1421,6 +1433,16 @@ impl Engine {
             run.accepted_units.join(", "),
             plan.full_suite,
         )
+    }
+}
+
+/// Also runs when a native continuation is cancelled while awaiting command output.
+struct CommandGroup(Option<u32>);
+impl Drop for CommandGroup {
+    fn drop(&mut self) {
+        if let Some(pid) = self.0 {
+            kill_process_group(pid);
+        }
     }
 }
 
@@ -1559,7 +1581,7 @@ mod tests {
     /// and everything it spawned survive — still holding, and still writing into, the run worktree
     /// that Hwahap is about to reset for the next attempt.
     #[tokio::test]
-    async fn a_timed_out_command_is_killed_rather_than_orphaned() {
+    async fn timed_out_or_cancelled_commands_kill_their_process_groups() {
         let dir = tempfile::tempdir().unwrap();
         let repo = dir.path();
         for args in [
@@ -1606,6 +1628,20 @@ mod tests {
             "the timed-out command kept running and wrote {} after Hwahap had already \
              given up on it and moved on",
             marker.display()
+        );
+        // Cancelling the parent future must also kill a grandchild shell, not only its parent.
+        let cancelled = repo.join("cancelled-grandchild-marker");
+        let command = format!("sh -c 'sleep 1; touch {}' & wait", cancelled.display());
+        assert!(tokio::time::timeout(
+            std::time::Duration::from_millis(100),
+            engine.run_command(repo, &command)
+        )
+        .await
+        .is_err());
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        assert!(
+            !cancelled.exists(),
+            "cancelled continuation left a writing grandchild"
         );
     }
 
