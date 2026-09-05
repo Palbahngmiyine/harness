@@ -58,6 +58,19 @@ pub(super) fn check_failure(store: &Store, failure: &NativeFailure) -> Result<su
 
 /// Each observed recovery permits one resume; the run request budget still bounds retries.
 pub fn resume_failed(store: &Store, resume: &NativeResume) -> Result<()> {
+    let recorded = recorded_resume(store, resume)?;
+    let name = format!("native-resume-{}.json", resume.dispatch_id);
+    if recorded {
+        // A replay must never clear a later dispatch.
+        if load(store)?.is_some_and(|p| p.dispatch.dispatch_id == resume.dispatch_id) {
+            clear(store)?;
+        }
+        return Ok(());
+    }
+    resume_new(store, resume, &name)
+}
+
+pub(super) fn recorded_resume(store: &Store, resume: &NativeResume) -> Result<bool> {
     if resume.dispatch_id.len() != 64
         || !resume.dispatch_id.bytes().all(|b| b.is_ascii_hexdigit())
         || resume.recovery_evidence.trim().is_empty()
@@ -73,12 +86,12 @@ pub fn resume_failed(store: &Store, resume: &NativeResume) -> Result<()> {
         if &saved != resume {
             return Err(Error::Rejected("resume replay changed its evidence".into()));
         }
-        // A replay must never clear a later dispatch.
-        if load(store)?.is_some_and(|p| p.dispatch.dispatch_id == resume.dispatch_id) {
-            clear(store)?;
-        }
-        return Ok(());
+        return Ok(true);
     }
+    Ok(false)
+}
+
+fn resume_new(store: &Store, resume: &NativeResume, name: &str) -> Result<()> {
     let pending = load(store)?
         .ok_or_else(|| Error::Rejected("no paused native dispatch to resume".into()))?;
     if pending.dispatch.dispatch_id != resume.dispatch_id
@@ -107,7 +120,7 @@ pub fn resume_failed(store: &Store, resume: &NativeResume) -> Result<()> {
             }
         }
     }
-    write_exact(store, &name, resume)?;
+    write_exact(store, name, resume)?;
     clear(store)
 }
 

@@ -88,7 +88,10 @@ impl NativeHost {
             return progress(root, Some(dispatch), false);
         }
         if let Some(resume) = &input.resume {
-            if active.contains_key(root) {
+            if let Some(running) = active.get(root) {
+                if super::failure::recorded_resume(&store, resume)? {
+                    return progress(root, running.broker.dispatch()?, true);
+                }
                 return Err(Error::Rejected("native execution is still active".into()));
             }
             let _lock = RepoLock::acquire(root)?;

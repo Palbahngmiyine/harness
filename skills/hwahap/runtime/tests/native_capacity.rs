@@ -4,8 +4,8 @@ mod common;
 
 use common::{git, Fixture};
 use hwahap::native::{
-    NativeDispatch, NativeFailure, NativeHost, NativeInput, NativeRegistration, NativeResume,
-    NativeStopped,
+    NativeCompletion, NativeDispatch, NativeFailure, NativeHost, NativeInput, NativeRegistration,
+    NativeResume, NativeStopped,
 };
 
 async fn setup() -> (Fixture, NativeHost, NativeDispatch) {
@@ -349,5 +349,141 @@ async fn failure_evidence_recovers_a_crash_before_the_pending_pause_write() {
             .next,
         "continue"
     );
+    replacement.shutdown().await;
+}
+
+fn failed_input(request: &NativeDispatch) -> NativeInput {
+    NativeInput {
+        dispatch_failure: Some(failure(request, true)),
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn recommender_capacity_recovery_preserves_completed_fact_finding() {
+    let (fixture, host, first) = setup().await;
+    let registered = NativeRegistration {
+        dispatch_id: first.dispatch_id.clone(),
+        agent_id: "fact-child".into(),
+    };
+    host.advance(
+        &fixture.repo,
+        NativeInput {
+            registration: Some(registered),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let facts = r#"{"facts":[{"id":"F1","question":"what exists?","answer":"one seed file","sources":["src/existing.txt:1"]}]}"#;
+    let completion = NativeCompletion {
+        dispatch_id: first.dispatch_id.clone(),
+        agent_id: "fact-child".into(),
+        final_message: facts.into(),
+        agent_stopped: true,
+        reported_usage: None,
+    };
+    host.advance(
+        &fixture.repo,
+        NativeInput {
+            completion: Some(completion),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let recommender = dispatch(&host, &fixture).await;
+    assert_eq!(recommender.role, "recommender");
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let saved = serde_json::to_value(store.read_plan().unwrap().unwrap().facts).unwrap();
+    assert_eq!(saved[0]["id"], "F1");
+    assert_eq!(saved[0]["sources"][0], "src/existing.txt:1");
+    host.advance(&fixture.repo, failed_input(&recommender))
+        .await
+        .unwrap();
+    host.shutdown().await;
+    let replacement = NativeHost::default();
+    replacement
+        .advance(&fixture.repo, resume(&recommender))
+        .await
+        .unwrap();
+    let retried = dispatch(&replacement, &fixture).await;
+    assert_eq!(retried.role, "recommender");
+    assert_eq!(retried.run_id, first.run_id);
+    assert_eq!(requests(&fixture), 3);
+    assert_eq!(
+        serde_json::to_value(store.read_plan().unwrap().unwrap().facts).unwrap(),
+        saved
+    );
+    replacement.shutdown().await;
+}
+
+#[tokio::test]
+async fn failure_and_resume_write_errors_preserve_ownership_and_exact_replays() {
+    let (fixture, host, request) = setup().await;
+    let artifacts = fixture.repo.join(".hwahap/artifacts");
+    let pending = artifacts.join("native-pending.json");
+    let before = std::fs::read(&pending).unwrap();
+    let failure_path = artifacts.join(format!("native-failure-{}.json", request.dispatch_id));
+    std::fs::create_dir(&failure_path).unwrap();
+    assert!(host
+        .advance(&fixture.repo, failed_input(&request))
+        .await
+        .is_err());
+    assert_eq!(std::fs::read(&pending).unwrap(), before);
+    assert!(!artifacts
+        .join(format!("native-completion-{}.json", request.dispatch_id))
+        .exists());
+    std::fs::remove_dir(&failure_path).unwrap();
+    let paused = host
+        .advance(&fixture.repo, failed_input(&request))
+        .await
+        .unwrap();
+    assert_eq!(paused.outcome.next, "native_paused");
+    let paused_snapshot = std::fs::read(&pending).unwrap();
+    let resume_path = artifacts.join(format!("native-resume-{}.json", request.dispatch_id));
+    std::fs::create_dir(&resume_path).unwrap();
+    assert!(host.advance(&fixture.repo, resume(&request)).await.is_err());
+    assert_eq!(std::fs::read(&pending).unwrap(), paused_snapshot);
+    assert_eq!(
+        host.status(&fixture.repo).await.unwrap().outcome.next,
+        "native_paused"
+    );
+    std::fs::remove_dir(&resume_path).unwrap();
+    host.advance(&fixture.repo, resume(&request)).await.unwrap();
+    assert!(resume_path.is_file());
+    host.shutdown().await;
+    // Recovery evidence reached disk, but clearing the pending pause did not survive a crash.
+    std::fs::write(&pending, paused_snapshot).unwrap();
+    let replacement = NativeHost::default();
+    for _ in 0..2 {
+        assert_eq!(
+            replacement
+                .advance(&fixture.repo, resume(&request))
+                .await
+                .unwrap()
+                .outcome
+                .next,
+            "continue"
+        );
+        assert!(!pending.exists());
+        assert_eq!(requests(&fixture), 1);
+    }
+    let next = dispatch(&replacement, &fixture).await;
+    replacement
+        .advance(&fixture.repo, resume(&request))
+        .await
+        .unwrap();
+    assert_eq!(
+        replacement
+            .status(&fixture.repo)
+            .await
+            .unwrap()
+            .dispatch
+            .unwrap()
+            .dispatch_id,
+        next.dispatch_id
+    );
+    assert_eq!(requests(&fixture), 2);
     replacement.shutdown().await;
 }
