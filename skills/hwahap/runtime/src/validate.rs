@@ -328,7 +328,24 @@ fn check_empty_fields(plan: &Plan, out: &mut Vec<Violation>) {
     if is_blank(&plan.goal.statement) {
         out.push(Violation::new("empty_field", "the goal statement is empty"));
     }
+    for fact in &plan.facts {
+        if fact.sources.is_empty() || fact.sources.iter().any(|source| is_blank(source)) {
+            out.push(Violation::new(
+                "empty_field",
+                format!("{} needs nonempty, nonblank source locations", fact.id),
+            ));
+        }
+    }
     for decision in &plan.decisions {
+        for field in crate::proposal::missing_recommendation_fields(&decision.recommendation) {
+            out.push(Violation::new(
+                "empty_field",
+                format!(
+                    "{} needs nonempty, nonblank recommendation {field}",
+                    decision.id
+                ),
+            ));
+        }
         if is_blank(&decision.question) {
             out.push(Violation::new(
                 "empty_field",
@@ -638,7 +655,7 @@ fn check_surface_coverage(plan: &Plan, out: &mut Vec<Violation>) -> Result<()> {
         let mut scenario = false;
         for decision in plan.decisions_on(surface) {
             if decision.is_answered()? {
-                answered = true;
+                answered |= decision.kind == DecisionKind::Decision;
                 scenario |= decision.kind == DecisionKind::Scenario;
             }
         }
@@ -647,7 +664,7 @@ fn check_surface_coverage(plan: &Plan, out: &mut Vec<Violation>) -> Result<()> {
         if !answered {
             out.push(Violation::new(
                 "unanswered_surface",
-                format!("{surface} has no answered decision"),
+                format!("{surface} has no answered decision of kind decision"),
             ));
         }
         if !scenario {
@@ -1397,8 +1414,8 @@ mod tests {
                     choice: "ALT1".into(),
                     rationale: vec!["still the first way".into()],
                     evidence: vec!["F9".into()],
-                    tradeoffs: vec![],
-                    impact: vec![],
+                    tradeoffs: vec!["one more flag to document".into()],
+                    impact: vec!["cli parsing".into()],
                     confidence: Confidence::Low,
                 }
             }),
@@ -1606,7 +1623,7 @@ mod tests {
         assert_eq!(
             details(&blockers(&plan), "unanswered_surface"),
             vec![
-                "S12 has no answered decision",
+                "S12 has no answered decision of kind decision",
                 "S12 has no answered decision of kind scenario",
             ]
         );
@@ -1625,6 +1642,45 @@ mod tests {
             violation.detail,
             "S1 has no answered decision of kind scenario"
         );
+    }
+
+    #[test]
+    fn scenarios_and_terms_do_not_substitute_for_a_product_decision() {
+        for kind in [DecisionKind::Scenario, DecisionKind::Term] {
+            let plan = mutated(|p| {
+                p.decisions[0].kind = kind;
+                reanswer(p, "C1", Selection::Alternative { id: "ALT2".into() });
+            });
+            let violation = sole(&blockers(&plan));
+            assert_eq!(violation.code, "unanswered_surface");
+            assert_eq!(
+                violation.detail,
+                "S1 has no answered decision of kind decision"
+            );
+        }
+    }
+
+    #[test]
+    fn assembled_plans_recheck_explanation_fields_and_source_locations() {
+        for field in ["rationale", "evidence", "tradeoffs", "impact"] {
+            let mut plan = fixture();
+            let mut value = serde_json::to_value(&plan.decisions[0].recommendation).unwrap();
+            value[field] = serde_json::json!([" \u{a0}"]);
+            plan.decisions[0].recommendation = serde_json::from_value(value).unwrap();
+            let errors = structural(&plan);
+            assert!(
+                errors
+                    .iter()
+                    .any(|v| v.code == "empty_field" && v.detail.contains(field)),
+                "{errors:?}"
+            );
+        }
+        for sources in [vec![], vec!["src/apply/mod.rs:12-40".into(), " ".into()]] {
+            let plan = mutated(|p| p.facts[0].sources = sources);
+            let violation = sole(&blockers(&plan));
+            assert_eq!(violation.code, "empty_field");
+            assert!(violation.detail.contains("source locations"));
+        }
     }
 
     #[test]
@@ -1800,7 +1856,10 @@ mod tests {
             p.decisions[0].answer = None;
             p.requirements[0].decision_ids = vec!["C2".into()];
         });
-        assert_eq!(codes(&blockers(&plan)), vec!["unanswered_decision"]);
+        assert_eq!(
+            codes(&blockers(&plan)),
+            vec!["unanswered_decision", "unanswered_surface"]
+        );
     }
 
     #[test]
