@@ -96,6 +96,14 @@ async fn active_and_orphan_agents_reject_missing_or_different_parent_ownership()
     let recovered = replacement.advance(&fixture.repo, recover).await.unwrap();
     assert_eq!(recovered.outcome.next, "continue");
     assert!(!pending.exists());
+    for scope in [None, Some("another-parent".into())] {
+        let attempted = NativeInput {
+            host_session_id: scope,
+            ..Default::default()
+        };
+        assert!(replacement.advance(&fixture.repo, attempted).await.is_err());
+    }
+    assert!(!pending.exists());
 }
 
 #[tokio::test]

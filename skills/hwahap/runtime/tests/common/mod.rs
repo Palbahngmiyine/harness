@@ -26,6 +26,14 @@ pub const NOW: &str = "2026-09-04T00:00:00Z";
 /// What a scripted session does before it answers.
 #[derive(Debug, Clone)]
 pub enum Reply {
+    NativeReview {
+        message: String,
+        agent_id: String,
+    },
+    PrAttack,
+    PrDefense {
+        writes: Vec<(String, String)>,
+    },
     /// Answer without touching the working tree.
     Say(String),
     /// Create or overwrite files under the session's cwd, then answer.
@@ -34,7 +42,10 @@ pub enum Reply {
         message: String,
     },
     /// Delete files under the session's cwd, then answer.
-    DeleteThenSay { paths: Vec<String>, message: String },
+    DeleteThenSay {
+        paths: Vec<String>,
+        message: String,
+    },
     /// Fail the session outright, as a dropped adapter would.
     Fail(String),
     /// Answer with a receipt whose applied effort differs from what was requested.
@@ -42,6 +53,9 @@ pub enum Reply {
 }
 
 impl Reply {
+    pub fn pr_defense() -> Self {
+        Self::PrDefense { writes: vec![] }
+    }
     pub fn say(message: impl Into<String>) -> Reply {
         Reply::Say(message.into())
     }
@@ -161,7 +175,20 @@ impl Script {
             effort_applied: wanted.effort,
         };
 
+        let mut native_id = None;
         let message = match step.reply {
+            Reply::NativeReview { message, agent_id } => {
+                native_id = Some(agent_id);
+                message
+            }
+            Reply::PrAttack => pr_report(spec, false)?,
+            Reply::PrDefense { writes } => {
+                for (path, contents) in writes {
+                    std::fs::write(spec.cwd.join(path), contents)
+                        .map_err(|e| Error::io(&spec.cwd, e))?;
+                }
+                pr_report(spec, true)?
+            }
             Reply::Say(message) => message,
             Reply::Fail(detail) => return Err(Error::command("codex-acp", detail)),
             Reply::SayWithSkewedReceipt(message) => {
@@ -190,10 +217,45 @@ impl Script {
         Ok(SessionOutcome {
             final_message: message.clone(),
             transcript: message,
-            receipt: receipt.into(),
+            receipt: if let Some(agent_id) = native_id {
+                hwahap::session::SessionReceipt::Native(hwahap::session::NativeReceipt {
+                    dispatch_id: format!("script-{:?}", spec.role),
+                    agent_id,
+                    profile: receipt.profile,
+                    role: receipt.role,
+                    unit: receipt.unit,
+                    model_requested: receipt.model_requested,
+                    effort_requested: receipt.effort_requested,
+                    elapsed_ms: 1,
+                    reported_usage: None,
+                })
+            } else {
+                receipt.into()
+            },
             stop_reason: "end_turn".to_string(),
         })
     }
+}
+
+fn pr_report(spec: &SessionSpec, defense: bool) -> Result<String> {
+    assert_eq!(
+        spec.role,
+        if defense {
+            Role::FinalReview
+        } else {
+            Role::UnitReviewer
+        }
+    );
+    assert!(spec.unit.is_none());
+    let store = hwahap::state::Store::open(spec.cwd.parent().unwrap().parent().unwrap())?;
+    let binding = hwahap::pr_review::ReviewProgress::load(&store)?
+        .unwrap()
+        .binding;
+    Ok(if defense {
+        serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["controlled independent defense"]})
+    } else {
+        serde_json::json!({"binding":binding,"findings":[],"evidence":["controlled attack checks"]})
+    }.to_string())
 }
 
 impl Sessions for Script {
@@ -393,8 +455,8 @@ case "$1 ${2:-}" in
         else
           # The run branch, not HEAD: the real `gh` resolves a pull request by URL, so the answer
           # must not depend on which directory Hwahap happened to call from.
-          printf '{"headRefOid":"%s"}\n' \
-            "$(git rev-parse "$(cat "$control/pr-branch")")"
+          pr_head=$(git --git-dir="$control/remote.git" rev-parse --verify "refs/heads/$(cat "$control/pr-branch")") || exit 1
+          printf '{"headRefOid":"%s"}\n' "$pr_head"
         fi
         ;;
       *statusCheckRollup*)

@@ -88,6 +88,52 @@ impl NativeHost {
             .host_session_id
             .clone()
             .or(store.read_run()?.map(|run| run.run_id));
+        if let Some(run) = store
+            .read_run()?
+            .filter(|r| !(r.state.is_terminal() && input.request.is_some()))
+        {
+            let wanted = serde_json::json!({"run_id":run.run_id,"pool_scope":expected_scope});
+            let saved =
+                crate::pr_review::read_evidence::<serde_json::Value>(&store, "native-owner.json")?;
+            if saved.as_ref().is_some_and(|v| v != &wanted) {
+                return Err(Error::Rejected(
+                    "native work belongs to another parent task".into(),
+                ));
+            }
+            if saved.is_none() {
+                let _lock = if active.contains_key(root) {
+                    None
+                } else {
+                    Some(RepoLock::acquire(root)?)
+                };
+                // Recover ownership from older pinned runtimes without allocating another pool.
+                if store.artifacts_path().exists() {
+                    for entry in std::fs::read_dir(store.artifacts_path())
+                        .map_err(|e| Error::io(store.artifacts_path(), e))?
+                    {
+                        let path = entry
+                            .map_err(|e| Error::io(store.artifacts_path(), e))?
+                            .path();
+                        if path
+                            .file_name()
+                            .is_some_and(|n| n.to_string_lossy().starts_with("native-request-"))
+                        {
+                            let bytes = std::fs::read(&path).map_err(|e| Error::io(&path, e))?;
+                            let dispatch: NativeDispatch = serde_json::from_slice(&bytes)
+                                .map_err(|e| Error::Corrupt(e.to_string()))?;
+                            if dispatch.run_id == run.run_id
+                                && Some(&dispatch.pool_scope) != expected_scope.as_ref()
+                            {
+                                return Err(Error::Rejected(
+                                    "native work belongs to another parent task".into(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                crate::pr_review::save_evidence(&store, "native-owner.json", &wanted)?;
+            }
+        }
         if active
             .get(root)
             .is_some_and(|running| running.broker.host_session_id != input.host_session_id)
