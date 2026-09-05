@@ -12,7 +12,8 @@ use rmcp::ServiceExt;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // stdout belongs to the MCP transport. Anything Hwahap wants a human to see goes to stderr,
     // and anything it wants to keep goes into `.hwahap/`.
-    let service = Hwahap::new().serve(stdio()).await?;
+    let server = Hwahap::new();
+    let service = server.clone().serve(stdio()).await?;
 
     let token = service.cancellation_token();
     tokio::spawn(async move {
@@ -21,7 +22,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let quit_reason = service.waiting().await?;
+    let quit_reason = service.waiting().await;
+    server.shutdown().await;
+    let quit_reason = quit_reason?;
     eprintln!("hwahap exited: {quit_reason:?}");
 
     // `tokio::io::stdin()` parks a blocking-pool thread in a `read` that only returns at EOF, and

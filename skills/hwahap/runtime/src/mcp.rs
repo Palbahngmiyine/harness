@@ -174,6 +174,10 @@ impl Default for Hwahap {
 // "exactly three tools" gate out of reach of an integration test.
 #[tool_router(router = tool_router, vis = "pub")]
 impl Hwahap {
+    pub async fn shutdown(&self) {
+        self.native.shutdown().await;
+    }
+
     pub fn new() -> Self {
         Hwahap {
             tool_router: Self::tool_router(),
