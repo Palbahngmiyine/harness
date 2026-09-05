@@ -229,9 +229,18 @@ impl NativeHost {
             return Err(Error::Rejected("native execution is still active".into()));
         }
         let _lock = RepoLock::acquire(root)?;
-        if orphan(&Store::open(root)?)?.is_some() {
+        if let Some(dispatch) = orphan(&Store::open(root)?)? {
             return Err(Error::Rejected(
-                "native stop acknowledgment is required before shipping".into(),
+                if dispatch
+                    .failure
+                    .as_ref()
+                    .is_some_and(|f| f.no_agent_created)
+                {
+                    "native execution is paused; resume with observed host recovery before shipping"
+                        .into()
+                } else {
+                    "native stop acknowledgment is required before shipping".into()
+                },
             ));
         }
         Engine::open(root)?.ship(confirmation)

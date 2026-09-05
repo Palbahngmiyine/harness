@@ -3,7 +3,10 @@
 mod common;
 
 use common::{git, Fixture};
-use hwahap::native::{NativeDispatch, NativeFailure, NativeHost, NativeInput, NativeResume};
+use hwahap::native::{
+    NativeDispatch, NativeFailure, NativeHost, NativeInput, NativeRegistration, NativeResume,
+    NativeStopped,
+};
 
 async fn setup() -> (Fixture, NativeHost, NativeDispatch) {
     let fixture = Fixture::new();
@@ -172,4 +175,179 @@ async fn confirmed_no_child_failure_survives_restart_and_requires_fresh_recovery
     assert!(host.advance(&fixture.repo, reused).await.is_err());
     assert_eq!(requests(&fixture), 3);
     host.shutdown().await;
+}
+
+#[tokio::test]
+async fn uncertain_dispatch_failure_requires_exact_stop_ack_before_recovery() {
+    let (fixture, host, request) = setup().await;
+    let stopped = host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                dispatch_failure: Some(failure(&request, false)),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(stopped.outcome.next, "native_stop");
+    assert!(stopped.dispatch.unwrap().stop_required);
+    assert!(host.advance(&fixture.repo, resume(&request)).await.is_err());
+    let mut ack = NativeStopped {
+        dispatch_id: request.dispatch_id.clone(),
+        agent_id: None,
+        all_work_stopped: false,
+    };
+    assert!(host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                stopped: Some(ack.clone()),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    ack.all_work_stopped = true;
+    ack.dispatch_id = "wrong".into();
+    assert!(host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                stopped: Some(ack.clone()),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    ack.dispatch_id = request.dispatch_id.clone();
+    let recovered = host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                stopped: Some(ack),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(recovered.outcome.next, "continue");
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn failure_actions_reject_wrong_dispatch_registered_child_and_mixed_inputs() {
+    let (fixture, host, request) = setup().await;
+    let mut wrong = failure(&request, true);
+    wrong.dispatch_id = "wrong".into();
+    assert!(host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                dispatch_failure: Some(wrong),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    assert!(host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                dispatch_failure: Some(failure(&request, true)),
+                request: Some("replacement".into()),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    let mut mixed = resume(&request);
+    mixed.dispatch_failure = Some(failure(&request, true));
+    assert!(host.advance(&fixture.repo, mixed).await.is_err());
+    host.advance(
+        &fixture.repo,
+        NativeInput {
+            registration: Some(NativeRegistration {
+                dispatch_id: request.dispatch_id.clone(),
+                agent_id: "child-1".into(),
+            }),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(host
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                dispatch_failure: Some(failure(&request, true)),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    let pending = host.status(&fixture.repo).await.unwrap();
+    assert_eq!(pending.outcome.next, "native_wait");
+    assert_eq!(
+        pending.dispatch.unwrap().agent_id.as_deref(),
+        Some("child-1")
+    );
+    host.shutdown().await;
+}
+
+#[tokio::test]
+async fn failure_evidence_recovers_a_crash_before_the_pending_pause_write() {
+    let (fixture, host, request) = setup().await;
+    let path = fixture.repo.join(".hwahap/artifacts/native-pending.json");
+    let before = std::fs::read(&path).unwrap();
+    host.advance(
+        &fixture.repo,
+        NativeInput {
+            dispatch_failure: Some(failure(&request, true)),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    host.shutdown().await;
+    drop(host);
+    // Failure evidence reached disk, but the pending snapshot write did not survive the crash.
+    std::fs::write(&path, before).unwrap();
+    let replacement = NativeHost::default();
+    for progress in [
+        replacement.status(&fixture.repo).await.unwrap(),
+        replacement
+            .advance(&fixture.repo, NativeInput::default())
+            .await
+            .unwrap(),
+    ] {
+        assert_eq!(progress.outcome.next, "native_paused");
+        let failed = progress.dispatch.unwrap();
+        assert!(failed.failure.unwrap().no_agent_created);
+    }
+    let ack = NativeStopped {
+        dispatch_id: request.dispatch_id.clone(),
+        agent_id: None,
+        all_work_stopped: true,
+    };
+    assert!(replacement
+        .advance(
+            &fixture.repo,
+            NativeInput {
+                stopped: Some(ack),
+                ..Default::default()
+            }
+        )
+        .await
+        .is_err());
+    assert_eq!(
+        replacement
+            .advance(&fixture.repo, resume(&request))
+            .await
+            .unwrap()
+            .outcome
+            .next,
+        "continue"
+    );
+    replacement.shutdown().await;
 }

@@ -116,6 +116,41 @@ fn read<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Result<T> {
     serde_json::from_slice(&bytes).map_err(|e| Error::Corrupt(format!("{}: {e}", path.display())))
 }
 
+/// Recover a crash between the immutable failure write and the pending snapshot write.
+pub(super) fn reconcile(store: &Store, pending: &mut super::Pending) -> Result<()> {
+    let id = &pending.dispatch.dispatch_id;
+    if id.len() != 64 || !id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(Error::Corrupt("invalid pending native dispatch id".into()));
+    }
+    let path = store
+        .artifacts_path()
+        .join(format!("native-failure-{id}.json"));
+    if !path.try_exists().map_err(|e| Error::io(&path, e))? {
+        if pending.dispatch.failure.is_some() {
+            return Err(Error::Corrupt("native failure evidence is missing".into()));
+        }
+        return Ok(());
+    }
+    let failure: NativeFailure = read(&path)?;
+    if &failure.dispatch_id != id
+        || failure.message.trim().is_empty()
+        || pending.dispatch.agent_id.is_some()
+        || pending.completion.is_some()
+        || pending
+            .dispatch
+            .failure
+            .as_ref()
+            .is_some_and(|saved| saved != &failure)
+    {
+        return Err(Error::Corrupt(
+            "native failure evidence contradicts pending dispatch".into(),
+        ));
+    }
+    pending.dispatch.stop_required = !failure.no_agent_created;
+    pending.dispatch.failure = Some(failure);
+    Ok(())
+}
+
 fn write_exact<T: Serialize + serde::de::DeserializeOwned + PartialEq>(
     store: &Store,
     name: &str,

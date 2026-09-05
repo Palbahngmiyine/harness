@@ -90,9 +90,12 @@ fn json(value: &impl Serialize) -> Result<String> {
 pub(super) fn load(store: &Store) -> Result<Option<Pending>> {
     let path = store.artifacts_path().join(PENDING);
     match std::fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text)
-            .map(Some)
-            .map_err(|e| Error::Corrupt(format!("{}: {e}", path.display()))),
+        Ok(text) => {
+            let mut pending: Pending = serde_json::from_str(&text)
+                .map_err(|e| Error::Corrupt(format!("{}: {e}", path.display())))?;
+            failure::reconcile(store, &mut pending)?;
+            Ok(Some(pending))
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(Error::io(path, e)),
     }
