@@ -50,7 +50,7 @@ async fn three_occupied_child_slots_complete_three_hundred_jobs_without_replacem
                 Role::UnitReviewer,
                 NativeLane::Critic,
                 "critic",
-                "gpt-5.6-terra",
+                "gpt-6-astra",
             ),
             (
                 Role::FinalReview,
@@ -312,7 +312,7 @@ async fn pool_model_or_effort_changes_refuse_reuse_and_replacement() {
     let artifacts = Store::open(&fixture.repo).unwrap().artifacts_path();
     let before = artifacts.read_dir().unwrap().count();
     for (model, effort) in [("other-model", "medium"), ("gpt-5.6-luna", "high")] {
-        let config = format!("[profiles.economy]\nmodel = {model:?}\neffort = {effort:?}\n[profiles.critic]\nmodel = \"gpt-5.6-terra\"\neffort = \"high\"\n[profiles.deep]\nmodel = \"gpt-6-astra\"\neffort = \"high\"\n");
+        let config = format!("[profiles.economy]\nmodel = {model:?}\neffort = {effort:?}\n[profiles.critic]\nmodel = \"gpt-6-astra\"\neffort = \"high\"\n[profiles.deep]\nmodel = \"gpt-6-astra\"\neffort = \"high\"\n");
         let broker = NativeSessions::new(
             Store::open(&fixture.repo).unwrap(),
             Profiles::from_toml(&config).unwrap(),
