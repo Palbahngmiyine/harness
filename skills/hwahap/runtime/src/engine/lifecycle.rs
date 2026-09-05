@@ -1,6 +1,45 @@
 use super::*;
 
 impl Engine {
+    pub(super) fn refresh_plan_source(&self, plan: &mut Plan, run: &Run) -> Result<()> {
+        let worktree = self.store.worktree_path();
+        let cwd = if worktree.symlink_metadata().is_ok() {
+            let branch = if run.branch.is_empty() {
+                format!("hwahap/{}", plan.goal_id)
+            } else {
+                run.branch.clone()
+            };
+            self.check_plan_worktree(&branch, None)?;
+            worktree
+        } else if run.branch.is_empty() {
+            self.repo_root.clone()
+        } else {
+            return Err(Error::Rejected(
+                "the owned BUILD worktree is missing".into(),
+            ));
+        };
+        if !self.git.is_clean(&cwd)? {
+            return Err(Error::Rejected(
+                "reopening PLAN requires a clean committed source".into(),
+            ));
+        }
+        let head = self.git.run_in(&cwd, &["rev-parse", "HEAD"])?;
+        if plan.source_head.as_ref() != Some(&head) {
+            plan.facts.clear();
+            for decision in &mut plan.decisions {
+                decision.answer = None;
+            }
+            for status in plan.surfaces.values_mut() {
+                *status = SurfaceStatus::Applicable;
+            }
+        }
+        plan.source_head = Some(head);
+        plan.interactive = true;
+        plan.question_frontier.clear();
+        plan.execution_authorization = None;
+        Ok(())
+    }
+
     pub(super) fn prepare_plan_worktree(&self, run: &Run, plan: &Plan) -> Result<String> {
         let branch = if run.branch.is_empty() {
             format!("hwahap/{}", plan.goal_id)
