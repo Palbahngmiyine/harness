@@ -6,8 +6,8 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 
 use super::{
-    acknowledge_stopped, orphan, NativeCompletion, NativeDispatch, NativeRegistration,
-    NativeSessions, NativeStopped, RepoLock,
+    acknowledge_stopped, orphan, record_failure, resume_failed, NativeCompletion, NativeDispatch,
+    NativeFailure, NativeRegistration, NativeResume, NativeSessions, NativeStopped, RepoLock,
 };
 use crate::config::Config;
 use crate::engine::{Engine, StepOutcome};
@@ -21,6 +21,8 @@ pub struct NativeInput {
     pub registration: Option<NativeRegistration>,
     pub completion: Option<NativeCompletion>,
     pub stopped: Option<NativeStopped>,
+    pub dispatch_failure: Option<NativeFailure>,
+    pub resume: Option<NativeResume>,
 }
 
 pub struct NativeProgress {
@@ -62,7 +64,9 @@ impl NativeHost {
     pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
         let actions = usize::from(input.registration.is_some())
             + usize::from(input.completion.is_some())
-            + usize::from(input.stopped.is_some());
+            + usize::from(input.stopped.is_some())
+            + usize::from(input.dispatch_failure.is_some())
+            + usize::from(input.resume.is_some());
         if actions > 1 || (actions > 0 && (input.request.is_some() || input.user_input.is_some())) {
             return Err(Error::Rejected(
                 "send exactly one native action, without request or user_input".into(),
@@ -70,10 +74,32 @@ impl NativeHost {
         }
         let mut active = self.active.lock().await;
         let store = Store::open(root)?;
+        if let Some(failure) = &input.dispatch_failure {
+            super::failure::check_failure(&store, failure)?;
+            let lock = if let Some(mut running) = active.remove(root) {
+                running.task.abort();
+                let _ = (&mut running.task).await;
+                running._lock.clone()
+            } else {
+                Arc::new(RepoLock::acquire(root)?)
+            };
+            let dispatch = record_failure(&store, failure)?;
+            drop(lock);
+            return progress(root, Some(dispatch), false);
+        }
+        if let Some(resume) = &input.resume {
+            if active.contains_key(root) {
+                return Err(Error::Rejected("native execution is still active".into()));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            resume_failed(&store, resume)?;
+            return progress(root, orphan(&store)?, false);
+        }
         if let Some(ack) = &input.stopped {
             let pending =
                 orphan(&store)?.ok_or_else(|| Error::Rejected("no native agent to stop".into()))?;
             if !ack.all_work_stopped
+                || pending.failure.as_ref().is_some_and(|f| f.no_agent_created)
                 || ack.dispatch_id != pending.dispatch_id
                 || ack.agent_id != pending.agent_id
             {
@@ -107,6 +133,11 @@ impl NativeHost {
         } else {
             let lock = Arc::new(RepoLock::acquire(root)?);
             if let Some(dispatch) = orphan(&store)? {
+                if actions > 0 || input.request.is_some() || input.user_input.is_some() {
+                    return Err(Error::Rejected(
+                        "pending native work requires recovery before new input".into(),
+                    ));
+                }
                 return progress(root, Some(dispatch), false);
             }
             if input.registration.is_some() {
@@ -216,13 +247,25 @@ fn progress(
     if let Some(dispatch) = &dispatch {
         outcome.next = if dispatch.stop_required {
             "native_stop"
+        } else if dispatch.failure.is_some() {
+            "native_paused"
         } else if dispatch.agent_id.is_some() {
             "native_wait"
         } else {
             "native_dispatch"
         }
         .into();
-        outcome.message = if dispatch.stop_required {
+        outcome.message = if let Some(failure) = &dispatch.failure {
+            format!(
+                "Native dispatch failed: {}. {}",
+                failure.message,
+                if failure.no_agent_created {
+                    "No child was created. Do not poll or spawn again; resume only with new observed host recovery evidence. The run and plan are preserved."
+                } else {
+                    "Child creation is uncertain. Locate the exact dispatch and stop all its work before acknowledging recovery. Do not spawn again."
+                }
+            )
+        } else if dispatch.stop_required {
             "Stop this native agent and all remaining commands, then acknowledge the exact dispatch before recovery.".into()
         } else {
             format!("Native {} dispatch {}", dispatch.role, dispatch.dispatch_id)

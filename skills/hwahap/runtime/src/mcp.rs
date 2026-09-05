@@ -21,8 +21,8 @@ use crate::engine::StepOutcome;
 use crate::error::Error;
 use crate::git::Git;
 use crate::native::{
-    NativeCompletion, NativeDispatch, NativeHost, NativeInput, NativeProgress, NativeRegistration,
-    NativeStopped,
+    NativeCompletion, NativeDispatch, NativeFailure, NativeHost, NativeInput, NativeProgress,
+    NativeRegistration, NativeResume, NativeStopped,
 };
 
 /// The cross-tool protocol, returned in the MCP `initialize` response.
@@ -41,17 +41,33 @@ and you are already Astra, register agent_id `coordinator` and perform only that
 Otherwise spawn exactly one fresh Codex native sub-agent with task_name=hwahap_<dispatch_id>, \
 fork_turns=none, the specified model \
 and effort, and the exact brief. Never silently substitute models or inherit conversation history. \
-If native spawn/wait tools are unavailable, report that limitation; never fabricate a child result \
-or launch an ACP/CLI replacement. \
+Before spawning, inspect available spawn/wait and close/release capabilities and known capacity. \
+Do not probe capacity by spawning disposable agents. If spawn is refused or native tools are \
+unavailable, immediately send dispatch_failure={dispatch_id,message,no_agent_created:true} with \
+the actual host error; use true ONLY when no child was created or no spawn was attempted. \
+If creation is uncertain (for example a lost response), send no_agent_created:false instead. \
+Never repeat spawn on the same dispatch after an error, fabricate results, or launch an ACP/CLI replacement. \
 Immediately call hwahap_step with registration={dispatch_id,agent_id}. \
 Do not spawn a second child for a dispatch with an agent_id. For `native_wait` with agent_id \
 `coordinator`, perform that planning role in this Astra session and send completion; do not wait \
 for a child named coordinator. Otherwise wait on the registered \
 child, or poll hwahap_step after one second when no child is pending. Once the child has stopped and \
 its commands have ended, pass its exact final text via completion={dispatch_id,agent_id,final_message,\
-agent_stopped:true,reported_usage:null}. Report token usage only if native tools actually expose it; \
+agent_stopped:true,reported_usage:null}. After completion is durably acknowledged, close/release \
+that exact Hwahap-owned child when the host exposes such a tool, before the next spawn. A completed \
+or interrupted turn is not evidence of thread release. If release is unavailable, report it as \
+unknown; never stop unrelated agents or reuse an implementation agent as an independent reviewer. \
+Report token usage only if native tools actually expose it; \
 never estimate or ask the child to invent counters. Model/effort and read-only access are host \
 requests, not independently verified sandbox or applied-model evidence.
+
+For `native_paused`, show the failure and stop polling/spawning. Preserve this run. After observing \
+an actual host recovery (such as confirmed release of an owned thread or restored native tools), \
+send resume={dispatch_id,recovery_evidence} once. Each distinct recovery observation permits one \
+resume; elapsed time, a Done label, or rewording old evidence is not recovery. There are zero \
+automatic retries; fresh dispatches still consume native_max_calls. Recovery is operational, \
+not a new plan approval. If the host cannot recover within scope, report the external blocker. \
+Do not change global thread limits or close unrelated tasks to bypass it.
 
 For `native_stop`, stop the named child (or your own coordinator task) and all its commands before sending \
 stopped={dispatch_id,agent_id,all_work_stopped:true}. If no agent_id was registered, locate and stop \
@@ -88,6 +104,12 @@ pub struct StepArgs {
     /// Confirm an orphan and its commands have stopped before recovery.
     #[serde(default)]
     pub stopped: Option<NativeStopped>,
+    /// Report a spawn error immediately; uncertain creation requires stop recovery.
+    #[serde(default)]
+    pub dispatch_failure: Option<NativeFailure>,
+    /// Resume a confirmed no-child pause using newly observed host recovery evidence.
+    #[serde(default)]
+    pub resume: Option<NativeResume>,
 }
 
 /// Arguments to `hwahap_status`.
@@ -217,6 +239,8 @@ impl Hwahap {
                     registration: args.registration,
                     completion: args.completion,
                     stopped: args.stopped,
+                    dispatch_failure: args.dispatch_failure,
+                    resume: args.resume,
                 },
             )
             .await
