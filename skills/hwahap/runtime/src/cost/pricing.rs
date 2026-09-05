@@ -89,7 +89,7 @@ pub fn estimate(store: &Store, measured: &serde_json::Value) -> Result<serde_jso
         serde_json::json!({"status":"estimate", "currency":card.currency,"source":card.source,
         "effective_date":card.effective_date,"assumptions":card.assumptions,
         "basis":"flat configured rates applied to observed session deltas; excludes unobserved work, tool fees and unconfigured surcharges",
-        "priced_subtotal":if measured["observed_sessions"].as_u64().unwrap_or(0) > 0 {Some(subtotal)} else {None},
+        "priced_subtotal":if by_model.is_empty() {None} else {Some(subtotal)},
         "by_model":by_model,"unpriced_models":unpriced,"unavailable_sessions":measured["unavailable_sessions"],
         "total_billed_cost":null}),
     )
