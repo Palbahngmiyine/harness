@@ -128,9 +128,15 @@ pub fn orphan(store: &Store) -> Result<Option<NativeDispatch>> {
     }))
 }
 
-pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
-    let pending =
+/// Validate without writes before the host cancels its continuation.
+pub(super) fn check_stopped(store: &Store, ack: &NativeStopped) -> Result<Pending> {
+    let mut pending =
         load(store)?.ok_or_else(|| Error::Rejected("no native dispatch to stop".into()))?;
+    let expected = pending
+        .dispatch
+        .agent_id
+        .as_ref()
+        .or(pending.dispatch.reuse_agent_id.as_ref());
     if !ack.all_work_stopped
         || pending
             .dispatch
@@ -138,12 +144,26 @@ pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
             .as_ref()
             .is_some_and(|f| f.no_agent_created)
         || ack.dispatch_id != pending.dispatch.dispatch_id
-        || ack.agent_id != pending.dispatch.agent_id
+        || expected.is_some_and(|id| ack.agent_id.as_ref() != Some(id))
+        || ack.agent_id.as_ref().is_some_and(|id| {
+            id.trim().is_empty() || (id == "coordinator" && !pending.dispatch.coordinator_allowed)
+        })
     {
         return Err(Error::Rejected(
             "stop acknowledgment does not match the pending native dispatch".into(),
         ));
     }
+    if let Some(id) = &ack.agent_id {
+        pool::check_registration(store, &pending.dispatch, id)?;
+        pending.dispatch.agent_id = Some(id.clone());
+    }
+    Ok(pending)
+}
+
+pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
+    let pending = check_stopped(store, ack)?;
+    // Preserve a discovered child before stop evidence or pool writes can fail.
+    save(store, &pending)?;
     store.write_artifact(
         &format!("native-stopped-{}.json", ack.dispatch_id),
         &json(ack)?,

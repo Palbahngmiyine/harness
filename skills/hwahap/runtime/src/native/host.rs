@@ -121,17 +121,7 @@ impl NativeHost {
             return progress(root, orphan(&store)?, false);
         }
         if let Some(ack) = &input.stopped {
-            let pending =
-                orphan(&store)?.ok_or_else(|| Error::Rejected("no native agent to stop".into()))?;
-            if !ack.all_work_stopped
-                || pending.failure.as_ref().is_some_and(|f| f.no_agent_created)
-                || ack.dispatch_id != pending.dispatch_id
-                || ack.agent_id != pending.agent_id
-            {
-                return Err(Error::Rejected(
-                    "stop acknowledgment does not match the pending native dispatch".into(),
-                ));
-            }
+            super::check_stopped(&store, ack)?;
             let lock = if let Some(mut running) = active.remove(root) {
                 running.task.abort();
                 let _ = (&mut running.task).await;
@@ -308,6 +298,19 @@ fn progress(
         } else {
             format!("Native {} dispatch {}", dispatch.role, dispatch.dispatch_id)
         };
+        if !dispatch.stop_required && dispatch.failure.is_none() {
+            if let Some(elapsed) =
+                super::timing::elapsed_since_offer(&Store::open(root)?, &dispatch.dispatch_id)?
+            {
+                outcome.message.push_str(&format!(
+                    ". Host-observed elapsed: {elapsed} ms; target {}s, deadline {}s.",
+                    dispatch.soft_budget_secs, dispatch.hard_timeout_secs,
+                ));
+                if elapsed > dispatch.soft_budget_secs.saturating_mul(1000) {
+                    outcome.message.push_str(" Target exceeded: inspect progress and remaining scope; do not infer completion or start another agent.");
+                }
+            }
+        }
     } else if running {
         outcome.next = "native_wait".into();
         outcome.message =

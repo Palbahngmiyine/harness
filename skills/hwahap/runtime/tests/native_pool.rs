@@ -338,3 +338,71 @@ async fn pool_model_or_effort_changes_refuse_reuse_and_replacement() {
         assert_eq!(artifacts.read_dir().unwrap().count(), before);
     }
 }
+
+#[tokio::test]
+async fn unregistered_orphan_retains_discovered_child_without_cross_lane_reuse() {
+    use hwahap::native::{NativeHost, NativeInput, NativeStopped};
+    let fixture = pool_fixture().await;
+    let (broker, worker, task) = start_job(&fixture, Role::FactFinder).await;
+    finish_job(&broker, &worker, task, "author").await;
+    let (broker, orphan, task) = start_job(&fixture, Role::FinalReview).await;
+    // The host created this auditor, then lost its continuation before registration.
+    task.abort();
+    let _ = task.await;
+    drop(broker);
+    let store = Store::open(&fixture.repo).unwrap();
+    let pending = store.artifacts_path().join("native-pending.json");
+    let before = std::fs::read(&pending).unwrap();
+    let host = NativeHost::default();
+    let stopped = |request: &NativeDispatch, id: Option<&str>| NativeInput {
+        host_session_id: Some("guard-parent-task".into()),
+        stopped: Some(NativeStopped {
+            dispatch_id: request.dispatch_id.clone(),
+            agent_id: id.map(str::to_owned),
+            all_work_stopped: true,
+        }),
+        ..Default::default()
+    };
+    assert!(host
+        .advance(&fixture.repo, stopped(&orphan, Some("author")))
+        .await
+        .is_err());
+    assert_eq!(std::fs::read(&pending).unwrap(), before);
+    let record = store
+        .artifacts_path()
+        .join(format!("native-stopped-{}.json", orphan.dispatch_id));
+    std::fs::create_dir(&record).unwrap();
+    assert!(host
+        .advance(&fixture.repo, stopped(&orphan, Some("auditor")))
+        .await
+        .is_err());
+    let saved: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&pending).unwrap()).unwrap();
+    assert_eq!(
+        saved["dispatch"]["agent_id"], "auditor",
+        "discovered identity was lost when stop evidence failed"
+    );
+    std::fs::remove_dir(&record).unwrap();
+    host.advance(&fixture.repo, stopped(&orphan, Some("auditor")))
+        .await
+        .unwrap();
+    let (broker, reused, task) = start_job(&fixture, Role::FinalReview).await;
+    assert_eq!(reused.reuse_agent_id.as_deref(), Some("auditor"));
+    task.abort();
+    let _ = task.await;
+    drop(broker);
+    let before = std::fs::read(&pending).unwrap();
+    for id in [None, Some("another-child")] {
+        assert!(host
+            .advance(&fixture.repo, stopped(&reused, id))
+            .await
+            .is_err());
+        assert_eq!(std::fs::read(&pending).unwrap(), before);
+    }
+    host.advance(&fixture.repo, stopped(&reused, Some("auditor")))
+        .await
+        .unwrap();
+    let (broker, next, task) = start_job(&fixture, Role::FinalReview).await;
+    assert_eq!(next.reuse_agent_id.as_deref(), Some("auditor"));
+    finish_job(&broker, &next, task, "auditor").await;
+}
