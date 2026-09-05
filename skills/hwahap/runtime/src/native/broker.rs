@@ -93,7 +93,8 @@ impl NativeSessions {
             .ok_or_else(|| Error::Rejected("no pending native dispatch".into()))?;
         let dispatch = &waiting.pending.dispatch;
         if completion.dispatch_id != dispatch.dispatch_id
-            && Self::recorded_completion(&self.store, &completion)? {
+            && Self::recorded_completion(&self.store, &completion)?
+        {
             return Ok(());
         }
         if completion.dispatch_id != dispatch.dispatch_id
@@ -110,7 +111,9 @@ impl NativeSessions {
                     "native completion was already recorded with different content".into(),
                 ));
             }
-            if waiting.sender.is_none() { return Ok(()); }
+            if waiting.sender.is_none() {
+                return Ok(());
+            }
         }
         self.store.write_artifact(
             &format!("native-completion-{}.json", completion.dispatch_id),
@@ -131,14 +134,28 @@ impl NativeSessions {
 
     /// A lost response may be retried after the engine has already requested its next role.
     pub fn recorded_completion(store: &Store, completion: &NativeCompletion) -> Result<bool> {
-        if completion.dispatch_id.len() != 64 || !completion.dispatch_id.bytes().all(|b| b.is_ascii_hexdigit()) {
+        if completion.dispatch_id.len() != 64
+            || !completion
+                .dispatch_id
+                .bytes()
+                .all(|b| b.is_ascii_hexdigit())
+        {
             return Err(Error::Rejected("invalid native dispatch identifier".into()));
         }
-        let path = store.artifacts_path().join(format!("native-completion-{}.json", completion.dispatch_id));
+        let path = store
+            .artifacts_path()
+            .join(format!("native-completion-{}.json", completion.dispatch_id));
         match std::fs::read_to_string(&path) {
             Ok(text) => {
-                let prior: NativeCompletion = serde_json::from_str(&text).map_err(|e| Error::Corrupt(e.to_string()))?;
-                if &prior == completion { Ok(true) } else { Err(Error::Rejected("completion replay changed its recorded content".into())) }
+                let prior: NativeCompletion =
+                    serde_json::from_str(&text).map_err(|e| Error::Corrupt(e.to_string()))?;
+                if &prior == completion {
+                    Ok(true)
+                } else {
+                    Err(Error::Rejected(
+                        "completion replay changed its recorded content".into(),
+                    ))
+                }
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
             Err(e) => Err(Error::io(path, e)),
@@ -157,7 +174,9 @@ impl NativeSessions {
             ));
         }
         if load(&self.store)?.is_some_and(|pending| pending.completion.is_none()) {
-            return Err(Error::Rejected("persisted native dispatch still needs stop acknowledgment".into()));
+            return Err(Error::Rejected(
+                "persisted native dispatch still needs stop acknowledgment".into(),
+            ));
         }
         super::clear(&self.store)
     }

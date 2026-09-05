@@ -20,7 +20,10 @@ use serde::{Deserialize, Serialize};
 use crate::engine::StepOutcome;
 use crate::error::Error;
 use crate::git::Git;
-use crate::native::{NativeCompletion, NativeDispatch, NativeHost, NativeInput, NativeProgress, NativeRegistration, NativeStopped};
+use crate::native::{
+    NativeCompletion, NativeDispatch, NativeHost, NativeInput, NativeProgress, NativeRegistration,
+    NativeStopped,
+};
 
 /// The cross-tool protocol, returned in the MCP `initialize` response.
 ///
@@ -123,6 +126,8 @@ pub struct RunReport {
     /// The exact native request, present while dispatching, waiting or stopping a child.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub native_dispatch: Option<NativeDispatch>,
+    /// All retained native requests, including incomplete work; unknown usage is explicit.
+    pub cost_evidence: Option<serde_json::Value>,
 }
 
 impl From<StepOutcome> for RunReport {
@@ -136,6 +141,7 @@ impl From<StepOutcome> for RunReport {
             plan_digest: outcome.plan_digest,
             pr_url: outcome.pr_url,
             native_dispatch: None,
+            cost_evidence: None,
         }
     }
 }
@@ -195,14 +201,26 @@ impl Hwahap {
         Parameters(args): Parameters<StepArgs>,
     ) -> Result<Json<RunReport>, ErrorData> {
         let root = root_for(&args.cwd)?;
-        let outcome = self.native
-            .advance(&root, NativeInput {
-                request: args.request, user_input: args.user_input, registration: args.registration,
-                completion: args.completion, stopped: args.stopped,
-            })
+        let outcome = self
+            .native
+            .advance(
+                &root,
+                NativeInput {
+                    request: args.request,
+                    user_input: args.user_input,
+                    registration: args.registration,
+                    completion: args.completion,
+                    stopped: args.stopped,
+                },
+            )
             .await
             .map_err(to_error_data)?;
-        Ok(Json(outcome.into()))
+        let mut report = RunReport::from(outcome);
+        report.cost_evidence = Some(
+            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+                .map_err(to_error_data)?,
+        );
+        Ok(Json(report))
     }
 
     /// Report the run without changing it.
@@ -224,7 +242,12 @@ impl Hwahap {
     ) -> Result<Json<RunReport>, ErrorData> {
         let root = root_for(&args.cwd)?;
         let outcome = self.native.status(&root).await.map_err(to_error_data)?;
-        Ok(Json(outcome.into()))
+        let mut report = RunReport::from(outcome);
+        report.cost_evidence = Some(
+            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+                .map_err(to_error_data)?,
+        );
+        Ok(Json(report))
     }
 
     /// Mark the finished draft pull request ready for review.
@@ -247,8 +270,17 @@ impl Hwahap {
         Parameters(args): Parameters<ShipArgs>,
     ) -> Result<Json<RunReport>, ErrorData> {
         let root = root_for(&args.cwd)?;
-        let outcome = self.native.ship(&root, &args.confirmation).await.map_err(to_error_data)?;
-        Ok(Json(outcome.into()))
+        let outcome = self
+            .native
+            .ship(&root, &args.confirmation)
+            .await
+            .map_err(to_error_data)?;
+        let mut report = RunReport::from(outcome);
+        report.cost_evidence = Some(
+            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+                .map_err(to_error_data)?,
+        );
+        Ok(Json(report))
     }
 }
 
@@ -277,7 +309,9 @@ fn root_for(cwd: &str) -> Result<PathBuf, ErrorData> {
             None,
         ));
     }
-    Git::open(&path).map(|git| git.root().to_path_buf()).map_err(to_error_data)
+    Git::open(&path)
+        .map(|git| git.root().to_path_buf())
+        .map_err(to_error_data)
 }
 
 /// Maps a Hwahap error onto the MCP error the host will render.

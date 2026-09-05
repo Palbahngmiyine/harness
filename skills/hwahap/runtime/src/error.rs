@@ -26,7 +26,10 @@ pub enum Error {
     #[error("execution boundary violated: {0}")]
     BoundaryViolation(String),
 
-    /// An external command (git, gh, the ACP adapter) failed.
+    #[error("execution limit reached: {0}")]
+    ExecutionLimit(String),
+
+    /// An external command (git or gh) failed.
     #[error("{command} failed: {detail}")]
     Command { command: String, detail: String },
 
@@ -65,7 +68,13 @@ impl Error {
     /// The engine turns these into a `blocked` run instead of a transient tool error, so the user
     /// is told once and is not invited to retry something that cannot succeed.
     pub fn is_terminal_for_run(&self) -> bool {
-        matches!(self, Error::Corrupt(_) | Error::UnsupportedProfile(_) | Error::BoundaryViolation(_))
+        matches!(
+            self,
+            Error::Corrupt(_)
+                | Error::UnsupportedProfile(_)
+                | Error::BoundaryViolation(_)
+                | Error::ExecutionLimit(_)
+        )
     }
 }
 
@@ -92,8 +101,10 @@ mod tests {
     }
 
     #[test]
-    fn only_corrupt_and_unsupported_profile_stop_the_run() {
+    fn unrecoverable_execution_errors_stop_the_run() {
         assert!(Error::Corrupt("x".into()).is_terminal_for_run());
+        assert!(Error::BoundaryViolation("x".into()).is_terminal_for_run());
+        assert!(Error::ExecutionLimit("x".into()).is_terminal_for_run());
         assert!(Error::UnsupportedProfile("x".into()).is_terminal_for_run());
         assert!(!Error::Rejected("x".into()).is_terminal_for_run());
         assert!(!Error::command("git", "x").is_terminal_for_run());
