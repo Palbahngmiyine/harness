@@ -432,7 +432,7 @@ pub struct Adjustment {
     pub ts: String,
 }
 
-/// The user's `CONFIRM PLAN <challenge>`.
+/// An authorization seal: planning confirmation or the recorded direct BUILD instruction.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Frozen {
     /// The digest the challenge was derived from.
@@ -446,6 +446,12 @@ pub struct Frozen {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub schema: String,
+    /// Verbatim instruction explicitly authorizing BUILD without the planning interview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_authorization: Option<String>,
+    /// Exact integration base for direct builds; a moving local branch is not the baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_commit: Option<String>,
     /// Stable slug identifying the run, and the `hwahap/<goal_id>` branch name.
     pub goal_id: String,
     /// Incremented by each adjustment round.
@@ -480,7 +486,7 @@ pub struct Plan {
     pub full_suite: String,
     #[serde(default)]
     pub reviews: PlanReviews,
-    /// Set only by `CONFIRM PLAN`; excluded from the plan digest.
+    /// Set by `CONFIRM PLAN` or explicit BUILD; excluded from the plan digest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frozen: Option<Frozen>,
 }
@@ -504,6 +510,8 @@ impl Plan {
     ) -> Self {
         Plan {
             schema: SCHEMA.to_string(),
+            execution_authorization: None,
+            base_commit: None,
             goal_id: goal_id.into(),
             revision: 1,
             base_branch: base_branch.into(),
