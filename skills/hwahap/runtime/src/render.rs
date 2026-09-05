@@ -37,8 +37,18 @@ pub fn plan_markdown(plan: &Plan) -> Result<String> {
     plan.require_supported_schema()?;
     let mut md = Md::default();
     render_header(plan, &mut md)?;
+    if plan.interactive {
+        md.line(if plan.plan_only { "Execution: PLAN only. Confirmation saves this plan; BUILD requires a later explicit request." }
+            else { "Execution: PLAN then BUILD. Confirmation starts implementation, tests and draft review." });
+        if let Some(head) = &plan.source_head {
+            md.line(format!("Inspected source commit: `{head}`"));
+        }
+        md.line("Recommendations and review judgments remain inspectable claims, not proof that every requirement has been discovered.");
+    }
     render_goal(plan, &mut md);
-    render_surfaces(plan, &mut md)?;
+    if plan.execution_authorization.is_none() {
+        render_surfaces(plan, &mut md)?;
+    }
     render_facts(plan, &mut md);
     render_decisions(plan, &mut md)?;
     render_requirements(plan, &mut md);
@@ -46,8 +56,12 @@ pub fn plan_markdown(plan: &Plan) -> Result<String> {
     render_units(plan, &mut md);
     render_tests(plan, &mut md);
     render_open_items(plan, &mut md);
-    render_reviews(plan, &mut md)?;
-    render_confirm(plan, &mut md)?;
+    if plan.execution_authorization.is_some() {
+        md.line("Planning omitted under the recorded explicit BUILD instruction. No planning reviews or CONFIRM PLAN receipt are claimed.");
+    } else {
+        render_reviews(plan, &mut md)?;
+        render_confirm(plan, &mut md)?;
+    }
     Ok(md.finish())
 }
 

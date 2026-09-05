@@ -16,6 +16,12 @@ use crate::state::Store;
 
 #[derive(Default)]
 pub struct NativeInput {
+    pub plan_only: bool,
+    pub build_confirmed: Option<String>,
+    pub adjust_build: Option<crate::engine::AdjustBuildRequest>,
+    pub question_response: Option<crate::dialogue::QuestionResponse>,
+    pub recheck_pr: bool,
+    pub build: Option<crate::engine::BuildRequest>,
     pub host_session_id: Option<String>,
     pub request: Option<String>,
     pub user_input: Option<String>,
@@ -63,14 +69,30 @@ impl NativeHost {
     }
 
     pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
-        let actions = usize::from(input.registration.is_some())
+        if input.request.is_some() && input.user_input.is_some() {
+            return Err(Error::Rejected(
+                "request and user_input cannot be combined; send one without discarding either message"
+                    .into(),
+            ));
+        }
+        let actions = usize::from(input.build.is_some())
+            + usize::from(input.build_confirmed.is_some())
+            + usize::from(input.adjust_build.is_some())
+            + usize::from(input.question_response.is_some())
+            + usize::from(input.registration.is_some())
             + usize::from(input.completion.is_some())
             + usize::from(input.stopped.is_some())
             + usize::from(input.dispatch_failure.is_some())
-            + usize::from(input.resume.is_some());
+            + usize::from(input.resume.is_some())
+            + usize::from(input.recheck_pr);
         if actions > 1 || (actions > 0 && (input.request.is_some() || input.user_input.is_some())) {
             return Err(Error::Rejected(
                 "send exactly one native action, without request or user_input".into(),
+            ));
+        }
+        if input.plan_only && input.request.is_none() {
+            return Err(Error::Rejected(
+                "plan_only is a start option and requires request".into(),
             ));
         }
         let mut active = self.active.lock().await;
@@ -84,6 +106,64 @@ impl NativeHost {
             .host_session_id
             .clone()
             .or(store.read_run()?.map(|run| run.run_id));
+        if let Some(run) = store
+            .read_run()?
+            .filter(|r| !(r.state.is_terminal() && input.request.is_some()))
+        {
+            let wanted = serde_json::json!({"run_id":run.run_id,"pool_scope":expected_scope});
+            let saved =
+                crate::pr_review::read_evidence::<serde_json::Value>(&store, "native-owner.json")?;
+            if saved.as_ref().is_some_and(|v| v != &wanted) {
+                return Err(Error::Rejected(
+                    "native work belongs to another parent task".into(),
+                ));
+            }
+            if saved.is_none() {
+                let _lock = if active.contains_key(root) {
+                    None
+                } else {
+                    Some(RepoLock::acquire(root)?)
+                };
+                // BUILD seals its parent before creating the worktree, including interrupted starts.
+                if crate::pr_review::read_evidence::<serde_json::Value>(
+                    &store,
+                    "build-request.json",
+                )?
+                .and_then(|v| v["pool_scope"].as_str().map(str::to_owned))
+                .is_some_and(|scope| Some(scope) != expected_scope)
+                {
+                    return Err(Error::Rejected(
+                        "BUILD belongs to another parent task".into(),
+                    ));
+                }
+                // Recover ownership from older pinned runtimes without allocating another pool.
+                if store.artifacts_path().exists() {
+                    for entry in std::fs::read_dir(store.artifacts_path())
+                        .map_err(|e| Error::io(store.artifacts_path(), e))?
+                    {
+                        let path = entry
+                            .map_err(|e| Error::io(store.artifacts_path(), e))?
+                            .path();
+                        if path
+                            .file_name()
+                            .is_some_and(|n| n.to_string_lossy().starts_with("native-request-"))
+                        {
+                            let bytes = std::fs::read(&path).map_err(|e| Error::io(&path, e))?;
+                            let dispatch: NativeDispatch = serde_json::from_slice(&bytes)
+                                .map_err(|e| Error::Corrupt(e.to_string()))?;
+                            if dispatch.run_id == run.run_id
+                                && Some(&dispatch.pool_scope) != expected_scope.as_ref()
+                            {
+                                return Err(Error::Rejected(
+                                    "native work belongs to another parent task".into(),
+                                ));
+                            }
+                        }
+                    }
+                }
+                crate::pr_review::save_evidence(&store, "native-owner.json", &wanted)?;
+            }
+        }
         if active
             .get(root)
             .is_some_and(|running| running.broker.host_session_id != input.host_session_id)
@@ -95,6 +175,62 @@ impl NativeHost {
                 "native work belongs to another parent task; do not reuse or stop its agents"
                     .into(),
             ));
+        }
+        if input.build_confirmed.is_some()
+            || input.adjust_build.is_some()
+            || input.question_response.is_some()
+        {
+            if active.contains_key(root) || orphan(&store)?.is_some() {
+                return Err(Error::Rejected(
+                    "finish or recover native work before changing stages".into(),
+                ));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            let engine = Engine::open(root)?;
+            let outcome = if let Some(digest) = &input.build_confirmed {
+                engine.build_confirmed(digest)?
+            } else if let Some(response) = &input.question_response {
+                engine.answer_questions(response)?
+            } else {
+                engine.adjust_build(input.adjust_build.as_ref().expect("checked action"))?
+            };
+            return Ok(NativeProgress {
+                outcome,
+                dispatch: None,
+            });
+        }
+        if input.recheck_pr {
+            if active.contains_key(root) || orphan(&store)?.is_some() {
+                return Err(Error::Rejected(
+                    "finish or recover native work before PR recheck".into(),
+                ));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            return Ok(NativeProgress {
+                outcome: Engine::open(root)?.recheck_pr()?,
+                dispatch: None,
+            });
+        }
+        if let Some(build) = &input.build {
+            if active.contains_key(root) || orphan(&store)?.is_some() {
+                return Err(Error::Rejected(
+                    "native execution must finish before direct BUILD".into(),
+                ));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            let outcome = Engine::open(root)?
+                .start_build_for_parent(build, input.host_session_id.as_deref())?;
+            crate::pr_review::save_evidence(
+                &store,
+                "native-owner.json",
+                &serde_json::json!({
+                    "run_id":outcome.run_id, "pool_scope":input.host_session_id.as_ref().unwrap_or(&outcome.run_id)
+                }),
+            )?;
+            return Ok(NativeProgress {
+                outcome,
+                dispatch: None,
+            });
         }
         if let Some(failure) = &input.dispatch_failure {
             super::failure::check_failure(&store, failure)?;
@@ -168,7 +304,9 @@ impl NativeHost {
                     "no live native dispatch accepts completion".into(),
                 ));
             }
-            let config = Config::load(store.root())?;
+            let config = Config::for_run(&store)?;
+            let start_store = store.clone();
+            let start_parent = input.host_session_id.clone();
             let mut sessions = NativeSessions::new(
                 store,
                 config.profiles,
@@ -184,6 +322,18 @@ impl NativeHost {
             let task_lock = lock.clone();
             let task = tokio::spawn(async move {
                 let _lock = task_lock;
+                if let Some(request) = input.request.as_deref() {
+                    let outcome = engine.start_planning(request, input.plan_only)?;
+                    crate::pr_review::save_evidence(
+                        &start_store,
+                        "native-owner.json",
+                        &serde_json::json!({
+                            "run_id":outcome.run_id,
+                            "pool_scope":start_parent.as_ref().unwrap_or(&outcome.run_id)
+                        }),
+                    )?;
+                    return Ok(outcome);
+                }
                 engine
                     .step_with(
                         &*sessions,

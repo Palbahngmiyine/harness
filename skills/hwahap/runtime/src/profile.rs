@@ -186,6 +186,19 @@ pub struct Profiles {
 }
 
 impl Profiles {
+    /// Direct BUILD uses the Astra parent for authorship and two separate Astra reviewers.
+    pub fn direct_build(&self) -> Result<Self> {
+        if self.deep.model != "gpt-6-astra" {
+            return Err(Error::UnsupportedProfile(
+                "direct BUILD requires the Astra profile".into(),
+            ));
+        }
+        Ok(Self {
+            economy: self.deep.clone(),
+            critic: self.deep.clone(),
+            deep: self.deep.clone(),
+        })
+    }
     /// The policy defaults.
     pub fn defaults() -> Profiles {
         Profiles {
@@ -194,7 +207,7 @@ impl Profiles {
                 effort: Effort::Medium,
             },
             critic: ProfileSpec {
-                model: "gpt-5.6-terra".to_string(),
+                model: "gpt-6-astra".to_string(),
                 effort: Effort::High,
             },
             deep: ProfileSpec {
@@ -279,6 +292,19 @@ impl Profiles {
     /// The model and effort a role runs under.
     pub fn for_role(&self, role: Role) -> &ProfileSpec {
         self.spec(role.profile())
+    }
+
+    /// Both independent PR review lanes request Astra; never substitute another model.
+    pub fn require_astra_reviewers(&self) -> Result<()> {
+        for role in [Role::UnitReviewer, Role::FinalReview] {
+            if self.for_role(role).model != "gpt-6-astra" {
+                return Err(Error::UnsupportedProfile(format!(
+                    "{} requires gpt-6-astra for independent PR review",
+                    role.as_str()
+                )));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -528,7 +554,7 @@ mod tests {
 model = "gpt-5.6-luna"
 effort = "medium"
 [profiles.critic]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 effort = "high"
 [profiles.deep]
 model = "gpt-6-astra"
@@ -610,25 +636,25 @@ effort = "high"
         let profiles = Profiles::defaults();
         assert_eq!(profiles.spec(Profile::Economy).model, "gpt-5.6-luna");
         assert_eq!(profiles.spec(Profile::Economy).effort, Effort::Medium);
-        assert_eq!(profiles.spec(Profile::Critic).model, "gpt-5.6-terra");
+        assert_eq!(profiles.spec(Profile::Critic).model, "gpt-6-astra");
         assert_eq!(profiles.spec(Profile::Critic).effort, Effort::High);
         assert_eq!(profiles.spec(Profile::Deep).model, "gpt-6-astra");
         assert_eq!(profiles.spec(Profile::Deep).effort, Effort::High);
     }
 
     #[test]
-    fn profiles_use_distinct_models_without_requiring_distinct_efforts() {
+    fn profiles_share_astra_for_independent_review_roles() {
         let profiles = Profiles::defaults();
         let models: BTreeSet<&str> = PROFILES
             .iter()
             .map(|p| profiles.spec(*p).model.as_str())
             .collect();
         let efforts: BTreeSet<Effort> = PROFILES.iter().map(|p| profiles.spec(*p).effort).collect();
-        assert_eq!(models.len(), 3, "two profiles share a model: {models:?}");
+        assert_eq!(models, BTreeSet::from(["gpt-5.6-luna", "gpt-6-astra"]));
         assert_eq!(
             efforts.len(),
             2,
-            "Astra and Terra intentionally share high: {efforts:?}"
+            "both Astra review profiles intentionally use high: {efforts:?}"
         );
     }
 
@@ -885,7 +911,7 @@ effort = "high"
         let config = "# 화합 profiles\r\n[profiles.deep]\r\nmodel = \"gpt-6-astra\"\r\n\
                       effort = \"high\"\r\n\r\n[profiles.economy] # cheapest\r\n\
                       model = \"gpt-5.6-luna\"\r\neffort = \"medium\"\r\n[profiles.critic]\r\n\
-                      effort = \"high\"\r\nmodel = \"gpt-5.6-terra\"\r\n";
+                      effort = \"high\"\r\nmodel = \"gpt-6-astra\"\r\n";
         assert_eq!(Profiles::from_toml(config).unwrap(), Profiles::defaults());
     }
 
@@ -1434,7 +1460,7 @@ effort = "high"
         };
         let parts = [
             section("economy", "gpt-5.6-luna", "medium"),
-            section("critic", "gpt-5.6-terra", "high"),
+            section("critic", "gpt-6-astra", "high"),
             section("deep", "gpt-6-astra", "high"),
         ];
         let orders = [
@@ -1458,10 +1484,10 @@ effort = "high"
     #[test]
     fn two_tables_that_differ_in_one_field_are_not_equal() {
         let base = Profiles::from_toml(DEFAULT_CONFIG).unwrap();
-        let other_model = Profiles::from_toml(&critic_model("gpt-5.6-terra-2")).unwrap();
+        let other_model = Profiles::from_toml(&critic_model("gpt-6-astra-2")).unwrap();
         assert_ne!(base, other_model);
         let other_effort = "[profiles.economy]\nmodel = \"gpt-5.6-luna\"\neffort = \"medium\"\n\
-                            [profiles.critic]\nmodel = \"gpt-5.6-terra\"\neffort = \"xhigh\"\n\
+                            [profiles.critic]\nmodel = \"gpt-6-astra\"\neffort = \"xhigh\"\n\
                             [profiles.deep]\nmodel = \"gpt-6-astra\"\neffort = \"xhigh\"\n";
         assert_ne!(base, Profiles::from_toml(other_effort).unwrap());
     }
@@ -1472,7 +1498,7 @@ effort = "high"
         assert_eq!(profiles.spec(Profile::Economy).effort, Effort::Medium);
         assert_eq!(profiles.spec(Profile::Critic).effort, Effort::High);
         assert_eq!(profiles.spec(Profile::Deep).effort, Effort::High);
-        assert_eq!(profiles.spec(Profile::Critic).model, "gpt-5.6-terra");
+        assert_eq!(profiles.spec(Profile::Critic).model, "gpt-6-astra");
     }
 
     #[test]
@@ -1482,7 +1508,7 @@ effort = "high"
             assert_eq!(profiles.for_role(role), profiles.spec(role.profile()));
         }
         assert_eq!(profiles.for_role(Role::Implementer).model, "gpt-5.6-luna");
-        assert_eq!(profiles.for_role(Role::UnitReviewer).model, "gpt-5.6-terra");
+        assert_eq!(profiles.for_role(Role::UnitReviewer).model, "gpt-6-astra");
         assert_eq!(profiles.for_role(Role::Recommender).model, "gpt-6-astra");
     }
 
@@ -1774,12 +1800,12 @@ effort = "high"
     #[test]
     fn a_profile_spec_round_trips_through_json() {
         let spec = ProfileSpec {
-            model: "gpt-5.6-terra".to_string(),
+            model: "gpt-6-astra".to_string(),
             effort: Effort::High,
         };
         assert_eq!(
             serde_json::to_string(&spec).unwrap(),
-            r#"{"model":"gpt-5.6-terra","effort":"high"}"#
+            r#"{"model":"gpt-6-astra","effort":"high"}"#
         );
         assert_eq!(
             serde_json::from_str::<ProfileSpec>(&serde_json::to_string(&spec).unwrap()).unwrap(),

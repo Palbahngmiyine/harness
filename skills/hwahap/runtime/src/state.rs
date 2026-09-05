@@ -60,12 +60,16 @@ pub enum RunState {
     Inspecting,
     /// Putting the decision frontier to the user.
     Deciding,
+    /// Recompute implications of the user's completed interview round.
+    Refining,
     /// Deriving the unit graph and running the two plan reviews.
     Proving,
     /// Waiting for `CONFIRM PLAN <challenge>`.
     AwaitingConfirmation {
         challenge: String,
     },
+    /// A confirmed plan retained without starting implementation.
+    PlanReady,
     /// Building one unit.
     Coding {
         unit: String,
@@ -73,6 +77,10 @@ pub enum RunState {
     },
     /// Full suite and final review.
     FinalVerifying,
+    /// A draft exists, but two independent reviews are still required.
+    PrReview {
+        pr_url: String,
+    },
     /// The draft pull request exists; the user adjusts or ships.
     AwaitingAdjustOrShip {
         pr_url: String,
@@ -97,10 +105,13 @@ impl RunState {
         match self {
             RunState::Inspecting => "inspecting",
             RunState::Deciding => "deciding",
+            RunState::Refining => "refining",
             RunState::Proving => "proving",
             RunState::AwaitingConfirmation { .. } => "awaiting_confirmation",
+            RunState::PlanReady => "plan_ready",
             RunState::Coding { .. } => "coding",
             RunState::FinalVerifying => "final_verifying",
+            RunState::PrReview { .. } => "pr_review",
             RunState::AwaitingAdjustOrShip { .. } => "awaiting_adjust_or_ship",
             RunState::Shipped { .. } => "shipped",
             RunState::PlanConflict { .. } => "plan_conflict",
@@ -112,11 +123,14 @@ impl RunState {
         match self {
             RunState::Inspecting
             | RunState::Deciding
+            | RunState::Refining
             | RunState::Proving
             | RunState::AwaitingConfirmation { .. }
+            | RunState::PlanReady
             | RunState::PlanConflict { .. } => Phase::Plan,
             RunState::Coding { .. } => Phase::Build,
             RunState::FinalVerifying
+            | RunState::PrReview { .. }
             | RunState::AwaitingAdjustOrShip { .. }
             | RunState::Shipped { .. }
             | RunState::Blocked { .. } => Phase::Review,
@@ -127,11 +141,14 @@ impl RunState {
         match self {
             // Autonomous states: the host calls straight back without troubling the user.
             RunState::Inspecting
+            | RunState::Refining
             | RunState::Proving
             | RunState::Coding { .. }
-            | RunState::FinalVerifying => Next::Continue,
+            | RunState::FinalVerifying
+            | RunState::PrReview { .. } => Next::Continue,
             RunState::Deciding
             | RunState::AwaitingConfirmation { .. }
+            | RunState::PlanReady
             | RunState::AwaitingAdjustOrShip { .. }
             | RunState::PlanConflict { .. } => Next::AwaitUser,
             RunState::Shipped { .. } => Next::Completed,
@@ -144,9 +161,11 @@ impl RunState {
         matches!(
             self,
             RunState::Inspecting
+                | RunState::Refining
                 | RunState::Proving
                 | RunState::Coding { .. }
                 | RunState::FinalVerifying
+                | RunState::PrReview { .. }
         )
     }
 
@@ -158,9 +177,9 @@ impl RunState {
     /// The draft pull request, once one exists.
     pub fn pr_url(&self) -> Option<&str> {
         match self {
-            RunState::AwaitingAdjustOrShip { pr_url, .. } | RunState::Shipped { pr_url } => {
-                Some(pr_url)
-            }
+            RunState::PrReview { pr_url }
+            | RunState::AwaitingAdjustOrShip { pr_url, .. }
+            | RunState::Shipped { pr_url } => Some(pr_url),
             _ => None,
         }
     }
@@ -326,6 +345,10 @@ impl Store {
 
     pub fn write_report(&self, markdown: &str) -> Result<()> {
         self.write_atomic(&self.root.join("report.md"), markdown)
+    }
+
+    pub fn write_usage(&self, json: &str) -> Result<()> {
+        self.write_atomic(&self.root.join("usage.json"), json)
     }
 
     /// Writes `artifacts/<name>`.
@@ -564,6 +587,7 @@ impl Store {
             "plan.json",
             "plan.md",
             "report.md",
+            "usage.json",
             "artifacts",
         ] {
             let from = self.root.join(name);

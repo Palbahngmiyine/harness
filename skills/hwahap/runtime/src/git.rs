@@ -22,27 +22,16 @@ use crate::error::{Error, Result};
 ///
 /// Everything else is dropped: `GIT_DIR`, `GIT_WORK_TREE` and `GIT_INDEX_FILE` inherited from a
 /// caller would silently redirect every command at a repository the user never named.
-const INHERITED_ENV: [&str; 2] = ["PATH", "HOME"];
-
-/// The identity every Hwahap commit is made under.
-///
-/// Checkpoints are machine commits, not the user's, and naming them so keeps a run working on a
-/// machine that has no git identity configured at all.
-const COMMIT_NAME: &str = "hwahap";
-const COMMIT_EMAIL: &str = "hwahap@localhost";
+const INHERITED_ENV: [&str; 3] = ["PATH", "HOME", "XDG_CONFIG_HOME"];
 
 /// Environment variables Hwahap sets on every invocation.
-const FIXED_ENV: [(&str, &str); 7] = [
+const FIXED_ENV: [(&str, &str); 3] = [
     // Reading state must never take the index lock: an observation should not be able to fail
     // because a checkpoint commit is in flight.
     ("GIT_OPTIONAL_LOCKS", "0"),
     ("GIT_CONFIG_NOSYSTEM", "1"),
     // A push that stops to ask for a password would hang a run that has no terminal.
     ("GIT_TERMINAL_PROMPT", "0"),
-    ("GIT_AUTHOR_NAME", COMMIT_NAME),
-    ("GIT_AUTHOR_EMAIL", COMMIT_EMAIL),
-    ("GIT_COMMITTER_NAME", COMMIT_NAME),
-    ("GIT_COMMITTER_EMAIL", COMMIT_EMAIL),
 ];
 
 /// Arguments prepended to every invocation.
@@ -50,7 +39,15 @@ const FIXED_ENV: [(&str, &str); 7] = [
 /// `--no-pager` because a pager on a pipe would block forever, and `core.hooksPath` is aimed at a
 /// path that can never hold a hook, because a repository hook is a third party able to edit the
 /// tree Hwahap is about to measure.
-const GLOBAL_ARGS: [&str; 3] = ["--no-pager", "-c", "core.hooksPath=/dev/null"];
+// Git resolves author/committer from user configuration in the actual worktree. Never invent
+// an OS-derived identity when configuration is missing. Credentials remain push authentication.
+const GLOBAL_ARGS: [&str; 5] = [
+    "--no-pager",
+    "-c",
+    "core.hooksPath=/dev/null",
+    "-c",
+    "user.useConfigOnly=true",
+];
 
 /// A git repository Hwahap operates on.
 #[derive(Debug, Clone)]
@@ -309,7 +306,7 @@ impl Git {
     }
 
     /// Raw stdout of a successful invocation, kept as bytes for the NUL-separated forms.
-    fn stdout_of(&self, cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
+    pub(crate) fn stdout_of(&self, cwd: &Path, args: &[&str]) -> Result<Vec<u8>> {
         let out = raw(cwd, args)?;
         if out.status.success() {
             return Ok(out.stdout);
@@ -372,12 +369,16 @@ fn child_env(lookup: impl Fn(&str) -> Option<OsString>) -> Vec<(&'static str, Os
 }
 
 /// Runs git with a scrubbed environment and returns the raw outcome, exit status included.
-fn raw(cwd: &Path, args: &[&str]) -> Result<Output> {
+fn git_command(cwd: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
     command.current_dir(cwd).env_clear();
     command.envs(child_env(|key| std::env::var_os(key)));
     command.args(GLOBAL_ARGS).args(args);
-    command.output().map_err(|e| {
+    command
+}
+
+fn raw(cwd: &Path, args: &[&str]) -> Result<Output> {
+    git_command(cwd, args).output().map_err(|e| {
         Error::command(
             describe(args),
             format!("could not run git in {}: {e}", cwd.display()),
@@ -538,6 +539,11 @@ mod tests {
     fn repo() -> (TempDir, Git) {
         let dir = TempDir::new().expect("temp dir");
         setup(dir.path(), &["init", "-b", "main"]);
+        setup(dir.path(), &["config", "user.name", "Repository User"]);
+        setup(
+            dir.path(),
+            &["config", "user.email", "repo@example.invalid"],
+        );
         write(&dir.path().join("README.md"), "hello\n");
         setup(dir.path(), &["add", "-A"]);
         setup(dir.path(), &["commit", "-m", "initial"]);
@@ -585,10 +591,6 @@ mod tests {
                 "GIT_OPTIONAL_LOCKS",
                 "GIT_CONFIG_NOSYSTEM",
                 "GIT_TERMINAL_PROMPT",
-                "GIT_AUTHOR_NAME",
-                "GIT_AUTHOR_EMAIL",
-                "GIT_COMMITTER_NAME",
-                "GIT_COMMITTER_EMAIL",
             ]
         );
         let value = |name: &str| {
@@ -598,7 +600,7 @@ mod tests {
         };
         assert_eq!(value("PATH").as_deref(), Some("/usr/bin"));
         assert_eq!(value("HOME").as_deref(), Some("/home/somebody"));
-        assert_eq!(value("GIT_COMMITTER_NAME").as_deref(), Some(COMMIT_NAME));
+        assert!(value("GIT_COMMITTER_NAME").is_none());
         assert_eq!(value("GIT_OPTIONAL_LOCKS").as_deref(), Some("0"));
         assert_eq!(value("GIT_CONFIG_NOSYSTEM").as_deref(), Some("1"));
         assert_eq!(value("GIT_TERMINAL_PROMPT").as_deref(), Some("0"));
@@ -611,6 +613,23 @@ mod tests {
         assert_eq!(keys.len(), FIXED_ENV.len());
         assert!(!keys.contains(&"PATH"), "{keys:?}");
         assert!(!keys.contains(&"HOME"), "{keys:?}");
+    }
+
+    #[test]
+    fn the_xdg_config_location_is_preserved_without_inheriting_identity_overrides() {
+        let env = child_env(|key| Some(OsString::from(key)));
+        assert!(env
+            .iter()
+            .any(|(key, value)| *key == "XDG_CONFIG_HOME" && value == "XDG_CONFIG_HOME"));
+        for key in [
+            "GIT_AUTHOR_NAME",
+            "GIT_AUTHOR_EMAIL",
+            "GIT_COMMITTER_NAME",
+            "GIT_COMMITTER_EMAIL",
+            "EMAIL",
+        ] {
+            assert!(!env.iter().any(|(name, _)| *name == key));
+        }
     }
 
     // ---- paths_outside, as a pure function ------------------------------------------------------
@@ -1373,7 +1392,7 @@ mod tests {
     }
 
     #[test]
-    fn commits_are_made_as_hwahap_whatever_the_repository_is_configured_to_say() {
+    fn checkpoint_and_repair_commits_use_the_repository_identity() {
         let (dir, git) = repo();
         setup(dir.path(), &["config", "user.name", "Somebody Else"]);
         setup(
@@ -1385,7 +1404,102 @@ mod tests {
         assert_eq!(
             git.run(&["log", "-1", "--format=%an <%ae>|%cn <%ce>"])
                 .unwrap(),
-            format!("{COMMIT_NAME} <{COMMIT_EMAIL}>|{COMMIT_NAME} <{COMMIT_EMAIL}>")
+            "Somebody Else <else@example.invalid>|Somebody Else <else@example.invalid>"
+        );
+        let tree = git.run(&["write-tree"]).unwrap();
+        let head = git.head_sha().unwrap();
+        let repair = git
+            .run(&["commit-tree", &tree, "-p", &head, "-m", "repair"])
+            .unwrap();
+        assert_eq!(
+            git.run(&["show", "-s", "--format=%an <%ae>|%cn <%ce>", &repair])
+                .unwrap(),
+            "Somebody Else <else@example.invalid>|Somebody Else <else@example.invalid>"
+        );
+    }
+
+    #[test]
+    fn global_identity_is_used_but_absent_identity_is_never_guessed() {
+        let (dir, git) = repo();
+        for key in ["user.name", "user.email"] {
+            setup(dir.path(), &["config", "--unset", key]);
+        }
+        let isolated = TempDir::new().unwrap();
+        let command = |args: &[&str]| {
+            let mut cmd = git_command(dir.path(), args);
+            cmd.env("HOME", isolated.path())
+                .env("XDG_CONFIG_HOME", isolated.path());
+            cmd
+        };
+        write(&dir.path().join("added.txt"), "new\n");
+        git.run(&["add", "-A"]).unwrap();
+        let tree = git.run(&["write-tree"]).unwrap();
+        let head = git.head_sha().unwrap();
+        for args in [
+            vec!["commit", "-m", "checkpoint"],
+            vec!["commit-tree", &tree, "-p", &head, "-m", "repair"],
+        ] {
+            let output = command(&args).output().unwrap();
+            assert!(
+                !output.status.success(),
+                "missing identity must prevent a commit"
+            );
+            assert!(!output.stderr.is_empty());
+            assert_eq!(git.head_sha().unwrap(), head);
+        }
+        write(
+            &isolated.path().join(".gitconfig"),
+            "[user]\nname = Global User\nemail = global@example.invalid\n",
+        );
+        let output = command(&["commit", "-m", "configured"]).output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(
+            git.run(&["log", "-1", "--format=%an <%ae>|%cn <%ce>"])
+                .unwrap(),
+            "Global User <global@example.invalid>|Global User <global@example.invalid>"
+        );
+    }
+
+    #[test]
+    fn linked_worktree_commits_resolve_the_worktrees_identity() {
+        let (dir, git) = repo();
+        let container = TempDir::new().unwrap();
+        let worktree = container.path().join("worker");
+        setup(dir.path(), &["config", "extensions.worktreeConfig", "true"]);
+        setup(
+            dir.path(),
+            &[
+                "worktree",
+                "add",
+                "-b",
+                "codex/identity",
+                worktree.to_str().unwrap(),
+                "HEAD",
+            ],
+        );
+        setup(
+            &worktree,
+            &["config", "--worktree", "user.name", "Worktree User"],
+        );
+        setup(
+            &worktree,
+            &[
+                "config",
+                "--worktree",
+                "user.email",
+                "worktree@example.invalid",
+            ],
+        );
+        write(&worktree.join("change.txt"), "owned\n");
+        git.commit_all(&worktree, "worktree checkpoint").unwrap();
+        assert_eq!(
+            git.run_in(&worktree, &["log", "-1", "--format=%an <%ae>|%cn <%ce>"])
+                .unwrap(),
+            "Worktree User <worktree@example.invalid>|Worktree User <worktree@example.invalid>"
         );
     }
 

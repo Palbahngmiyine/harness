@@ -31,6 +31,21 @@ fn facts() -> String {
     .to_string()
 }
 
+fn facts_after_build() -> String {
+    let mut proposal: serde_json::Value = serde_json::from_str(&facts()).unwrap();
+    proposal["facts"][0]["answer"] =
+        "the seed file, generated output and its documentation exist".into();
+    proposal["facts"][0]["sources"] =
+        serde_json::json!(["src/existing.txt:1", "src/added.txt:1", "docs/added.md:1"]);
+    proposal.to_string()
+}
+
+fn repeated_surface_proposals() -> String {
+    let mut proposal: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    proposal["decisions"] = serde_json::json!([]);
+    proposal.to_string()
+}
+
 fn decisions() -> String {
     let not_applicable: Vec<serde_json::Value> = (2..=12)
         .map(|n| {
@@ -167,7 +182,8 @@ fn happy_path_steps() -> Vec<common::Step> {
         step(Role::UnitReviewer, Reply::say(PASS)),
         step(Role::Implementer, build_u2()),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]
 }
 
@@ -453,6 +469,7 @@ async fn each_role_runs_on_its_own_fixed_profile_and_the_writers_run_in_the_work
             Role::Implementer,
             Role::UnitReviewer,
             Role::Implementer,
+            Role::UnitReviewer,
             Role::UnitReviewer,
             Role::FinalReview,
         ]
@@ -824,7 +841,8 @@ async fn accepted_checkpoints_survive_a_restart_and_only_the_current_unit_re_run
     let resumed = Script::new(vec![
         step(Role::Implementer, build_u2()),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]);
     let engine = fixture.engine();
     let mut outcome = engine.step_with(&resumed, None, None).await.unwrap();
@@ -1230,11 +1248,17 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
         "test -f src/added.txt && test -f docs/added.md && test -s src/extra.txt"
     );
     script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts_after_build())),
         step(
             Role::Recommender,
             Reply::say(
-                serde_json::json!({"decisions":[decision], "not_applicable":[]}).to_string(),
+                serde_json::json!({"decisions":[decision], "not_applicable":old["not_applicable"]})
+                    .to_string(),
             ),
+        ),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
         ),
         step(Role::PlanSynthesis, Reply::say(proposed.to_string())),
         step(Role::ColdConsumer, Reply::say(PASS)),
@@ -1244,7 +1268,8 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
             Reply::write(&[("src/extra.txt", "extra\n")], DONE),
         ),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]);
     let engine = fixture.engine();
     assert_eq!(
@@ -1261,10 +1286,14 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
     );
     assert_eq!(
         engine
-            .step_with(&script, None, Some("C3=REC"))
+            .step_with(&script, None, Some(&format!("{}\nC3=REC", all_answers())))
             .await
             .unwrap()
             .state,
+        "refining"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
         "proving"
     );
     let preview = engine.step_with(&script, None, None).await.unwrap();
@@ -1291,9 +1320,14 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
         outcome.message
     );
     assert_eq!(outcome.pr_url, first.last().unwrap().pr_url);
-    for log in ["pr-created", "pr-edited"] {
+    // One creation; report refresh after each review plus the adjustment publication.
+    for (log, expected) in [("pr-created", 1), ("pr-edited", 3)] {
         let calls = std::fs::read_to_string(fixture.dir.path().join(log)).unwrap();
-        assert_eq!(calls.lines().count(), 1, "unexpected {log} calls: {calls}");
+        assert_eq!(
+            calls.lines().count(),
+            expected,
+            "unexpected {log} calls: {calls}"
+        );
     }
     let after = store.read_run().unwrap().unwrap();
     assert_eq!(after.branch, before.branch);
@@ -1404,7 +1438,10 @@ async fn a_draft_made_ready_externally_refuses_adjustment_before_pushing() {
         .write_run(&hwahap::clock::FixedClock::new(NOW), &run)
         .unwrap();
     std::fs::write(fixture.dir.path().join("pr-ready"), "1").unwrap();
-    script.extend(vec![step(Role::FinalReview, Reply::say(PASS))]);
+    script.extend(vec![
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
     match fixture.engine().step_with(&script, None, None).await {
         Err(error) => assert!(error.to_string().contains("ready"), "{error}"),
         Ok(outcome) => assert_eq!(outcome.state, "blocked", "{}", outcome.message),
@@ -1432,7 +1469,9 @@ async fn assert_frozen_plan_tampering_is_refused(phase: &str) {
         assert_eq!(outcome.state, "final_verifying");
     }
     if phase == "ship" {
-        outcome = engine.step_with(&script, None, None).await.unwrap();
+        while outcome.next == "continue" {
+            outcome = engine.step_with(&script, None, None).await.unwrap();
+        }
         assert_eq!(outcome.state, "awaiting_adjust_or_ship");
     }
     let store = hwahap::state::Store::open(&fixture.repo).unwrap();
@@ -1495,6 +1534,8 @@ async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
     proposed["requirements"][0]["statement"] =
         serde_json::json!("the generated file has revised contents");
     script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts_after_build())),
+        step(Role::Recommender, Reply::say(repeated_surface_proposals())),
         step(
             Role::Recommender,
             Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
@@ -1512,7 +1553,8 @@ async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
             Reply::write(&[("docs/added.md", "# revised\n")], DONE),
         ),
         step(Role::UnitReviewer, Reply::say(PASS)),
-        step(Role::FinalReview, Reply::say(PASS)),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
     ]);
     let engine = fixture.engine();
     engine
@@ -1522,6 +1564,19 @@ async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
     assert_eq!(
         engine.step_with(&script, None, None).await.unwrap().state,
         "deciding"
+    );
+    let remaining_answers = all_answers()
+        .lines()
+        .filter(|line| !line.starts_with("C1="))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some(&remaining_answers))
+            .await
+            .unwrap()
+            .state,
+        "refining"
     );
     assert_eq!(
         engine.step_with(&script, None, None).await.unwrap().state,
@@ -1666,8 +1721,11 @@ async fn an_adjustment_is_written_into_the_plan_and_reaches_the_next_planner() {
     assert_eq!(adjustments[0]["revision"], 2);
 
     // And the planner is handed it on the next round.
-    script.extend(vec![step(Role::Recommender, Reply::say(decisions()))]);
-    let _ = engine.step_with(&script, None, None).await;
+    script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts_after_build())),
+        step(Role::Recommender, Reply::say(repeated_surface_proposals())),
+    ]);
+    engine.step_with(&script, None, None).await.unwrap();
     let asked = script.prompts_for(Role::Recommender);
     assert!(
         asked.iter().any(|p| p.contains("--dry-run")),
@@ -1897,17 +1955,20 @@ async fn every_session_leaves_its_own_receipt() {
 }
 
 #[tokio::test]
-async fn a_final_reviewer_that_writes_cannot_create_a_draft_pr() {
+async fn a_final_reviewer_that_writes_cannot_finish_a_published_draft() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps.last_mut().unwrap().reply =
-        Reply::write(&[("src/added.txt", "reviewer changed this\n")], PASS);
+    steps.last_mut().unwrap().reply = Reply::PrDefense {
+        writes: vec![("src/added.txt".into(), "reviewer changed this\n".into())],
+    };
     let script = Script::new(steps);
     let outcomes = run_to_draft_pr(&fixture, &script).await;
     let outcome = outcomes.last().unwrap();
     assert_eq!(outcome.state, "blocked");
     assert!(outcome.message.contains("final_review"));
-    assert!(outcome.pr_url.is_none());
+    assert!(outcome.pr_url.is_some());
+    assert!(fixture.dir.path().join("pr-created").exists());
+    assert!(fixture.engine().ship("SHIP anything").is_err());
 }
 
 #[tokio::test]
@@ -2069,4 +2130,626 @@ async fn changed_plan_content_invalidates_the_checkpointed_cold_review() {
         plan.reviews.critic.unwrap().plan_digest
     );
     assert_eq!(script.remaining(), 0);
+}
+
+#[tokio::test]
+async fn direct_build_adjust_preserves_branch_and_enters_plan() {
+    let fixture = Fixture::new();
+    git(
+        &fixture.repo,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    let engine = fixture.engine();
+    let input = hwahap::engine::BuildRequest {
+        user_instruction: "Build without planning".into(),
+        objective: REQUEST.into(),
+        base_branch: "main".into(),
+        branch: "codex/direct-build".into(),
+        full_suite: "test -f feature.txt".into(),
+        units: vec![hwahap::engine::BuildUnit {
+            title: "Create feature".into(),
+            acceptance: "feature is ready".into(),
+            paths: vec!["feature.txt".into()],
+            test_command: "test -f feature.txt".into(),
+        }],
+    };
+    engine.start_build(&input).unwrap();
+    let script = Script::new(vec![
+        step(
+            Role::Implementer,
+            Reply::write(
+                &[("feature.txt", "ready")],
+                r#"{"status":"completed","summary":"Created feature","conflict":null}"#,
+            ),
+        ),
+        step(
+            Role::UnitReviewer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "final_verifying"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "pr_review"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "awaiting_adjust_or_ship"
+    );
+    let adjusted = engine
+        .step_with(
+            &Script::new(vec![]),
+            None,
+            Some("Add a second documented behavior"),
+        )
+        .await
+        .unwrap();
+    assert_eq!(adjusted.state, "inspecting");
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let plan = store.read_plan().unwrap().unwrap();
+    let config = hwahap::config::Config::for_run(&store).unwrap();
+    assert!(plan.execution_authorization.is_none());
+    assert_eq!(
+        config.profiles.for_role(Role::Implementer).model,
+        "gpt-5.6-luna"
+    );
+    assert!(!hwahap::render::plan_markdown(&plan)
+        .unwrap()
+        .contains("Planning omitted"));
+    assert!(store.artifacts_path().join("build-request.json").exists());
+    script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(
+            Role::ColdConsumer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(
+            Role::PlanCritic,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+    ]);
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some(&all_answers()))
+            .await
+            .unwrap()
+            .state,
+        "refining"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
+    let reviewed = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        reviewed.state, "awaiting_confirmation",
+        "{}",
+        reviewed.message
+    );
+    let plan = store.read_plan().unwrap().unwrap();
+    assert!(hwahap::validate::freeze_blockers(&plan).unwrap().is_empty());
+    assert!(plan.reviews.critic.is_some() && plan.reviews.cold_consumer.is_some());
+    let confirm = format!("CONFIRM PLAN {}", plan.challenge().unwrap());
+    let result = engine.step_with(&script, None, Some(&confirm)).await;
+    assert_eq!(result.unwrap().state, "coding");
+    assert_eq!(store.read_run().unwrap().unwrap().branch, input.branch);
+    assert_eq!(
+        git(&fixture.worktree(), &["branch", "--show-current"]),
+        input.branch
+    );
+}
+
+#[tokio::test]
+async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine().with_parts(
+        Box::new(hwahap::clock::FixedClock::new(NOW)),
+        hwahap::forge::Forge::with_program("/missing-forge-for-plan-only"),
+    );
+    let mut steps = happy_path_steps()[..5].to_vec();
+    steps.insert(
+        2,
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+    );
+    let script = Script::new(steps);
+    assert_eq!(
+        engine.start_planning(REQUEST, true).unwrap().state,
+        "inspecting"
+    );
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    let confirmation = format!(
+        "CONFIRM PLAN {}",
+        challenge_in(&preview.message, "CONFIRM PLAN ")
+    );
+    let saved = engine
+        .step_with(&script, None, Some(&confirmation))
+        .await
+        .unwrap();
+    assert_eq!(saved.state, "plan_ready");
+    assert!(!fixture.worktree().exists());
+    let digest = saved.plan_digest.unwrap();
+    assert!(fixture.engine().build_confirmed("stale").is_err());
+    assert!(!fixture.worktree().exists());
+    let started = fixture.engine().build_confirmed(&digest).unwrap();
+    assert_eq!(started.state, "coding");
+    assert_eq!(started.plan_digest.as_deref(), Some(digest.as_str()));
+    assert!(fixture.engine().build_confirmed(&digest).is_err());
+}
+
+#[tokio::test]
+async fn delayed_build_rejects_changed_source() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut steps = happy_path_steps()[..5].to_vec();
+    steps.insert(
+        2,
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+    );
+    let script = Script::new(steps);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    let confirmation = format!(
+        "CONFIRM PLAN {}",
+        challenge_in(&preview.message, "CONFIRM PLAN ")
+    );
+    let saved = engine
+        .step_with(&script, None, Some(&confirmation))
+        .await
+        .unwrap();
+    git(
+        &fixture.repo,
+        &["commit", "--allow-empty", "-m", "source changed"],
+    );
+    let error = engine
+        .build_confirmed(&saved.plan_digest.unwrap())
+        .unwrap_err();
+    assert!(error.to_string().contains("source changed"));
+    assert!(!fixture.worktree().exists());
+    assert_eq!(engine.status().unwrap().state, "plan_ready");
+}
+
+#[tokio::test]
+async fn interactive_round_discovers_new_questions_before_structure() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut followup: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    followup["decisions"] = serde_json::json!([followup["decisions"][1].clone()]);
+    followup["decisions"][0]["id"] = "C3".into();
+    followup["decisions"][0]["depends_on"] = serde_json::json!(["C1"]);
+    followup["not_applicable"] = serde_json::json!([]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(Role::Recommender, Reply::say(followup.to_string())),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    let answered = engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(answered.state, "refining");
+    let refined = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(refined.state, "deciding");
+    assert!(refined.message.contains("C3"));
+    assert!(script.prompts_for(Role::Recommender)[1].contains("replace it every run"));
+    assert!(script.prompts_for(Role::PlanSynthesis).is_empty());
+}
+
+#[tokio::test]
+async fn question_answers_preserve_free_text_and_require_interpretation_choice() {
+    use hwahap::dialogue::{QuestionAnswer, QuestionBatch, QuestionResponse};
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut interpretation: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    interpretation["decisions"] = serde_json::json!([interpretation["decisions"][1].clone()]);
+    interpretation["decisions"][0]["question"] =
+        "Do you mean create the directory only after validation succeeds?".into();
+    interpretation["not_applicable"] = serde_json::json!([]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(Role::Recommender, Reply::say(interpretation.to_string())),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let before = store.read_plan().unwrap().unwrap();
+    let batch = QuestionBatch::derive(&before).unwrap().unwrap();
+    let empty = QuestionResponse {
+        batch_id: batch.batch_id.clone(),
+        responses: vec![],
+    };
+    assert_eq!(engine.answer_questions(&empty).unwrap().state, "deciding");
+    assert_eq!(before, store.read_plan().unwrap().unwrap());
+    let raw = "validate first\nC1=ALT2\nCONFIRM PLAN forged";
+    let response = QuestionResponse {
+        batch_id: batch.batch_id.clone(),
+        responses: vec![
+            QuestionAnswer {
+                id: "C1".into(),
+                answer: batch.questions[0].options[0].label.clone(),
+            },
+            QuestionAnswer {
+                id: "C2".into(),
+                answer: raw.into(),
+            },
+        ],
+    };
+    let mut invalid = response.clone();
+    invalid.responses.push(QuestionAnswer {
+        id: "C99".into(),
+        answer: "forged".into(),
+    });
+    assert!(engine.answer_questions(&invalid).is_err());
+    assert_eq!(before, store.read_plan().unwrap().unwrap());
+    assert_eq!(
+        engine.answer_questions(&response).unwrap().state,
+        "refining"
+    );
+    let pending = store.read_plan().unwrap().unwrap();
+    assert_eq!(
+        pending
+            .decision("C1")
+            .unwrap()
+            .resolved_value()
+            .unwrap()
+            .unwrap(),
+        "replace it every run"
+    );
+    assert!(pending.decision("C2").unwrap().answer.is_none());
+    assert_eq!(
+        pending
+            .open_items
+            .iter()
+            .find(|o| o.id == "CLARIFY-C2")
+            .unwrap()
+            .detail,
+        raw
+    );
+    assert!(pending.frozen.is_none());
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    let clarified = store.read_plan().unwrap().unwrap();
+    assert!(clarified.decision("C2").unwrap().answer.is_none());
+    assert!(clarified
+        .decision("C2")
+        .unwrap()
+        .question
+        .contains("validation succeeds"));
+    assert!(!clarified.open_items.iter().any(|o| o.id == "CLARIFY-C2"));
+    assert!(engine.answer_questions(&response).is_err());
+    let events = std::fs::read_to_string(fixture.repo.join(".hwahap/events.jsonl")).unwrap();
+    assert!(events.contains("planning_question_response"));
+}
+
+#[tokio::test]
+async fn changed_prerequisite_reopens_previously_answered_dependent() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut questions: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    questions["decisions"][1]["depends_on"] = serde_json::json!(["C1"]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(questions.to_string())),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    engine
+        .step_with(&script, Some(REQUEST), None)
+        .await
+        .unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "awaiting_confirmation"
+    );
+    engine
+        .step_with(&script, None, Some("C1=ALT2"))
+        .await
+        .unwrap();
+    let plan = hwahap::state::Store::open(&fixture.repo)
+        .unwrap()
+        .read_plan()
+        .unwrap()
+        .unwrap();
+    assert!(plan.decision("C2").unwrap().answer.is_none());
+    assert_eq!(hwahap::frontier::derive(&plan).unwrap().ready, ["C2"]);
+}
+
+#[tokio::test]
+async fn adversarial_surface_freeform_is_not_silently_confirmable() {
+    use hwahap::dialogue::{QuestionAnswer, QuestionBatch, QuestionResponse};
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(
+                r#"{"decisions":[],"not_applicable":[{"surface":"S1","reason":"reconsider scope"}]}"#,
+            ),
+        ),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let batch = QuestionBatch::derive(&store.read_plan().unwrap().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.questions[0].id, "S1");
+    let response = QuestionResponse {
+        batch_id: batch.batch_id,
+        responses: vec![QuestionAnswer {
+            id: "S1".into(),
+            answer: "Only keep generating the file if preserving prior contents is guaranteed"
+                .into(),
+        }],
+    };
+    assert_eq!(
+        engine.answer_questions(&response).unwrap().state,
+        "refining"
+    );
+    let refined = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(refined.state, "deciding");
+    let pending = store.read_plan().unwrap().unwrap();
+    let displayed = QuestionBatch::derive(&pending).unwrap().unwrap();
+    assert_eq!(displayed.questions[0].id, "S1");
+    assert!(displayed.questions[0]
+        .question
+        .contains("preserving prior contents"));
+    assert!(!hwahap::validate::freeze_blockers(&pending)
+        .unwrap()
+        .is_empty());
+    assert!(script.prompts_for(Role::PlanSynthesis).is_empty());
+}
+
+#[tokio::test]
+async fn adversarial_review_added_question_is_available_in_ui_batch() {
+    use hwahap::dialogue::QuestionBatch;
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut followup: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    followup["decisions"] = serde_json::json!([followup["decisions"][1].clone()]);
+    followup["decisions"][0]["id"] = "C3".into();
+    followup["not_applicable"] = serde_json::json!([]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(
+            Role::ColdConsumer,
+            Reply::say(r#"{"verdict":"fail","findings":["A new explicit decision is needed"]}"#),
+        ),
+        step(Role::PlanCritic, Reply::say(PASS)),
+        step(Role::Recommender, Reply::say(followup.to_string())),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    let plan = hwahap::state::Store::open(&fixture.repo)
+        .unwrap()
+        .read_plan()
+        .unwrap()
+        .unwrap();
+    assert_eq!(hwahap::frontier::derive(&plan).unwrap().ready, ["C3"]);
+    let batch = QuestionBatch::derive(&plan).unwrap();
+    assert!(
+        batch.is_some(),
+        "review generated C3 but question UI has nothing to display"
+    );
+}
+
+#[tokio::test]
+async fn empty_interpretation_waits_for_user_without_reoffering_old_options() {
+    use hwahap::dialogue::{QuestionAnswer, QuestionBatch, QuestionResponse};
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let batch = QuestionBatch::derive(&store.read_plan().unwrap().unwrap())
+        .unwrap()
+        .unwrap();
+    engine
+        .answer_questions(&QuestionResponse {
+            batch_id: batch.batch_id,
+            responses: vec![QuestionAnswer {
+                id: "C1".into(),
+                answer: "Preserve user-written content".into(),
+            }],
+        })
+        .unwrap();
+    let result = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(result.state, "plan_conflict");
+    assert_eq!(result.next, "await_user");
+    let plan = store.read_plan().unwrap().unwrap();
+    assert!(plan.open_items.iter().any(|o| o.id == "CLARIFY-C1"));
+    assert!(QuestionBatch::derive(&plan)
+        .unwrap()
+        .unwrap()
+        .questions
+        .iter()
+        .all(|q| q.id != "C1"));
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some("Keep a backup of the existing file"))
+            .await
+            .unwrap()
+            .state,
+        "inspecting"
+    );
+    assert!(store.read_plan().unwrap().unwrap().frozen.is_none());
+}
+
+#[tokio::test]
+async fn interactive_preview_feedback_reopens_planning_and_dependent_questions() {
+    for feedback in ["C1=ALT2", "Keep the original file contents in a backup"] {
+        let fixture = Fixture::new();
+        let engine = fixture.engine();
+        let mut questions: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+        questions["decisions"][1]["depends_on"] = serde_json::json!(["C1"]);
+        let empty = r#"{"decisions":[],"not_applicable":[]}"#;
+        let script = Script::new(vec![
+            step(Role::FactFinder, Reply::say(facts())),
+            step(Role::Recommender, Reply::say(questions.to_string())),
+            step(Role::Recommender, Reply::say(empty)),
+            step(Role::PlanSynthesis, Reply::say(structure())),
+            step(Role::ColdConsumer, Reply::say(PASS)),
+            step(Role::PlanCritic, Reply::say(PASS)),
+            step(Role::Recommender, Reply::say(empty)),
+        ]);
+        engine.start_planning(REQUEST, true).unwrap();
+        engine.step_with(&script, None, None).await.unwrap();
+        engine
+            .step_with(&script, None, Some(&all_answers()))
+            .await
+            .unwrap();
+        engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(
+            engine.step_with(&script, None, None).await.unwrap().state,
+            "awaiting_confirmation"
+        );
+        let changed = engine
+            .step_with(&script, None, Some(feedback))
+            .await
+            .unwrap();
+        let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+        let plan = store.read_plan().unwrap().unwrap();
+        assert!(plan.frozen.is_none());
+        assert!(!fixture.worktree().exists());
+        if feedback.starts_with("C1=") {
+            assert_eq!(changed.state, "refining");
+            assert!(plan.decision("C2").unwrap().answer.is_none());
+            assert_eq!(
+                engine.step_with(&script, None, None).await.unwrap().state,
+                "deciding"
+            );
+            let current = store.read_plan().unwrap().unwrap();
+            let batch = hwahap::dialogue::QuestionBatch::derive(&current)
+                .unwrap()
+                .unwrap();
+            assert_eq!(batch.questions[0].id, "C2");
+        } else {
+            assert_eq!(changed.state, "inspecting");
+            assert_eq!(plan.adjustments.last().unwrap().text, feedback);
+        }
+    }
+}
+
+#[tokio::test]
+async fn adversarial_repeat_excluded_surface_has_no_orphan_question() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(
+                r#"{"decisions":[],"not_applicable":[{"surface":"S2","reason":"still not relevant"}]}"#,
+            ),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    let refined = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(refined.state, "proving");
+    let proved = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(proved.state, "awaiting_confirmation");
+    let plan = hwahap::state::Store::open(&fixture.repo)
+        .unwrap()
+        .read_plan()
+        .unwrap()
+        .unwrap();
+    assert!(!plan.open_items.iter().any(|o| o.id == "NA-S2"));
 }

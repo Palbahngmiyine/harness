@@ -1,6 +1,7 @@
 //! `hwahap` — a local STDIO MCP server.
 //!
-//! There is no daemon, no HTTP endpoint, and no other subcommand. The host starts this process,
+//! There is no daemon or HTTP endpoint. The optional usage command manages local measurements.
+//! The host starts the default process,
 //! speaks MCP over stdin and stdout, and stops it. Everything durable lives in the repository's
 //! `.hwahap/` directory, so a restart loses nothing.
 
@@ -10,6 +11,17 @@ use rmcp::ServiceExt;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().is_some_and(|arg| arg == "usage") {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&hwahap::cost::usage_command(&args[1..])?)?
+        );
+        return Ok(());
+    }
+    if !args.is_empty() {
+        return Err("unknown command; use usage or start without arguments for MCP".into());
+    }
     // stdout belongs to the MCP transport. Anything Hwahap wants a human to see goes to stderr,
     // and anything it wants to keep goes into `.hwahap/`.
     let server = Hwahap::new();

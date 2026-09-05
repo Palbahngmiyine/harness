@@ -432,7 +432,7 @@ pub struct Adjustment {
     pub ts: String,
 }
 
-/// The user's `CONFIRM PLAN <challenge>`.
+/// An authorization seal: planning confirmation or the recorded direct BUILD instruction.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Frozen {
     /// The digest the challenge was derived from.
@@ -446,6 +446,24 @@ pub struct Frozen {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub schema: String,
+    /// Stop after confirmation; BUILD is a separate explicit action.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub plan_only: bool,
+    /// New native runs use answer-driven interviewing; old saved contracts retain their digest.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub interactive: bool,
+    /// The whole ready frontier for this interview round, paged by the host UI.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub question_frontier: Vec<String>,
+    /// Repository commit inspected by a new PLAN, fixed before user confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_head: Option<String>,
+    /// Verbatim instruction explicitly authorizing BUILD without the planning interview.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_authorization: Option<String>,
+    /// Exact integration base for direct builds; a moving local branch is not the baseline.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_commit: Option<String>,
     /// Stable slug identifying the run, and the `hwahap/<goal_id>` branch name.
     pub goal_id: String,
     /// Incremented by each adjustment round.
@@ -480,7 +498,7 @@ pub struct Plan {
     pub full_suite: String,
     #[serde(default)]
     pub reviews: PlanReviews,
-    /// Set only by `CONFIRM PLAN`; excluded from the plan digest.
+    /// Set by `CONFIRM PLAN` or explicit BUILD; excluded from the plan digest.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub frozen: Option<Frozen>,
 }
@@ -504,6 +522,12 @@ impl Plan {
     ) -> Self {
         Plan {
             schema: SCHEMA.to_string(),
+            plan_only: false,
+            interactive: false,
+            question_frontier: Vec::new(),
+            source_head: None,
+            execution_authorization: None,
+            base_commit: None,
             goal_id: goal_id.into(),
             revision: 1,
             base_branch: base_branch.into(),

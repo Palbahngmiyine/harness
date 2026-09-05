@@ -33,6 +33,15 @@ use crate::{frontier, prompts, proposal, render, validate};
 /// diagnosis call, and no repeated same-model retry loop.
 const MAX_ATTEMPTS: u32 = 2;
 
+mod adjust_build;
+mod build;
+mod grounding;
+mod interview;
+mod lifecycle;
+mod pr_review;
+pub use adjust_build::AdjustBuildRequest;
+pub use build::{BuildRequest, BuildUnit};
+
 /// A source of agent sessions.
 ///
 /// Boxed futures rather than `async fn` in the trait, because the engine holds it behind `dyn` so
@@ -77,7 +86,7 @@ impl Engine {
         let git = Git::open(repo_root)?;
         let root = git.root().to_path_buf();
         let store = Store::open(&root)?;
-        let config = Config::load(store.root())?;
+        let config = Config::for_run(&store)?;
         Ok(Engine {
             repo_root: root,
             store,
@@ -178,21 +187,53 @@ impl Engine {
     }
 
     fn resolve(&self, request: Option<&str>) -> Result<Resolved> {
+        self.resolve_planning(request, false, false)
+    }
+
+    pub fn start_planning(&self, request: &str, plan_only: bool) -> Result<StepOutcome> {
+        match self.resolve_planning(Some(request), plan_only, true)? {
+            Resolved::Started(outcome) => Ok(outcome),
+            Resolved::Advance(_) => unreachable!("a request starts or rejects"),
+        }
+    }
+
+    fn resolve_planning(
+        &self,
+        request: Option<&str>,
+        plan_only: bool,
+        interactive: bool,
+    ) -> Result<Resolved> {
         let existing = self.store.recover()?;
         match (existing, request) {
-            (None, Some(request)) => Ok(Resolved::Started(self.start(request)?)),
+            (None, Some(request)) => Ok(Resolved::Started(self.start(request, plan_only, interactive)?)),
             (None, None) => Err(Error::Rejected(
                 "there is no active Hwahap run in this repository; call hwahap_step again with \
                  `request` set to the user's implementation request"
                     .into(),
             )),
             (Some(run), Some(request)) if run.state.is_terminal() => {
+                let worktree = self.store.worktree_path();
+                match worktree.symlink_metadata() {
+                    Ok(_) => {
+                        let branch = if run.branch.is_empty() {
+                            format!("hwahap/{}", run.goal_id)
+                        } else {
+                            run.branch.clone()
+                        };
+                        self.check_plan_worktree(&branch, None)?;
+                        // Even non-force removal deletes ignored files; observe them explicitly.
+                        if !self.git.stdout_of(&worktree, &["ls-files", "--others", "--directory", "--no-empty-directory", "-z"])?.is_empty() {
+                            return Err(Error::Rejected("the previous worktree contains untracked or ignored files; review and preserve or clean up those files, then retry or use a new checkout".into()));
+                        }
+                        self.git.run(&["worktree", "remove", worktree.to_str().ok_or_else(|| Error::Rejected("non-UTF8 worktree".into()))?])?;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(Error::io(&worktree, error)),
+                }
                 // A finished run does not block the next one, but it is not silently overwritten:
-                // the previous run's files are archived first. Its worktree goes too — nothing else
-                // ever removes it, and the next run cannot create one at a path that still exists.
+                // only retire its state after the owned worktree was safely removed.
                 self.store.archive(&*self.clock)?;
-                self.git.remove_worktree(&self.store.worktree_path())?;
-                Ok(Resolved::Started(self.start(request)?))
+                Ok(Resolved::Started(self.start(request, plan_only, interactive)?))
             }
             (Some(run), Some(_)) => Err(Error::Rejected(format!(
                 "a Hwahap run is already active in this repository ({}, state {}). Finish or abandon \
@@ -221,6 +262,14 @@ impl Engine {
         };
 
         let parsed = parse_message(confirmation);
+        if let Some(rejection) = parsed.rejection_message() {
+            return Err(Error::Rejected(rejection));
+        }
+        if parsed.directives.len() != 1 {
+            return Err(Error::Rejected(
+                "SHIP must be the only directive in the confirmation message".into(),
+            ));
+        }
         let typed = parsed.directives.iter().find_map(|d| match d {
             Directive::Ship { challenge } => Some(challenge.clone()),
             _ => None,
@@ -253,12 +302,15 @@ impl Engine {
                 run.reviewed_head.as_deref().unwrap_or("nothing")
             )));
         }
+        self.require_completed_reviews(&run, &plan)?;
         if !self.forge.checks_passed(&self.repo_root, &pr_url)? {
             return Err(Error::Rejected(
                 "the pull request's required checks have not all succeeded; ship is refused".into(),
             ));
         }
 
+        let progress = self.require_review_progress(&run, &plan)?;
+        self.refresh_review_report(&run, &plan, &progress)?;
         self.forge.mark_ready(&self.repo_root, &pr_url)?;
         run.state = RunState::Shipped {
             pr_url: pr_url.clone(),
@@ -272,7 +324,7 @@ impl Engine {
 
     // ---------------------------------------------------------------- planning
 
-    fn start(&self, request: &str) -> Result<StepOutcome> {
+    fn start(&self, request: &str, plan_only: bool, interactive: bool) -> Result<StepOutcome> {
         if request.trim().is_empty() {
             return Err(Error::Rejected(
                 "the implementation request is empty".into(),
@@ -287,7 +339,17 @@ impl Engine {
             incarnation += 1;
             goal_id = format!("{stem}-{incarnation}");
         }
-        let plan = Plan::new(&goal_id, &base_branch, request.trim());
+        let mut plan = Plan::new(&goal_id, &base_branch, request.trim());
+        plan.plan_only = plan_only;
+        plan.interactive = interactive;
+        if interactive {
+            if !self.git.is_clean(&self.repo_root)? {
+                return Err(Error::Rejected(
+                    "PLAN requires a clean committed source so its evidence can be bound".into(),
+                ));
+            }
+            plan.source_head = Some(self.git.head_sha()?);
+        }
         self.store.write_plan(&plan)?;
         self.store
             .write_plan_markdown(&render::plan_markdown(&plan)?)?;
@@ -319,6 +381,7 @@ impl Engine {
             RunState::AwaitingConfirmation { challenge } => {
                 self.freeze(run, &challenge, user_input)
             }
+            RunState::PlanReady => self.adjust(run, user_input),
             RunState::AwaitingAdjustOrShip { .. } => self.adjust(run, user_input),
             RunState::PlanConflict { .. } => self.resolve_conflict(run, user_input),
             RunState::Shipped { .. } | RunState::Blocked { .. } => {
@@ -338,9 +401,11 @@ impl Engine {
     pub async fn drive(&self, run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         match run.state.clone() {
             RunState::Inspecting => self.inspect(run, sessions).await,
+            RunState::Refining => self.refine(run, sessions).await,
             RunState::Proving => self.prove(run, sessions).await,
             RunState::Coding { .. } => self.code(run, sessions).await,
             RunState::FinalVerifying => self.finalize(run, sessions).await,
+            RunState::PrReview { .. } => self.review_pr(run, sessions).await,
             other => Err(Error::Internal(format!(
                 "state {} does not need an agent session",
                 other.name()
@@ -368,6 +433,7 @@ impl Engine {
                 .await?;
             let facts = proposal::FactsProposal::parse(&facts.final_message, &plan)?;
             plan.facts.extend(facts.facts);
+            self.verify_planning_source(&plan)?;
             // A later native spawn refusal must not discard already verified repository facts.
             self.save_plan(&plan)?;
         }
@@ -381,6 +447,7 @@ impl Engine {
             )
             .await?;
         self.apply_decisions(&mut plan, &decisions.final_message)?;
+        Self::capture_frontier(&mut plan)?;
 
         self.save_plan(&plan)?;
         run.state = RunState::Deciding;
@@ -401,6 +468,17 @@ impl Engine {
         }
 
         let frontier = frontier::derive(&plan)?;
+        if plan.interactive
+            && user_input.is_some()
+            && crate::dialogue::QuestionBatch::derive(&plan)?.is_none()
+        {
+            run.state = RunState::Refining;
+            self.store.write_run(&*self.clock, &run)?;
+            return Ok(self.report(
+                &run,
+                "Answers recorded. Checking their implications before the next round.".into(),
+            ));
+        }
         if !frontier.ready.is_empty() {
             let message = render::frontier_markdown(&plan, &frontier.ready)?;
             self.store.write_run(&*self.clock, &run)?;
@@ -435,6 +513,7 @@ impl Engine {
 
     async fn prove(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         let mut plan = self.require_plan()?;
+        self.verify_planning_source(&plan)?;
 
         if plan.units.is_empty() || plan.structure_stale {
             let structure = self
@@ -503,6 +582,7 @@ impl Engine {
                 .await?;
             let before = plan.decisions.len();
             self.apply_decisions(&mut plan, &more.final_message)?;
+            Self::capture_frontier(&mut plan)?;
             let listed = findings
                 .iter()
                 .map(|f| format!("- {f}"))
@@ -539,6 +619,8 @@ impl Engine {
 
         let blockers = validate::freeze_blockers(&plan)?;
         if !blockers.is_empty() {
+            Self::capture_frontier(&mut plan)?;
+            self.save_plan(&plan)?;
             run.state = RunState::Deciding;
             self.store.write_run(&*self.clock, &run)?;
             return Ok(self.report(
@@ -564,9 +646,9 @@ impl Engine {
         Ok(self.report(
             &run,
             format!(
-                "The plan is complete. Read `.hwahap/plan.md`.\n\nAfter Hwahap freezes it, it will \
-                 implement, test, review, and open a draft pull request without asking you \
-                 anything else. To confirm, type exactly:\n\nCONFIRM PLAN {challenge}"
+                "Read `.hwahap/plan.md`, including decisions and expected behavior.\n\n{} To confirm this exact plan, type:\n\nCONFIRM PLAN {challenge}",
+                if plan.plan_only { "PLAN-only saves the confirmed plan and stops before BUILD." }
+                else { "Confirmation starts BUILD, tests, independent review and draft publication." }
             ),
         ))
     }
@@ -588,6 +670,9 @@ impl Engine {
         let parsed = parse_message(input);
 
         if let Some(rejection) = parsed.rejection_message() {
+            if plan.interactive && parsed.directives.is_empty() && parsed.conflicts.is_empty() {
+                return self.adjust(run, Some(input));
+            }
             return Ok(self.report(&run, rejection));
         }
 
@@ -606,7 +691,11 @@ impl Engine {
                 .any(|d| matches!(d, Directive::ConfirmPlan { .. }));
             self.record_answers(&mut plan, &parsed.directives)?;
             self.save_plan(&plan)?;
-            run.state = RunState::Deciding;
+            run.state = if plan.interactive {
+                RunState::Refining
+            } else {
+                RunState::Deciding
+            };
             self.store.write_run(&*self.clock, &run)?;
             return Ok(self.report(
                 &run,
@@ -629,12 +718,12 @@ impl Engine {
             _ => None,
         });
         let Some(typed) = typed else {
+            if plan.interactive && !input.trim().is_empty() {
+                return self.adjust(run, Some(input));
+            }
             return Ok(self.report(
                 &run,
-                format!(
-                    "That is not a confirmation. To freeze the plan the user must type \
-                     exactly:\n\nCONFIRM PLAN {challenge}"
-                ),
+                format!("To freeze the plan type exactly:\n\nCONFIRM PLAN {challenge}"),
             ));
         };
 
@@ -649,6 +738,7 @@ impl Engine {
             ));
         }
 
+        self.verify_planning_source(&plan)?;
         let digest = plan.digest()?;
         if plan.structure_stale
             || digest.challenge() != challenge
@@ -670,16 +760,53 @@ impl Engine {
         self.store
             .write_plan_markdown(&render::plan_markdown(&plan)?)?;
 
+        run.plan_digest = Some(digest);
+        run.state = RunState::PlanReady;
+        self.store.write_run(&*self.clock, &run)?;
+        if plan.plan_only {
+            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+        }
+        self.begin_frozen_build(run)
+    }
+
+    /// Resume precisely the previously confirmed PLAN, never construct a direct BUILD contract.
+    pub fn build_confirmed(&self, digest: &str) -> Result<StepOutcome> {
+        let run = self
+            .store
+            .recover()?
+            .ok_or_else(|| Error::Rejected("no confirmed plan".into()))?;
+        if run.state != RunState::PlanReady
+            || run.plan_digest.as_ref().map(ToString::to_string).as_deref() != Some(digest)
+        {
+            return Err(Error::Rejected(
+                "BUILD requires the current plan_ready contract digest".into(),
+            ));
+        }
+        self.begin_frozen_build(run)
+    }
+
+    fn begin_frozen_build(&self, mut run: Run) -> Result<StepOutcome> {
+        let plan = self.require_frozen_plan(&run)?;
+        if run.branch.is_empty()
+            && plan
+                .source_head
+                .as_ref()
+                .is_some_and(|head| self.git.head_sha().as_ref().ok() != Some(head))
+        {
+            return Err(Error::Rejected(
+                "source changed after PLAN; reopen planning before BUILD".into(),
+            ));
+        }
+        if run.branch.is_empty() && !self.git.is_clean(&self.repo_root)? {
+            return Err(Error::Rejected(
+                "source has uncommitted changes after PLAN".into(),
+            ));
+        }
         // Checked here, at the boundary of the autonomous phase, rather than at delivery time.
         // Discovering a missing GitHub login after an hour of unattended coding wastes the run.
         self.forge.require_auth(&self.repo_root)?;
 
-        let branch = format!("hwahap/{}", plan.goal_id);
-        let worktree = self.store.worktree_path();
-        if !self.git.branch_exists(&branch)? {
-            self.git
-                .add_worktree(&worktree, &branch, &plan.base_branch)?;
-        }
+        let branch = self.prepare_plan_worktree(&run, &plan)?;
 
         // Anything accepted against a plan detail this revision changed is no longer accepted.
         // Keeping it would let an adjustment ship the branch unchanged; dropping everything would
@@ -696,7 +823,6 @@ impl Engine {
             .cloned()
             .ok_or_else(|| Error::Rejected("the frozen plan has no units to build".into()))?;
 
-        run.plan_digest = Some(digest);
         run.branch = branch;
         run.state = RunState::Coding {
             unit: first,
@@ -816,7 +942,8 @@ impl Engine {
         sessions: &dyn Sessions,
     ) -> Result<UnitOutcome> {
         let checkpoint = self.git.run_in(worktree, &["rev-parse", "HEAD"])?;
-        let mut findings: Vec<String> = Vec::new();
+        let adjustment_findings = self.build_adjustment_findings(plan, unit)?;
+        let mut findings = adjustment_findings.clone();
 
         for attempt in 1..=MAX_ATTEMPTS {
             self.git.reset_hard(worktree, &checkpoint)?;
@@ -900,7 +1027,11 @@ impl Engine {
                 }
             }
 
-            findings = rejected.unwrap_or_default();
+            findings = adjustment_findings
+                .iter()
+                .cloned()
+                .chain(rejected.unwrap_or_default())
+                .collect();
         }
 
         self.git.reset_hard(worktree, &checkpoint)?;
@@ -981,7 +1112,7 @@ impl Engine {
         Ok(Ok(()))
     }
 
-    async fn finalize(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
+    async fn finalize(&self, mut run: Run, _sessions: &dyn Sessions) -> Result<StepOutcome> {
         let plan = self.require_frozen_plan(&run)?;
         let worktree = self.store.worktree_path();
 
@@ -1009,58 +1140,79 @@ impl Engine {
             return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
         }
 
-        let diff = self.git.run_in(
-            &worktree,
-            &["diff", &format!("{}...HEAD", plan.base_branch)],
-        )?;
-        let review = self
-            .ask(
-                sessions,
-                Role::FinalReview,
-                None,
-                prompts::final_review(&render::plan_markdown(&plan)?, &tail(&diff, 400_000)),
-            )
-            .await?;
-        let review = ReviewResult::parse(&review.final_message)?;
-        if review.verdict == Verdict::Fail {
-            run.state = RunState::Blocked {
-                reason: format!(
-                    "the final review rejected the branch:\n{}",
-                    review
-                        .findings
-                        .iter()
-                        .map(|f| format!("- {f}"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ),
-            };
-            self.store.write_run(&*self.clock, &run)?;
-            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
-        }
-
         let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
-        self.forge
+        let previous = crate::pr_review::ReviewProgress::load(&self.store)?;
+        let existing = self
+            .forge
             .existing_draft(&worktree, &plan.base_branch, &run.branch)?;
+        if previous
+            .as_ref()
+            .is_some_and(|p| existing.as_deref() != Some(p.binding.pr_url.as_str()))
+        {
+            return Err(Error::BoundaryViolation(
+                "recorded draft was closed, replaced or changed externally".into(),
+            ));
+        }
         self.git.push(&worktree, "origin", &run.branch)?;
         let report = format!(
             "{}\n## Cost evidence\n\n```json\n{}\n```\n",
             self.report_markdown(&plan, &run),
-            crate::cost::summary(&self.store)?
+            crate::cost::persist(&self.store)?
         );
         self.store.write_report(&report)?;
-        let pr = self.forge.create_draft(
-            &worktree,
-            &plan.base_branch,
-            &run.branch,
-            &plan.goal.statement,
-            &report,
-        )?;
-
-        run.reviewed_head = Some(head);
-        run.state = RunState::AwaitingAdjustOrShip {
-            pr_url: pr.url.clone(),
-            challenge: plan.digest()?.challenge(),
+        let pr = if let Some(previous) = &previous {
+            self.forge.update_draft(
+                &worktree,
+                &plan.base_branch,
+                &run.branch,
+                &previous.binding.pr_url,
+                &plan.goal.statement,
+                &report,
+            )?
+        } else {
+            self.forge.create_draft(
+                &worktree,
+                &plan.base_branch,
+                &run.branch,
+                &plan.goal.statement,
+                &report,
+            )?
         };
+
+        let mut progress = crate::pr_review::ReviewProgress {
+            binding: crate::pr_review::ReviewBinding {
+                pr_url: pr.url.clone(),
+                head: head.clone(),
+                contract_digest: plan.digest()?,
+            },
+            round: 1,
+            stage: crate::pr_review::ReviewStage::Attack,
+            repairs: 0,
+        };
+        if let Some(previous) = previous {
+            progress.repairs = previous.repairs;
+            if previous.binding == progress.binding
+                && previous.stage != crate::pr_review::ReviewStage::Complete
+            {
+                progress = previous;
+            } else {
+                progress.round = previous
+                    .round
+                    .checked_add(1)
+                    .ok_or_else(|| Error::ExecutionLimit("review round overflow".into()))?;
+            }
+        }
+        progress.save(&self.store)?;
+        run.reviewed_head = None;
+        run.state = RunState::PrReview {
+            pr_url: pr.url.clone(),
+        };
+        self.store.write_run(&*self.clock, &run)?;
+        if pr.head_sha != head || self.git.run_in(&worktree, &["rev-parse", "HEAD"])? != head {
+            return Err(Error::BoundaryViolation(
+                "published PR head differs from tested commit".into(),
+            ));
+        }
         self.store.write_run(&*self.clock, &run)?;
         Ok(self.report(&run, self.describe(&run, Some(&plan))?))
     }
@@ -1093,10 +1245,13 @@ impl Engine {
                 ),
             ));
         }
+        self.refresh_plan_source(&mut plan, &run)?;
         self.record_answers(&mut plan, &parsed.directives)?;
 
         let prose = free_text(input, &parsed.directives);
         plan.revision += 1;
+        // The original authorization remains in build-request.json. This revision is PLAN.
+        plan.execution_authorization = None;
         if !prose.is_empty() {
             plan.adjustments.push(crate::plan::Adjustment {
                 revision: plan.revision,
@@ -1147,6 +1302,7 @@ impl Engine {
                 "Conflicting answers were not recorded. Send one answer per decision.".into(),
             ));
         }
+        self.refresh_plan_source(&mut plan, &run)?;
         self.record_answers(&mut plan, &parsed.directives)?;
 
         let prose = free_text(input, &parsed.directives);
@@ -1257,8 +1413,30 @@ impl Engine {
         if !decisions.is_empty() || !not_applicable.is_empty() {
             plan.structure_stale = true;
         }
-        plan.decisions.extend(decisions);
+        for decision in decisions {
+            if let Some(existing) = plan.decision_mut(&decision.id) {
+                *existing = decision.clone();
+                plan.open_items
+                    .retain(|o| o.id != format!("CLARIFY-{}", decision.id));
+            } else {
+                plan.decisions.push(decision);
+            }
+        }
         for na in not_applicable {
+            if matches!(
+                plan.surfaces.get(&na.surface),
+                Some(SurfaceStatus::NotApplicable { .. })
+            ) {
+                continue;
+            }
+            // Keep a pending proposal and its user clarification intact across refinement.
+            if plan
+                .open_items
+                .iter()
+                .any(|o| o.id == format!("NA-{}", na.surface))
+            {
+                continue;
+            }
             // Recorded as a proposal only. The surface stays applicable until the user types
             // `S<n>=NA`, which is what [`Engine::record_answers`] acts on.
             plan.open_items.push(crate::plan::OpenItem {
@@ -1275,6 +1453,7 @@ impl Engine {
 
     fn record_answers(&self, plan: &mut Plan, directives: &[Directive]) -> Result<()> {
         let now = self.clock.now();
+        let before = plan.decisions.clone();
         for directive in directives {
             match directive {
                 Directive::Decision { id, selection } => {
@@ -1310,6 +1489,7 @@ impl Engine {
                         identity,
                         recommendation,
                     });
+                    plan.open_items.retain(|o| o.id != format!("CLARIFY-{id}"));
                 }
                 Directive::Surface { id } => {
                     let Some(surface) = Surface::parse(id) else {
@@ -1339,6 +1519,26 @@ impl Engine {
                 Directive::ConfirmPlan { .. } | Directive::Ship { .. } => continue,
             }
             plan.structure_stale = true;
+        }
+        let changed: Vec<_> = plan
+            .decisions
+            .iter()
+            .filter(|d| {
+                before.iter().find(|old| old.id == d.id).is_some_and(|old| {
+                    old.answer
+                        .as_ref()
+                        .map(|a| (&a.selection, &a.identity, &a.recommendation))
+                        != d.answer
+                            .as_ref()
+                            .map(|a| (&a.selection, &a.identity, &a.recommendation))
+                })
+            })
+            .map(|d| d.id.clone())
+            .collect();
+        if !changed.is_empty() {
+            Self::invalidate_dependents(plan, &changed);
+            plan.frozen = None;
+            plan.reviews = Default::default();
         }
         Ok(())
     }
@@ -1370,6 +1570,15 @@ impl Engine {
     }
 
     async fn run_command(&self, cwd: &Path, command: &str) -> Result<CommandOutput> {
+        self.run_command_with_limit(cwd, command, 1024 * 1024).await
+    }
+
+    async fn run_command_with_limit(
+        &self,
+        cwd: &Path,
+        command: &str,
+        limit: usize,
+    ) -> Result<CommandOutput> {
         // Run through a shell because the plan's commands are written the way a person writes
         // them, with pipes and flags. The command comes from a frozen plan the user confirmed.
         let mut builder = tokio::process::Command::new("sh");
@@ -1389,23 +1598,43 @@ impl Engine {
         #[cfg(unix)]
         builder.process_group(0);
 
-        let child = builder
+        let mut child = builder
             .spawn()
             .map_err(|e| Error::command(command, e.to_string()))?;
         let pid = child.id();
-        let _group = CommandGroup(pid);
+        let group = CommandGroup(pid);
+        let stdout = child.stdout.take().expect("stdout was piped");
+        let stderr = child.stderr.take().expect("stderr was piped");
 
         let timeout = std::time::Duration::from_secs(self.config.test_timeout_secs);
-        match tokio::time::timeout(timeout, child.wait_with_output()).await {
-            Ok(Ok(output)) => Ok(CommandOutput {
-                success: output.status.success(),
+        let collect = async {
+            tokio::try_join!(
+                read_command_stream(stdout, limit, "stdout"),
+                read_command_stream(stderr, limit, "stderr"),
+                async { child.wait().await.map_err(CommandReadError::Io) },
+            )
+        };
+        let result = tokio::time::timeout(timeout, collect).await;
+        if !matches!(&result, Ok(Ok(_))) {
+            // End descendants before reaping the shell on timeout, overflow or a read failure.
+            drop(group);
+            let _ = child.start_kill();
+            let _ = child.wait().await;
+        }
+        match result {
+            Ok(Ok((stdout, stderr, status))) => Ok(CommandOutput {
+                success: status.success(),
                 combined: format!(
                     "{}{}",
-                    String::from_utf8_lossy(&output.stdout),
-                    String::from_utf8_lossy(&output.stderr)
+                    String::from_utf8_lossy(&stdout),
+                    String::from_utf8_lossy(&stderr)
                 ),
             }),
-            Ok(Err(e)) => Err(Error::command(command, e.to_string())),
+            Ok(Err(CommandReadError::Io(e))) => Err(Error::command(command, e.to_string())),
+            Ok(Err(e @ CommandReadError::Limit { .. })) => Ok(CommandOutput {
+                success: false,
+                combined: e.to_string(),
+            }),
             Err(_) => Ok(CommandOutput {
                 success: false,
                 combined: format!(
@@ -1424,13 +1653,20 @@ impl Engine {
             next: run.state.next().name().to_string(),
             message,
             plan_digest: run.plan_digest.as_ref().map(|d| d.to_string()),
-            pr_url: run.state.pr_url().map(str::to_string),
+            pr_url: run.state.pr_url().map(str::to_string).or_else(|| {
+                crate::pr_review::ReviewProgress::load(&self.store)
+                    .ok()
+                    .flatten()
+                    .filter(|p| Some(&p.binding.contract_digest) == run.plan_digest.as_ref())
+                    .map(|p| p.binding.pr_url)
+            }),
         }
     }
 
     fn describe(&self, run: &Run, plan: Option<&Plan>) -> Result<String> {
         Ok(match &run.state {
             RunState::Inspecting => "Hwahap is reading the repository.".into(),
+            RunState::Refining => "Hwahap is checking new implications and unresolved interpretations from this round.".into(),
             RunState::Deciding => match plan {
                 Some(plan) => {
                     let frontier = frontier::derive(plan)?;
@@ -1442,11 +1678,15 @@ impl Engine {
             RunState::AwaitingConfirmation { challenge } => format!(
                 "Read `.hwahap/plan.md`. To freeze it, type exactly:\n\nCONFIRM PLAN {challenge}"
             ),
+            RunState::PlanReady => "PLAN is confirmed and saved in `.hwahap/plan.md`. Implementation has not started. Request BUILD with this plan's digest when ready.".into(),
             RunState::Coding { unit, attempt } => format!(
                 "Building {unit} (attempt {attempt}). {} unit(s) accepted so far.",
                 run.accepted_units.len()
             ),
-            RunState::FinalVerifying => "Running the full suite and the final review.".into(),
+            RunState::FinalVerifying => "Running the full suite before draft publication.".into(),
+            RunState::PrReview { pr_url } => {
+                format!("Draft {pr_url} requires independent Astra attack and defense review.")
+            }
             RunState::AwaitingAdjustOrShip { pr_url, challenge } => match plan {
                 Some(plan) => self.summary(plan, run, pr_url, challenge),
                 None => format!("{pr_url} is ready. Type `SHIP {challenge}` to mark it ready."),
@@ -1538,6 +1778,32 @@ struct CommandOutput {
     combined: String,
 }
 
+#[derive(Debug, thiserror::Error)]
+enum CommandReadError {
+    #[error("{stream} output exceeded {limit} bytes and the command was killed")]
+    Limit { stream: &'static str, limit: usize },
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
+}
+
+async fn read_command_stream(
+    reader: impl tokio::io::AsyncRead + Unpin,
+    limit: usize,
+    stream: &'static str,
+) -> std::result::Result<Vec<u8>, CommandReadError> {
+    use tokio::io::AsyncReadExt;
+    let mut bytes = Vec::new();
+    // One extra byte distinguishes exact-limit success from overflow without draining a flood.
+    reader
+        .take((limit as u64).saturating_add(1))
+        .read_to_end(&mut bytes)
+        .await?;
+    if bytes.len() > limit {
+        return Err(CommandReadError::Limit { stream, limit });
+    }
+    Ok(bytes)
+}
+
 fn describe_selection(selection: &Selection) -> String {
     match selection {
         Selection::Recommendation => "REC".into(),
@@ -1627,6 +1893,47 @@ impl Next {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn command_output_budget_bounds_both_streams_and_preserves_availability() {
+        let dir = tempfile::tempdir().unwrap();
+        std::process::Command::new("git")
+            .args(["init", "--quiet"])
+            .current_dir(dir.path())
+            .status()
+            .unwrap();
+        let engine = Engine::open(dir.path()).unwrap();
+        for output in [
+            "printf '%01025d' 0",
+            "printf '%01025d' 0 >&2",
+            "printf '%01025d' 0 & printf '%01025d' 0 >&2; wait",
+        ] {
+            let result = engine
+                .run_command_with_limit(dir.path(), output, 1024)
+                .await
+                .unwrap();
+            assert!(!result.success, "oversized output was accepted");
+            assert!(result.combined.contains("output exceeded"));
+            assert!(result.combined.len() < 200);
+        }
+        let normal = engine
+            .run_command_with_limit(dir.path(), "printf '%01024d' 0; printf ok >&2", 1024)
+            .await
+            .unwrap();
+        assert!(normal.success);
+        assert_eq!(normal.combined.len(), 1026);
+        let late = "sh -c 'sleep 1; touch overflow-marker' & printf '%01025d' 0; wait";
+        assert!(
+            !engine
+                .run_command_with_limit(dir.path(), late, 1024)
+                .await
+                .unwrap()
+                .success
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+        assert!(!dir.path().join("overflow-marker").exists());
+    }
 
     /// PROOF: a command that outruns its timeout keeps running after `run_command` returns.
     ///

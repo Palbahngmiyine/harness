@@ -36,15 +36,47 @@ without asking the user; `await_user` means show `message` and wait; `completed`
 show `message` and stop. Pass the user's reply verbatim in `user_input`. Never compose, complete, \
 or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may type one.
 
+For PLAN alone, start with request and plan_only:true. Confirmation saves plan_ready without \
+implementation or GitHub authentication. Default plan_only:false continues from confirmed PLAN to BUILD. \
+When the user later requests BUILD of that saved plan, send build_confirmed with its full plan_digest, \
+never reconstruct a direct-build contract. A stale source requires reopening PLAN. For ADJUST, use \
+adjust_build with the verbatim user_instruction, current contract_digest and affected unit_ids only \
+when correcting implementation under unchanged acceptance, tests and paths. Any contract change or \
+uncertain routing returns to PLAN through user_input. Both paths re-review the updated draft before SHIP.
+
+When question_batch is present, present its exact question bodies and all option labels using the \
+host's actually available request_user_input or request_user_input_async capability. request_user_input \
+may require Codex Plan mode; do not call an unavailable tool, invent AskUserQuestion, or switch modes. \
+Use the asynchronous question UI if available in the current mode. Never shorten away alternatives. \
+If the UI cannot represent every option, use a free-text question showing all full labels; if no \
+question tool is available, show that same complete page in the conversation. Relay actual answers \
+as question_response:{batch_id,responses:[{id,answer}]} with the unchanged batch ID and answer text. \
+Do not translate labels into C= directives or infer missing choices. Merely preselecting a default, timeout, \
+cancel, or request-resolved event is not a submitted answer. Accept an actual user-submitted response \
+payload, including a submitted recommended option; otherwise remain waiting. \
+The engine pages the whole ready frontier, then rechecks implications. Free text is unconfirmed until \
+the user chooses a clarified interpretation. CONFIRM PLAN and SHIP still require the user's exact typed \
+line in user_input/confirmation; never manufacture them from a question UI response.
+
+Only when the user explicitly requests execution without planning, send build instead of request. \
+Its user_instruction must be that user's exact authorization; specify the objective, new codex/ \
+branch, remote base branch, scoped units with observable acceptance and test commands, and full_suite. \
+Direct BUILD assigns authorship to this Astra parent and uses separate Astra Critic/Auditor children, \
+requiring two child slots. It records direct BUILD authority without claiming planning reviews or a CONFIRM PLAN message. \
+Normal requests still use the planning and confirmation flow. Never infer direct BUILD permission. \
+Every BUILD publishes a draft before independent Astra attack and defense. Confirmed findings go to \
+parent repair; both teams review the changed commit. Use recheck_pr:true alone to revalidate this \
+run's existing draft after a runtime upgrade; it preserves the contract and retry budget.
+
 Use Astra as the parent coordinator. Include the same host_session_id in every hwahap_step call: \
 the current parent task ID, or one UUID created once for this parent if the host exposes no ID. \
 Never copy another task's identity. In this repository the pool retains at most three children \
-across units and runs for this parent: Luna worker, Terra critic, Astra auditor. Authors never become reviewers. \
+across units and runs for this parent: Luna worker, Astra critic, Astra auditor. Authors never become reviewers. \
 Inspect native spawn, follow-up, wait and interrupt capabilities before execution; do not probe \
 capacity with disposable children or silently substitute models.
 
 For `native_dispatch`, follow the exact lane and identity. If lane=coordinator, register \
-agent_id=coordinator and execute the brief in this Astra parent (planning or repair). Never spawn \
+agent_id=coordinator and execute the brief in this Astra parent (planning, implementation or repair). Never spawn \
 a fourth child for that lane. If reuse_agent_id is present, FIRST register that exact agent ID, \
 then send the exact brief with the native follow-up tool ONCE. Registration is durable before \
 follow-up so a lost response cannot trigger duplicate delivery. If reuse_agent_id is absent, \
@@ -76,6 +108,9 @@ with dispatch_id and new observed host recovery evidence; elapsed time or reword
 is not recovery. New dispatches still spend native_max_calls. Do not change global thread limits, \
 close unrelated tasks, fabricate results or launch an ACP/CLI replacement. Hwahap owns code edits, \
 tests, commits and PRs; outside the exact dispatch, do not perform that work independently. \
+Host-side `hwahap usage attach <repo> <session.jsonl>` and `usage sync <repo>` are allowed for \
+local token observation in .hwahap/usage.json; see USAGE.md. Attach parent and retained children \
+before their first work in this run. Missing counters remain unknown; never invent reported_usage. \
 The auditor is always a separate child that never participates in implementation.
 
 There are two human gates and no others. `CONFIRM PLAN <challenge>` freezes the plan; after that, a \
@@ -90,6 +125,24 @@ checks pass, and the final review is still fresh.";
 /// Arguments to `hwahap_step`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct StepArgs {
+    /// Actual answers to the current question_batch, relayed without rewriting their text.
+    #[serde(default)]
+    pub question_response: Option<crate::dialogue::QuestionResponse>,
+    /// With request, confirm and retain PLAN without starting BUILD. Default continues to BUILD.
+    #[serde(default)]
+    pub plan_only: bool,
+    /// Explicit user request to BUILD the saved plan_ready contract with this exact full digest.
+    #[serde(default)]
+    pub build_confirmed: Option<String>,
+    /// Explicit implementation correction within existing acceptance, tests and paths.
+    #[serde(default)]
+    pub adjust_build: Option<crate::engine::AdjustBuildRequest>,
+    /// Revalidate this run's existing draft and resume both Astra reviews without planning.
+    #[serde(default)]
+    pub recheck_pr: bool,
+    /// Explicitly authorized execution without planning. Never set merely to avoid confirmation.
+    #[serde(default)]
+    pub build: Option<crate::engine::BuildRequest>,
     /// Absolute path to the repository Hwahap should work in.
     pub cwd: String,
     /// Stable identity of this parent Codex task. Reuse the same value on every step and run.
@@ -136,6 +189,9 @@ pub struct ShipArgs {
 /// What every tool returns.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct RunReport {
+    /// Next page of the current planning frontier for the host's actual user-question UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub question_batch: Option<crate::dialogue::QuestionBatch>,
     /// The run's stable identifier.
     pub run_id: String,
     /// `plan`, `build`, or `review`.
@@ -162,6 +218,7 @@ pub struct RunReport {
 impl From<StepOutcome> for RunReport {
     fn from(outcome: StepOutcome) -> Self {
         RunReport {
+            question_batch: None,
             run_id: outcome.run_id,
             phase: outcome.phase,
             state: outcome.state,
@@ -172,6 +229,17 @@ impl From<StepOutcome> for RunReport {
             native_dispatch: None,
             cost_evidence: None,
         }
+    }
+}
+
+impl RunReport {
+    fn attach_questions(&mut self, root: &std::path::Path) -> crate::Result<()> {
+        if self.state == "deciding" && self.next == "await_user" {
+            if let Some(plan) = crate::state::Store::open(root)?.read_plan()? {
+                self.question_batch = crate::dialogue::QuestionBatch::derive(&plan)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -239,6 +307,12 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    question_response: args.question_response,
+                    plan_only: args.plan_only,
+                    build_confirmed: args.build_confirmed,
+                    adjust_build: args.adjust_build,
+                    recheck_pr: args.recheck_pr,
+                    build: args.build,
                     host_session_id: Some(args.host_session_id),
                     request: args.request,
                     user_input: args.user_input,
@@ -252,8 +326,9 @@ impl Hwahap {
             .await
             .map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
+        report.attach_questions(&root).map_err(to_error_data)?;
         report.cost_evidence = Some(
-            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+            crate::cost::persist(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
         );
         Ok(Json(report))
@@ -279,6 +354,7 @@ impl Hwahap {
         let root = root_for(&args.cwd)?;
         let outcome = self.native.status(&root).await.map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
+        report.attach_questions(&root).map_err(to_error_data)?;
         report.cost_evidence = Some(
             crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
@@ -313,7 +389,7 @@ impl Hwahap {
             .map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
         report.cost_evidence = Some(
-            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+            crate::cost::persist(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
         );
         Ok(Json(report))

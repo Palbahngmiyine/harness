@@ -8,6 +8,20 @@ use hwahap::mcp::{Hwahap, INSTRUCTIONS};
 use rmcp::ServerHandler;
 
 #[test]
+fn recheck_is_an_explicit_step_input() {
+    let step = Hwahap::tool_router()
+        .list_all()
+        .into_iter()
+        .find(|t| t.name == "hwahap_step")
+        .unwrap();
+    assert_eq!(
+        step.input_schema["properties"]["recheck_pr"]["type"],
+        "boolean"
+    );
+    assert!(INSTRUCTIONS.contains("recheck_pr:true alone"));
+}
+
+#[test]
 fn the_server_advertises_exactly_three_tools() {
     let tools = Hwahap::tool_router().list_all();
     let names: Vec<&str> = tools.iter().map(|t| t.name.as_ref()).collect();
@@ -150,6 +164,19 @@ fn the_step_tool_requires_only_the_repository_path() {
     let properties = schema["properties"].as_object().expect("properties");
     assert!(properties.contains_key("request"));
     assert!(properties.contains_key("user_input"));
+    for key in [
+        "plan_only",
+        "build_confirmed",
+        "adjust_build",
+        "question_response",
+    ] {
+        assert!(properties.contains_key(key), "missing {key}");
+    }
+    assert!(
+        Hwahap::step_tool_attr().output_schema.unwrap()["properties"]
+            .get("question_batch")
+            .is_some()
+    );
 }
 
 #[test]

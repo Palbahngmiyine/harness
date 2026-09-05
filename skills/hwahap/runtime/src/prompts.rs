@@ -16,6 +16,50 @@ use crate::agentresult::{ReviewResult, WorkerResult};
 use crate::plan::{Decision, Plan, Selection, Surface, Unit, SURFACES};
 use crate::proposal::{DecisionsProposal, FactsProposal, StructureProposal};
 
+pub fn pr_attack(binding: &crate::pr_review::ReviewBinding, contract: &str, diff: &str) -> String {
+    let example = serde_json::json!({"binding":binding,"findings":[],"security":crate::pr_review::security_example(),"evidence":["actual checks and their observed results"]});
+    format!("{COMMON}\n# Attack team: independently try to falsify this published commit\n{}\n{}\n\
+Read source beyond the diff when needed. Report concrete defects, never style preferences. Each finding needs \
+id, file (relative), line (positive), condition (reproduction), expected, observed, evidence (nonempty strings). \
+Use unique IDs. Empty findings still require meaningful checked evidence. Do not modify files. \
+{SECURITY_REVIEW}\nReturn only this JSON shape with the exact binding, replacing sample evidence:\n{example}", quoted(contract), quoted(diff))
+}
+
+pub fn pr_defense(attack: &crate::pr_review::AttackReport, contract: &str, diff: &str) -> String {
+    let example = serde_json::json!({"binding":attack.binding,"assessments":[],"additional_findings":[],"security":crate::pr_review::security_example(),"evidence":["independent checks and their observed results"]});
+    format!("{COMMON}\n# Defense team: independently check every attack claim\n{}\n{}\n{}\n\
+Reproduce or refute every attack finding using source or focused checks. Do not assume the attacker is correct. \
+Return one assessment per finding: finding_id, judgment (confirmed/refuted/unresolved), evidence (nonempty strings). \
+Add newly found defects under additional_findings with id/file/line/condition/expected/observed/evidence. \
+Do not repair or edit files. Never mark an unverified claim refuted; use unresolved. \
+Independently inspect all six security areas, including the attacker's checked and not_applicable claims. \
+Do not copy their coverage as your evidence. Link findings even when refuted; assessments record the judgment. \
+{SECURITY_REVIEW}\nReturn only this JSON shape with the exact binding, replacing sample evidence:\n{example}",
+        quoted(contract), quoted(diff), quoted(&serde_json::to_string(attack).expect("serializable attack")))
+}
+
+const SECURITY_REVIEW: &str = "\
+Security review is mandatory, including unknown-vulnerability hypotheses without a CVE. Start with a concise \
+threat_model: protected assets, attacker-controlled inputs, trust boundaries, and deployment assumptions. \
+Trace changed entry points to consequential operations and inspect adjacent callers/guards as needed. \
+For each security area exactly once, report status checked, not_applicable or blocked; evidence must name \
+inspected paths/tests and observed results, justify inapplicability, or identify the blocker and next check. \
+checked means the stated inspection was completed, not that all vulnerabilities are absent. Link relevant \
+finding_ids to full findings; do not hide a vulnerability in coverage prose. Each security finding must \
+state attacker prerequisites/control, boundary crossed, impact, minimal local reproduction or source trace, \
+expected/observed behavior and a proposed regression check in condition/expected/observed/evidence. \
+Distinguish observed results from hypotheses; unavailable environment or unresolved assumptions mean blocked. \
+Do not claim a confirmed zero-day or zero-day-free result from a missing CVE or a clean scanner. Inspect:\n\
+- authorization: identity, privilege, ownership and tenant/repository boundaries;\n\
+- untrusted_input: injection (including repository/prompt/tool output), paths/symlinks, deserialization and network sinks;\n\
+- secrets: credentials, logs, artifacts, data exposure and cryptographic handling;\n\
+- supply_chain: dependency/build/update provenance and executable hooks; scans supplement source reasoning;\n\
+- state_integrity: replay, TOCTOU/races, tampering, fail-open errors and workflow bypass;\n\
+- resource_exhaustion: unbounded input/output, time, retry/spawn loops and cancellation.\n\
+Use bounded local tests with synthetic data in temporary fixtures. Do not attack external systems, use real \
+secrets or run destructive/load tests. Keep sensitive reproduction details in local evidence and report \
+only redacted summaries publicly. No extra agents or broad scans; prioritize changed trust boundaries.";
+
 /// Preamble shared by every role: what Hwahap is and what the agent must not do.
 const COMMON: &str = "\
 You are one step of a Hwahap run. During planning, investigate and propose; do not assume approval. \
@@ -154,6 +198,13 @@ Goal: {goal}
 
 Ask about preferences and trade-offs. Never ask about anything the repository already answers —
 those are facts, and facts are established by reading, not by asking.
+After every answer round, recompute the implications of the current answers: new constraints,
+failure cases, conflicting choices and downstream decisions. Do not just repeat the initial list.
+Grill unclear intent with a concrete scenario and ask what outcome the user wants and what outcome
+they would reject. Keep each question focused on one material choice. Use the user's terminology;
+do not silently convert a free-text answer into a more specific preference.
+An empty next-question list means no further question was identified in this pass, not proof that
+the plan is complete or that every possible misunderstanding has been eliminated.
 {feedback}{review}
 ## The twelve decision surfaces
 
@@ -175,9 +226,15 @@ apply; the user confirms that separately.
 ## Rules for each decision you propose
 
 - Two or more alternatives that are genuinely different, not a rephrasing of each other.
+- Make the desired and undesired outcomes explicit in the question and alternatives. For example,
+  ask what happens to an existing file: preserve its bytes or replace them; do not ask merely
+  whether file handling should be reliable. Ask a follow-up when an answer leaves that distinction open.
 - A recommendation in one of three modes: `recommended` with a choice, rationale, evidence (fact
   ids), trade-offs, impact and confidence; `no_recommendation` when there is no objective basis;
   `probe_required` when only an experiment can settle it.
+- Every mode needs a concrete rationale. A recommended choice also needs nonempty evidence,
+  trade-offs and impact. Explain what each cited fact establishes and what remains an assumption.
+  Do not invent evidence to fill a required field; use no_recommendation or probe_required instead.
 - `evidence` may cite only facts that already exist in this plan.
 - `depends_on` lists the decisions that must be answered before this one can be, and may name only
   decisions that exist or that this same proposal creates. A decision may not depend on itself.
@@ -253,13 +310,20 @@ Goal: {goal}
   decision above must be cited by at least one requirement — a decision the user made that no
   requirement uses has been dropped on the floor. A decision answered UNKNOWN is still a decision
   the user answered: cite it, and schedule what settles it.
+- Preserve the original selected meaning, conditions and exclusions through requirements,
+  acceptance criteria and test commands. An ID reference does not establish semantic agreement.
+  If the user chose to preserve an existing file, a requirement to overwrite it is a contradiction,
+  even if it cites the correct decision. Do not resolve contradictions or missing choices yourself.
 - **Acceptance** (`A<n>`): how a requirement is shown to hold, stated as something an observer sees.
+  Include a concrete desired example and an undesired outcome that would fail acceptance.
 - **Units** (`U<n>`): atomic implementation steps. Each declares the repository-relative path
   prefixes it may change — Hwahap discards anything written outside them — and the acceptance
   criteria it delivers. `depends_on` must be acyclic. Set `probe: true` only for a reversible
   experiment that settles a `probe_required` decision.
 - **Tests** (`T<n>`): the exact command Hwahap will run, and the unit whose loop runs it. Every
   non-probe unit needs at least one. A test's acceptance ids must be a subset of its unit's.
+  The command must reject the undesired outcome, not merely return success or prove a file exists
+  when the chosen behaviour concerns its contents or preservation.
 - **full_suite**: the one command run after every unit is accepted.
 
 Keep units small enough that one session can finish one. Order them so that a unit never needs
@@ -300,8 +364,12 @@ Work through all of these, and report a finding for each real problem:
   the listed test really fail if the requirement were violated?
 - Recommendations: is any recommendation unsupported by its evidence, or contradicted by a fact?
 - Traceability: any decision that no requirement uses, any unit that no test covers.
+- Meaning preservation: compare original selected values with requirements, acceptance and tests.
+  A matching ID is insufficient if a condition, exclusion, desired example or rejected outcome changed.
 
 Do not report style, wording, or preferences. Report only what would produce wrong or blocked work.
+A pass records the checks performed in this review; it is not proof that the plan is complete,
+that facts are true merely because they have citations, or that no misunderstanding can remain.
 
 # The plan
 

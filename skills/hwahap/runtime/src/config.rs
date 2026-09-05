@@ -60,6 +60,18 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Resolve the same execution profiles in the engine, broker, receipts and cost records.
+    pub fn for_run(store: &crate::state::Store) -> Result<Self> {
+        let mut config = Self::load(store.root())?;
+        config.profiles.require_astra_reviewers()?;
+        if store
+            .read_plan()?
+            .is_some_and(|plan| plan.execution_authorization.is_some())
+        {
+            config.profiles = config.profiles.direct_build()?;
+        }
+        Ok(config)
+    }
     /// Reads `<hwahap_dir>/config.toml`, falling back to the defaults when it is absent.
     pub fn load(hwahap_dir: &Path) -> Result<Config> {
         let path = hwahap_dir.join(CONFIG_FILE);
@@ -141,7 +153,7 @@ mod tests {
             config.profiles.spec(Profile::Economy).effort,
             Effort::Medium
         );
-        assert_eq!(config.profiles.spec(Profile::Critic).model, "gpt-5.6-terra");
+        assert_eq!(config.profiles.spec(Profile::Critic).model, "gpt-6-astra");
         assert_eq!(config.profiles.spec(Profile::Critic).effort, Effort::High);
         assert_eq!(config.profiles.spec(Profile::Deep).model, "gpt-6-astra");
         assert_eq!(config.profiles.spec(Profile::Deep).effort, Effort::High);
@@ -196,7 +208,7 @@ mod tests {
 model = "gpt-5.6-luna"
 effort = "medium"
 [profiles.critic]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 effort = "high"
 [profiles.deep]
 model = "gpt-6-astra"
@@ -212,7 +224,7 @@ effort = "xhigh"
 model = "gpt-5.6-luna"
 effort = "low"
 [profiles.critic]
-model = "gpt-5.6-terra"
+model = "gpt-6-astra"
 effort = "high"
 [profiles.deep]
 model = "gpt-6-astra"
