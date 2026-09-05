@@ -54,7 +54,7 @@ impl Default for Config {
             profiles: Profiles::defaults(),
             test_timeout_secs: 1_800,
             native_max_calls: 64,
-            native_timeout_secs: 900,
+            native_timeout_secs: 180,
         }
     }
 }
@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(config.profiles.spec(Profile::Deep).model, "gpt-6-astra");
         assert_eq!(config.profiles.spec(Profile::Deep).effort, Effort::High);
         assert_eq!(config.native_max_calls, 64);
-        assert_eq!(config.native_timeout_secs, 900);
+        assert_eq!(config.native_timeout_secs, 180);
         assert_eq!(config.test_timeout_secs, 1_800);
     }
 
