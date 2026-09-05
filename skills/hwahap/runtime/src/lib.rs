@@ -19,6 +19,7 @@ pub mod git;
 pub mod mcp;
 pub mod native;
 pub mod plan;
+pub mod pr_review;
 pub mod profile;
 pub mod prompts;
 pub mod proposal;
