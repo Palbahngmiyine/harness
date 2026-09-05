@@ -579,6 +579,10 @@ impl Engine {
 
         let parsed = parse_message(input);
 
+        if let Some(rejection) = parsed.rejection_message() {
+            return Ok(self.report(&run, rejection));
+        }
+
         // Answers are read before the confirmation, and win over it. A message holding both is a
         // user who changed their mind and confirmed in one breath: the challenge they typed
         // describes the plan as it was a moment ago, so honouring it would freeze the very content
@@ -638,6 +642,14 @@ impl Engine {
         }
 
         let digest = plan.digest()?;
+        if digest.challenge() != challenge || !validate::freeze_blockers(&plan)?.is_empty() {
+            plan.frozen = None;
+            plan.reviews = crate::plan::PlanReviews::default();
+            self.save_plan(&plan)?;
+            run.state = RunState::Proving;
+            self.store.write_run(&*self.clock, &run)?;
+            return Ok(self.report(&run, "The plan changed after its preview. Hwahap must review the current plan and issue a fresh confirmation challenge.".into()));
+        }
         plan.frozen = Some(Frozen {
             digest: digest.clone(),
             confirmed_at: self.clock.now(),
@@ -725,17 +737,8 @@ impl Engine {
             let unit = plan
                 .unit(unit_id)
                 .ok_or_else(|| Error::Internal(format!("unit {unit_id} vanished from the plan")))?;
-            let probe = unit.probe;
-
             match self.build_unit(&plan, unit, &worktree, sessions).await? {
                 UnitOutcome::Accepted => {
-                    // A probe is a reversible experiment that settles a question; its output is an
-                    // answer, not a change to ship. Committing it would push code into the pull
-                    // request that no acceptance criterion asked for and no test has to cover.
-                    if probe {
-                        let checkpoint = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
-                        self.git.reset_hard(&worktree, &checkpoint)?;
-                    }
                     run.accepted_fingerprints
                         .insert(unit_id.clone(), plan.unit_fingerprint(unit_id)?);
                     run.accepted_units.push(unit_id.clone());
@@ -852,6 +855,10 @@ impl Engine {
                     WorkerStatus::Completed => {
                         match self.verify_unit(plan, unit, worktree, sessions).await? {
                             Ok(()) => {
+                                if unit.probe {
+                                    self.git.reset_hard(worktree, &checkpoint)?;
+                                    return Ok(UnitOutcome::Accepted);
+                                }
                                 let sha = self.git.commit_all(
                                     worktree,
                                     &format!(

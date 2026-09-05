@@ -250,6 +250,175 @@ async fn a_clean_run_reaches_a_draft_pull_request() {
 }
 
 #[tokio::test]
+async fn probe_output_is_discarded_without_entering_git_history() {
+    let fixture = Fixture::new();
+    let mut proposed: serde_json::Value = serde_json::from_str(&structure()).unwrap();
+    proposed["units"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({
+            "id": "U3", "title": "temporary experiment", "paths": ["probe/"],
+            "acceptance_ids": [], "depends_on": ["U2"], "probe": true
+        }));
+    let mut steps = happy_path_steps();
+    steps[2] = step(Role::PlanSynthesis, Reply::say(proposed.to_string()));
+    steps.insert(
+        9,
+        step(
+            Role::Implementer,
+            Reply::write(&[("probe/throwaway.txt", "temporary experiment\n")], DONE),
+        ),
+    );
+    steps.insert(10, step(Role::UnitReviewer, Reply::say(PASS)));
+    let script = Script::new(steps);
+    let outcomes = run_to_draft_pr(&fixture, &script).await;
+    assert_eq!(outcomes.last().unwrap().state, "awaiting_adjust_or_ship");
+    let worktree = fixture.worktree();
+    assert!(!worktree.join("probe/throwaway.txt").exists());
+    assert_eq!(git(&worktree, &["status", "--porcelain"]), "");
+    assert_eq!(
+        git(
+            &worktree,
+            &["ls-tree", "-r", "--name-only", "HEAD", "--", "probe/"]
+        ),
+        ""
+    );
+    assert_eq!(
+        git(&worktree, &["log", "--all", "--format=%H", "--", "probe/"]),
+        ""
+    );
+    assert!(!fixture
+        .log_subjects(&worktree)
+        .iter()
+        .any(|s| s.contains("hwahap(U3)")));
+    assert_eq!(
+        script
+            .calls()
+            .iter()
+            .filter(|c| c.role == Role::UnitReviewer && c.unit.as_deref() == Some("U3"))
+            .count(),
+        1
+    );
+    assert_eq!(script.remaining(), 0);
+}
+
+#[tokio::test]
+async fn conflicting_or_malformed_answers_cannot_be_hidden_by_confirmation() {
+    for invalid in ["C1=ALT1\nC1=ALT2", "C1=ALT", "C1=OTHER:"] {
+        let fixture = Fixture::new();
+        let script = Script::new(happy_path_steps());
+        let challenge = plan_to_confirmation(&fixture, &script).await;
+        let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+        let before = store.read_plan().unwrap().unwrap();
+        let outcome = fixture
+            .engine()
+            .step_with(
+                &script,
+                None,
+                Some(&format!("{invalid}\nCONFIRM PLAN {challenge}")),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.state, "awaiting_confirmation",
+            "{invalid}: {}",
+            outcome.message
+        );
+        assert_eq!(outcome.next, "await_user");
+        let after = store.read_plan().unwrap().unwrap();
+        assert!(!after.is_frozen().unwrap());
+        assert_eq!(after.digest().unwrap(), before.digest().unwrap());
+        assert!(!fixture.worktree().exists());
+        assert_eq!(git(&fixture.repo, &["branch", "--list", "hwahap/*"]), "");
+        assert!(!script.roles().contains(&Role::Implementer));
+    }
+}
+
+#[tokio::test]
+async fn a_plan_changed_after_preview_requires_fresh_reviews_and_confirmation() {
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps()[..5].to_vec();
+    steps.push(step(Role::ColdConsumer, Reply::say(PASS)));
+    steps.push(step(Role::PlanCritic, Reply::say(PASS)));
+    let script = Script::new(steps);
+    let old_challenge = plan_to_confirmation(&fixture, &script).await;
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let mut plan = store.read_plan().unwrap().unwrap();
+    plan.tests[0].command = "test -s src/added.txt".into();
+    let current_challenge = plan.digest().unwrap().challenge();
+    assert_ne!(current_challenge, old_challenge);
+    store.write_plan(&plan).unwrap();
+    let engine = fixture.engine();
+    let rejected = engine
+        .step_with(
+            &script,
+            None,
+            Some(&format!("CONFIRM PLAN {old_challenge}")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rejected.state, "proving", "{}", rejected.message);
+    assert!(!store.read_plan().unwrap().unwrap().is_frozen().unwrap());
+    assert!(!fixture.worktree().exists());
+    let preview = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        preview.state, "awaiting_confirmation",
+        "{}",
+        preview.message
+    );
+    let current_challenge = store
+        .read_plan()
+        .unwrap()
+        .unwrap()
+        .digest()
+        .unwrap()
+        .challenge();
+    assert_ne!(current_challenge, old_challenge);
+    assert_eq!(
+        challenge_in(&preview.message, "CONFIRM PLAN "),
+        current_challenge
+    );
+    assert_eq!(
+        script
+            .roles()
+            .iter()
+            .filter(|r| **r == Role::ColdConsumer)
+            .count(),
+        2
+    );
+    assert_eq!(
+        script
+            .roles()
+            .iter()
+            .filter(|r| **r == Role::PlanCritic)
+            .count(),
+        2
+    );
+    let stale = engine
+        .step_with(
+            &script,
+            None,
+            Some(&format!("CONFIRM PLAN {old_challenge}")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(stale.state, "awaiting_confirmation");
+    assert!(!fixture.worktree().exists());
+    let frozen = engine
+        .step_with(
+            &script,
+            None,
+            Some(&format!("CONFIRM PLAN {current_challenge}")),
+        )
+        .await
+        .unwrap();
+    assert_eq!(frozen.state, "coding", "{}", frozen.message);
+    assert!(fixture.worktree().is_dir());
+    assert!(store.read_plan().unwrap().unwrap().is_frozen().unwrap());
+    assert_eq!(script.remaining(), 0);
+}
+
+#[tokio::test]
 async fn the_user_is_asked_nothing_between_the_freeze_and_the_pull_request() {
     let fixture = Fixture::new();
     let script = Script::new(happy_path_steps());
