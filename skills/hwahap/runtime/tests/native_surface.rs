@@ -441,7 +441,7 @@ async fn incompatible_coordinator_model_is_rejected_before_dispatch() {
     spec.role = Role::Recommender;
     let profiles = Profiles::from_toml(
         "[profiles.economy]\nmodel = 'gpt-5.6-luna'\neffort = 'medium'\n\
-         [profiles.critic]\nmodel = 'gpt-5.6-terra'\neffort = 'high'\n\
+         [profiles.critic]\nmodel = 'gpt-6-astra'\neffort = 'high'\n\
          [profiles.deep]\nmodel = 'other-model'\neffort = 'high'\n",
     )
     .unwrap();

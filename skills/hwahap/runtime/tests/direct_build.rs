@@ -22,6 +22,21 @@ fn request() -> BuildRequest {
     }
 }
 
+#[test]
+fn review_policy_requires_two_astra_lanes_and_keeps_authorship_separate() {
+    use hwahap::native::NativeLane;
+    use hwahap::profile::Profiles;
+    Profiles::defaults().require_astra_reviewers().unwrap();
+    assert_eq!(NativeLane::for_role(Role::UnitReviewer), NativeLane::Critic);
+    assert_eq!(NativeLane::for_role(Role::FinalReview), NativeLane::Auditor);
+    assert_eq!(NativeLane::for_role(Role::Rework), NativeLane::Coordinator);
+    let custom = "[profiles.economy]\nmodel='gpt-5.6-luna'\neffort='medium'\n[profiles.critic]\nmodel='gpt-5.6-terra'\neffort='high'\n[profiles.deep]\nmodel='gpt-6-astra'\neffort='high'";
+    assert!(Profiles::from_toml(custom)
+        .unwrap()
+        .require_astra_reviewers()
+        .is_err());
+}
+
 #[tokio::test]
 async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
     let fixture = Fixture::new();
