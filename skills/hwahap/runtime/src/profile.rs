@@ -138,13 +138,13 @@ impl Role {
     /// Total by construction: a new role cannot be added without deciding what it costs.
     pub fn profile(self) -> Profile {
         match self {
-            Role::FactFinder | Role::ColdConsumer | Role::Implementer | Role::Rework => {
-                Profile::Economy
-            }
+            Role::FactFinder | Role::ColdConsumer | Role::Implementer => Profile::Economy,
             Role::PlanCritic | Role::UnitReviewer | Role::FailureDiagnosis => Profile::Critic,
-            Role::Recommender | Role::PlanSynthesis | Role::ConflictReplan | Role::FinalReview => {
-                Profile::Deep
-            }
+            Role::Rework
+            | Role::Recommender
+            | Role::PlanSynthesis
+            | Role::ConflictReplan
+            | Role::FinalReview => Profile::Deep,
         }
     }
 
@@ -689,7 +689,7 @@ effort = "high"
             (Role::FactFinder, Profile::Economy, "fact_finder"),
             (Role::ColdConsumer, Profile::Economy, "cold_consumer"),
             (Role::Implementer, Profile::Economy, "implementer"),
-            (Role::Rework, Profile::Economy, "rework"),
+            (Role::Rework, Profile::Deep, "rework"),
             (Role::PlanCritic, Profile::Critic, "plan_critic"),
             (Role::UnitReviewer, Profile::Critic, "unit_reviewer"),
             (Role::FailureDiagnosis, Profile::Critic, "failure_diagnosis"),
@@ -724,11 +724,11 @@ effort = "high"
     }
 
     #[test]
-    fn the_roles_split_four_three_four_across_the_profiles() {
+    fn the_retry_uses_deep_without_an_extra_diagnosis_model() {
         let count = |profile: Profile| Role::ALL.iter().filter(|r| r.profile() == profile).count();
-        assert_eq!(count(Profile::Economy), 4);
+        assert_eq!(count(Profile::Economy), 3);
         assert_eq!(count(Profile::Critic), 3);
-        assert_eq!(count(Profile::Deep), 4);
+        assert_eq!(count(Profile::Deep), 5);
         assert_eq!(
             count(Profile::Economy) + count(Profile::Critic) + count(Profile::Deep),
             Role::ALL.len()

@@ -14,12 +14,12 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Mutex;
 
-use hwahap::acp::{SessionOutcome, SessionSpec};
 use hwahap::clock::FixedClock;
 use hwahap::engine::{Engine, Sessions};
 use hwahap::error::{Error, Result};
 use hwahap::forge::Forge;
 use hwahap::profile::{Profiles, Receipt, Role};
+use hwahap::session::{SessionOutcome, SessionSpec};
 
 pub const NOW: &str = "2026-09-04T00:00:00Z";
 
@@ -190,9 +190,8 @@ impl Script {
         Ok(SessionOutcome {
             final_message: message.clone(),
             transcript: message,
-            receipt,
+            receipt: receipt.into(),
             stop_reason: "end_turn".to_string(),
-            permissions: Vec::new(),
         })
     }
 }

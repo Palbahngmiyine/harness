@@ -283,7 +283,7 @@ pub fn implementer(plan: &Plan, unit: &Unit, findings: &[String]) -> String {
         String::new()
     } else {
         format!(
-            "\n# A previous attempt was rejected\n\nFix exactly these findings. Do not \
+            "\n# A previous attempt was rejected\n\nDiagnose the failure and repair these findings in this single attempt. Do not \
              re-architect anything else.\n\n{}\n",
             quoted_bullets(findings)
         )
@@ -310,7 +310,8 @@ changed. That includes files you created as scratch space.
 ## How you will be judged
 
 Hwahap runs these commands itself and reads their exit status. Your own account of whether they
-passed is not evidence, so run them yourself before you finish:
+passed is not evidence. Run focused checks when they help implementation; do not repeat the full
+suite merely for reassurance, because the host executes the required commands before acceptance:
 
 {tests}
 

@@ -23,6 +23,9 @@ pub enum Error {
     #[error("unsupported_profile: {0}")]
     UnsupportedProfile(String),
 
+    #[error("execution boundary violated: {0}")]
+    BoundaryViolation(String),
+
     /// An external command (git, gh, the ACP adapter) failed.
     #[error("{command} failed: {detail}")]
     Command { command: String, detail: String },
@@ -62,7 +65,7 @@ impl Error {
     /// The engine turns these into a `blocked` run instead of a transient tool error, so the user
     /// is told once and is not invited to retry something that cannot succeed.
     pub fn is_terminal_for_run(&self) -> bool {
-        matches!(self, Error::Corrupt(_) | Error::UnsupportedProfile(_))
+        matches!(self, Error::Corrupt(_) | Error::UnsupportedProfile(_) | Error::BoundaryViolation(_))
     }
 }
 

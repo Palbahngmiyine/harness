@@ -191,6 +191,29 @@ impl Git {
         parse_status_z(&self.stdout_of(cwd, &args)?)
     }
 
+    /// Observe HEAD, the index, tracked diff and untracked content without staging user files.
+    /// This is a repository postcondition, not a filesystem sandbox or an external-effect audit.
+    pub fn fingerprint(&self, cwd: &Path) -> Result<crate::canonical::Digest> {
+        let head = self.run_in(cwd, &["rev-parse", "HEAD"])?;
+        let branch = self.run_in(cwd, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+        let index = self.stdout_of(cwd, &["ls-files", "--stage", "-z"])?;
+        let diff = self.stdout_of(cwd, &["diff", "--no-ext-diff", "--no-textconv", "--binary", "HEAD", "--"])?;
+        let paths = parse_nul_paths(&self.stdout_of(cwd, &["ls-files", "--others", "--exclude-standard", "-z"])?)?;
+        let mut untracked = Vec::new();
+        for path in paths {
+            let absolute = cwd.join(&path);
+            let metadata = std::fs::symlink_metadata(&absolute).map_err(|e| Error::io(&absolute, e))?;
+            let bytes = if metadata.file_type().is_symlink() {
+                std::fs::read_link(&absolute).map_err(|e| Error::io(&absolute, e))?
+                    .to_string_lossy().as_bytes().to_vec()
+            } else {
+                std::fs::read(&absolute).map_err(|e| Error::io(&absolute, e))?
+            };
+            untracked.push((path, metadata.file_type().is_symlink(), crate::canonical::Digest::of_bytes(&bytes)));
+        }
+        crate::canonical::Digest::of(&(head, branch, hex::encode(index), hex::encode(diff), untracked))
+    }
+
     /// Repository-relative paths that differ between two commits.
     pub fn changed_paths_between(&self, cwd: &Path, from: &str, to: &str) -> Result<Vec<String>> {
         require_plain_value("from revision", from)?;

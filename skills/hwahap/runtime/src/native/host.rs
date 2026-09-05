@@ -1,0 +1,143 @@
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
+use tokio::task::JoinHandle;
+
+use super::{acknowledge_stopped, orphan, NativeCompletion, NativeDispatch, NativeRegistration, NativeSessions, NativeStopped, RepoLock};
+use crate::config::Config;
+use crate::engine::{Engine, StepOutcome};
+use crate::error::{Error, Result};
+use crate::state::Store;
+
+#[derive(Default)]
+pub struct NativeInput {
+    pub request: Option<String>,
+    pub user_input: Option<String>,
+    pub registration: Option<NativeRegistration>,
+    pub completion: Option<NativeCompletion>,
+    pub stopped: Option<NativeStopped>,
+}
+
+pub struct NativeProgress {
+    pub outcome: StepOutcome,
+    pub dispatch: Option<NativeDispatch>,
+}
+
+struct Active {
+    broker: Arc<NativeSessions>,
+    task: JoinHandle<Result<StepOutcome>>,
+    // Registry and task both hold the lock, including while cancellation is being delivered.
+    _lock: Arc<RepoLock>,
+}
+
+impl Drop for Active {
+    fn drop(&mut self) { self.task.abort(); }
+}
+
+/// One background continuation per canonical Git root. Polling never starts another writer.
+#[derive(Default)]
+pub struct NativeHost {
+    active: Mutex<HashMap<PathBuf, Active>>,
+}
+
+impl NativeHost {
+    pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
+        let actions = usize::from(input.registration.is_some()) + usize::from(input.completion.is_some())
+            + usize::from(input.stopped.is_some());
+        if actions > 1 || (actions > 0 && (input.request.is_some() || input.user_input.is_some())) {
+            return Err(Error::Rejected("send exactly one native action, without request or user_input".into()));
+        }
+        let mut active = self.active.lock().await;
+        let store = Store::open(root)?;
+        if let Some(ack) = &input.stopped {
+            let pending = orphan(&store)?.ok_or_else(|| Error::Rejected("no native agent to stop".into()))?;
+            if !ack.all_work_stopped || ack.dispatch_id != pending.dispatch_id || ack.agent_id != pending.agent_id {
+                return Err(Error::Rejected("stop acknowledgment does not match the pending native dispatch".into()));
+            }
+            let lock = if let Some(mut running) = active.remove(root) {
+                running.task.abort();
+                let _ = (&mut running.task).await;
+                running._lock.clone()
+            } else { Arc::new(RepoLock::acquire(root)?) };
+            acknowledge_stopped(&store, ack)?;
+            drop(lock);
+            return progress(root, None, false);
+        }
+        if let Some(running) = active.get(root) {
+            if input.request.is_some() || input.user_input.is_some() {
+                return Err(Error::Rejected("a native continuation is active; stop it before changing its input".into()));
+            }
+            if let Some(registration) = &input.registration { running.broker.register(registration)?; }
+            if let Some(completion) = input.completion { running.broker.complete(completion)?; }
+        } else {
+            let lock = Arc::new(RepoLock::acquire(root)?);
+            if let Some(dispatch) = orphan(&store)? { return progress(root, Some(dispatch), false); }
+            if input.registration.is_some() {
+                return Err(Error::Rejected("no live native dispatch accepts registration".into()));
+            }
+            if let Some(completion) = input.completion {
+                if NativeSessions::recorded_completion(&store, &completion)? {
+                    return progress(root, None, false);
+                }
+                return Err(Error::Rejected("no live native dispatch accepts completion".into()));
+            }
+            let config = Config::load(store.root())?;
+            let broker = Arc::new(NativeSessions::new(store, config.profiles, config.native_max_calls, config.native_timeout_secs));
+            let engine = Engine::open(root)?;
+            let sessions = broker.clone();
+            let task_lock = lock.clone();
+            let task = tokio::spawn(async move {
+                let _lock = task_lock;
+                engine.step_with(&*sessions, input.request.as_deref(), input.user_input.as_deref()).await
+            });
+            active.insert(root.into(), Active { broker, task, _lock: lock });
+        }
+        tokio::task::yield_now().await;
+        if active.get(root).is_some_and(|running| running.task.is_finished()) {
+            let mut running = active.remove(root).expect("active entry was just checked");
+            let result = (&mut running.task).await.map_err(|e| Error::Internal(format!("native engine task ended: {e}")))?;
+            if let Some(dispatch) = running.broker.dispatch()? {
+                return progress(root, Some(NativeDispatch { stop_required: true, ..dispatch }), false);
+            }
+            running.broker.finish()?;
+            return Ok(NativeProgress { outcome: result?, dispatch: None });
+        }
+        let dispatch = active.get(root).map(|running| running.broker.dispatch()).transpose()?.flatten();
+        progress(root, dispatch, true)
+    }
+
+    pub async fn status(&self, root: &Path) -> Result<NativeProgress> {
+        let active = self.active.lock().await;
+        match active.get(root) {
+            Some(running) => progress(root, running.broker.dispatch()?, true),
+            None => progress(root, orphan(&Store::open(root)?)?, false),
+        }
+    }
+
+    pub async fn ship(&self, root: &Path, confirmation: &str) -> Result<StepOutcome> {
+        let active = self.active.lock().await;
+        if active.contains_key(root) { return Err(Error::Rejected("native execution is still active".into())); }
+        let _lock = RepoLock::acquire(root)?;
+        if orphan(&Store::open(root)?)?.is_some() {
+            return Err(Error::Rejected("native stop acknowledgment is required before shipping".into()));
+        }
+        Engine::open(root)?.ship(confirmation)
+    }
+}
+
+fn progress(root: &Path, dispatch: Option<NativeDispatch>, running: bool) -> Result<NativeProgress> {
+    let mut outcome = Engine::open(root)?.status()?;
+    if let Some(dispatch) = &dispatch {
+        outcome.next = if dispatch.stop_required { "native_stop" }
+            else if dispatch.agent_id.is_some() { "native_wait" } else { "native_dispatch" }.into();
+        outcome.message = if dispatch.stop_required {
+            "Stop this native agent and all remaining commands, then acknowledge the exact dispatch before recovery.".into()
+        } else { format!("Native {} dispatch {}", dispatch.role, dispatch.dispatch_id) };
+    } else if running {
+        outcome.next = "native_wait".into();
+        outcome.message = "Hwahap is validating or preparing the next native dispatch; poll after one second.".into();
+    }
+    Ok(NativeProgress { outcome, dispatch })
+}
