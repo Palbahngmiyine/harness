@@ -3,6 +3,8 @@ mod common;
 use common::Fixture;
 use hwahap::native::{NativeHost, NativeInput};
 use hwahap::state::Store;
+#[path = "lifecycle_recovery/plan_fixture.rs"]
+mod plan_fixture;
 
 #[tokio::test]
 async fn first_plan_call_seals_its_parent_before_a_restart_or_another_dispatch() {
@@ -46,4 +48,38 @@ async fn first_plan_call_seals_its_parent_before_a_restart_or_another_dispatch()
             .is_err());
         assert_eq!(std::fs::read(&owner).unwrap(), bytes);
     }
+}
+
+#[tokio::test]
+async fn interrupted_worktree_is_checked_before_adoption_and_cannot_discard_dirty_files() {
+    let f = Fixture::new();
+    let ready = plan_fixture::plan_ready(&f).await;
+    let branch = format!("hwahap/{}", ready.run_id);
+    common::git(
+        &f.repo,
+        &[
+            "worktree",
+            "add",
+            "-b",
+            &branch,
+            f.worktree().to_str().unwrap(),
+            "HEAD",
+        ],
+    );
+    let path = f.worktree().join("user-owned.txt");
+    std::fs::write(&path, "preserve").unwrap();
+    let engine = f.engine();
+    assert!(engine
+        .build_confirmed(ready.plan_digest.as_ref().unwrap())
+        .is_err());
+    assert_eq!(engine.status().unwrap().state, "plan_ready");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "preserve");
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(
+        engine
+            .build_confirmed(ready.plan_digest.as_ref().unwrap())
+            .unwrap()
+            .state,
+        "coding"
+    );
 }

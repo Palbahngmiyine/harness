@@ -37,6 +37,7 @@ mod adjust_build;
 mod build;
 mod grounding;
 mod interview;
+mod lifecycle;
 mod pr_review;
 pub use adjust_build::AdjustBuildRequest;
 pub use build::{BuildRequest, BuildUnit};
@@ -771,30 +772,7 @@ impl Engine {
         // Discovering a missing GitHub login after an hour of unattended coding wastes the run.
         self.forge.require_auth(&self.repo_root)?;
 
-        let branch = if run.branch.is_empty() {
-            format!("hwahap/{}", plan.goal_id)
-        } else {
-            run.branch.clone()
-        };
-        let worktree = self.store.worktree_path();
-        if !run.branch.is_empty() {
-            if !self.git.is_clean(&worktree)?
-                || self
-                    .git
-                    .run_in(&worktree, &["rev-parse", "--abbrev-ref", "HEAD"])?
-                    != branch
-            {
-                return Err(Error::BoundaryViolation(
-                    "ADJUST lost its clean owned branch".into(),
-                ));
-            }
-        } else if !self.git.branch_exists(&branch)? {
-            self.git.add_worktree(
-                &worktree,
-                &branch,
-                plan.source_head.as_deref().unwrap_or(&plan.base_branch),
-            )?;
-        }
+        let branch = self.prepare_plan_worktree(&run, &plan)?;
 
         // Anything accepted against a plan detail this revision changed is no longer accepted.
         // Keeping it would let an adjustment ship the branch unchanged; dropping everything would
