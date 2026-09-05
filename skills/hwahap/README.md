@@ -46,6 +46,8 @@ cp -R skills/hwahap "${CODEX_HOME:-$HOME/.codex}/skills/"
 
 이 저장소의 `skills/<name>/` 배치를 유지하기 위해 스킬 복사와 MCP 등록을 분리한다.
 플랫폼의 보장과 이 구현에서 확인한 범위는 [PLATFORM.md](PLATFORM.md)에 기록한다.
+KiroCrew 분석, 명료함·테스트·재현·총비용 원칙과 이번 회귀 검증은
+[조율 설계 분석](../../docs/hwahap-coordination.md)에 기록한다.
 
 ## 3. 구조
 
