@@ -23,6 +23,7 @@ pub struct DefenseReport {
     pub binding: ReviewBinding,
     pub assessments: Vec<Assessment>,
     pub additional_findings: Vec<Finding>,
+    pub security: SecurityReview,
     pub evidence: Vec<String>,
 }
 
@@ -56,7 +57,13 @@ impl DefenseReport {
                 ));
             }
         }
-        Ok(())
+        self.security.validate(
+            &attack
+                .findings
+                .iter()
+                .chain(&self.additional_findings)
+                .collect::<Vec<_>>(),
+        )
     }
     pub fn unresolved(&self) -> bool {
         self.assessments
@@ -235,6 +242,7 @@ mod tests {
                 evidence: vec!["independently reproduced".into()],
             }],
             additional_findings: vec![],
+            security: security::checked(),
             evidence: vec!["checked".into()],
         };
         assert!(d.validate(&attack, &attack.binding).is_ok());

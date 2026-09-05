@@ -237,6 +237,17 @@ impl Script {
     }
 }
 
+pub fn security_review() -> serde_json::Value {
+    let mut review = hwahap::pr_review::security_example();
+    review["threat_model"] =
+        serde_json::json!(["controlled fixture: local repository and feature file"]);
+    for check in review["checks"].as_array_mut().unwrap() {
+        check["status"] = "checked".into();
+        check["evidence"] = serde_json::json!(["controlled fixture source inspection"]);
+    }
+    review
+}
+
 fn pr_report(spec: &SessionSpec, defense: bool) -> Result<String> {
     assert_eq!(
         spec.role,
@@ -252,9 +263,9 @@ fn pr_report(spec: &SessionSpec, defense: bool) -> Result<String> {
         .unwrap()
         .binding;
     Ok(if defense {
-        serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["controlled independent defense"]})
+        serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"security":security_review(),"evidence":["controlled independent defense"]})
     } else {
-        serde_json::json!({"binding":binding,"findings":[],"evidence":["controlled attack checks"]})
+        serde_json::json!({"binding":binding,"findings":[],"security":security_review(),"evidence":["controlled attack checks"]})
     }.to_string())
 }
 

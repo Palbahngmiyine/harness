@@ -108,9 +108,14 @@ impl Engine {
                 &self.config.profiles,
             )?;
         }
-        if d.report.unresolved() || !d.report.repair_findings(&a.report).is_empty() {
+        if a.report.security.blocked()
+            || d.report.security.blocked()
+            || d.report.unresolved()
+            || !d.report.repair_findings(&a.report).is_empty()
+        {
             return Err(Error::Rejected(
-                "unresolved or confirmed PR findings prevent SHIP".into(),
+                "incomplete security coverage or unresolved/confirmed PR findings prevent SHIP"
+                    .into(),
             ));
         }
         Ok(())
@@ -161,9 +166,12 @@ impl Engine {
         Self::separate_reviewers(&attack.receipt, &defense.receipt)?;
         self.require_review_progress(&run, &plan)?;
         save_evidence(&self.store, &progress.artifact("defense")?, &defense)?;
-        if defense.report.unresolved() {
+        if attack.report.security.blocked()
+            || defense.report.security.blocked()
+            || defense.report.unresolved()
+        {
             run.state = RunState::Blocked {
-                reason: "PR defense left unresolved findings; evidence and draft are retained"
+                reason: "PR review left incomplete security coverage or unresolved findings; evidence and draft are retained"
                     .into(),
             };
         } else if !defense.report.repair_findings(&attack.report).is_empty() {

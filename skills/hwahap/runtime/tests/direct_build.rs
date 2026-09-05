@@ -1,7 +1,7 @@
 #![cfg(unix)]
 mod common;
 
-use common::{git, step, Fixture, Reply, Script};
+use common::{git, security_review, step, Fixture, Reply, Script};
 use hwahap::engine::{BuildRequest, BuildUnit};
 use hwahap::profile::Role;
 use hwahap::state::Store;
@@ -129,8 +129,8 @@ async fn exercise_repair(exhausted: bool, same_agent: bool, lag: u32) {
     let binding = progress.binding;
     let finding = serde_json::json!({"id":"A1","file":"feature.txt","line":1,"condition":"Read feature as a line","expected":"ready followed by newline","observed":"no terminal newline","evidence":["inspected exact file bytes"]});
     let rejection = Script::new(vec![
-        step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"findings":[finding],"evidence":["checked file bytes"]}).to_string())),
-        step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"assessments":[{"finding_id":"A1","judgment":"confirmed","evidence":["independently read missing newline"]}],"additional_findings":[],"evidence":["confirmed byte comparison"]}).to_string())),
+        step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"security":security_review(),"findings":[finding],"evidence":["checked file bytes"]}).to_string())),
+        step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"security":security_review(),"assessments":[{"finding_id":"A1","judgment":"confirmed","evidence":["independently read missing newline"]}],"additional_findings":[],"evidence":["confirmed byte comparison"]}).to_string())),
     ]);
     assert_eq!(
         engine
@@ -212,7 +212,7 @@ async fn exercise_repair(exhausted: bool, same_agent: bool, lag: u32) {
     );
     assert_eq!(fix.remaining(), 0);
     let stale = Script::new(vec![step(Role::UnitReviewer, Reply::say(
-        serde_json::json!({"binding":binding,"findings":[],"evidence":["stale pre-repair head"]}).to_string()
+        serde_json::json!({"binding":binding,"security":security_review(),"findings":[],"evidence":["stale pre-repair head"]}).to_string()
     ))]);
     assert!(engine.step_with(&stale, None, None).await.is_err());
     assert!(engine
@@ -220,8 +220,8 @@ async fn exercise_repair(exhausted: bool, same_agent: bool, lag: u32) {
         .is_err());
     let binding = next.binding;
     let reviews = Script::new(vec![
-        step(Role::UnitReviewer, Reply::NativeReview { message: serde_json::json!({"binding":binding,"findings":[],"evidence":["checked published feature"]}).to_string(), agent_id: "attacker".into() }),
-        step(Role::FinalReview, Reply::NativeReview { message: serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["independently checked published feature"]}).to_string(), agent_id: if same_agent { "attacker" } else { "defender" }.into() }),
+        step(Role::UnitReviewer, Reply::NativeReview { message: serde_json::json!({"binding":binding,"security":security_review(),"findings":[],"evidence":["checked published feature"]}).to_string(), agent_id: "attacker".into() }),
+        step(Role::FinalReview, Reply::NativeReview { message: serde_json::json!({"binding":binding,"security":security_review(),"assessments":[],"additional_findings":[],"evidence":["independently checked published feature"]}).to_string(), agent_id: if same_agent { "attacker" } else { "defender" }.into() }),
     ]);
     let reviewed = engine.step_with(&reviews, None, None).await.unwrap();
     if same_agent {
