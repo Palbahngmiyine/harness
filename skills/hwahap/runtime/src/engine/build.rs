@@ -86,10 +86,26 @@ impl BuildRequest {
 impl super::Engine {
     /// Start only from a caller-relayed, explicit execution instruction, without planning calls.
     pub fn start_build(&self, input: &BuildRequest) -> Result<super::StepOutcome> {
+        self.start_build_for_parent(input, None)
+    }
+
+    pub(crate) fn start_build_for_parent(
+        &self,
+        input: &BuildRequest,
+        parent: Option<&str>,
+    ) -> Result<super::StepOutcome> {
         let saved = crate::pr_review::read_evidence::<serde_json::Value>(
             &self.store,
             "build-request.json",
         )?;
+        if let Some(scope) = saved.as_ref().and_then(|s| s["pool_scope"].as_str()) {
+            let fallback = saved.as_ref().and_then(|s| s["plan"]["goal_id"].as_str());
+            if parent.or(fallback) != Some(scope) {
+                return Err(Error::Rejected(
+                    "BUILD belongs to another parent task".into(),
+                ));
+            }
+        }
         if let Some(run) = self.store.recover()? {
             let plan = self.require_frozen_plan(&run)?;
             if saved
@@ -151,7 +167,8 @@ impl super::Engine {
         self.forge.require_auth(&self.repo_root)?;
         let saved = serde_json::json!({
             "request":input, "source_head":source, "base_commit":base, "contract_digest":digest,
-            "authorization_source":"explicit_build_instruction", "planning_performed":false, "plan":plan
+            "authorization_source":"explicit_build_instruction", "planning_performed":false, "plan":plan,
+            "pool_scope":parent
         });
         crate::pr_review::save_evidence(&self.store, "build-request.json", &saved)?;
         self.resume_build(input, &saved)

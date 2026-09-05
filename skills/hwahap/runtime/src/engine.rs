@@ -680,9 +680,24 @@ impl Engine {
         // Discovering a missing GitHub login after an hour of unattended coding wastes the run.
         self.forge.require_auth(&self.repo_root)?;
 
-        let branch = format!("hwahap/{}", plan.goal_id);
+        let branch = if run.branch.is_empty() {
+            format!("hwahap/{}", plan.goal_id)
+        } else {
+            run.branch.clone()
+        };
         let worktree = self.store.worktree_path();
-        if !self.git.branch_exists(&branch)? {
+        if !run.branch.is_empty() {
+            if !self.git.is_clean(&worktree)?
+                || self
+                    .git
+                    .run_in(&worktree, &["rev-parse", "--abbrev-ref", "HEAD"])?
+                    != branch
+            {
+                return Err(Error::BoundaryViolation(
+                    "ADJUST lost its clean owned branch".into(),
+                ));
+            }
+        } else if !self.git.branch_exists(&branch)? {
             self.git
                 .add_worktree(&worktree, &branch, &plan.base_branch)?;
         }
@@ -1129,6 +1144,8 @@ impl Engine {
 
         let prose = free_text(input, &parsed.directives);
         plan.revision += 1;
+        // The original authorization remains in build-request.json. This revision is PLAN.
+        plan.execution_authorization = None;
         if !prose.is_empty() {
             plan.adjustments.push(crate::plan::Adjustment {
                 revision: plan.revision,
