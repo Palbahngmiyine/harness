@@ -36,6 +36,12 @@ without asking the user; `await_user` means show `message` and wait; `completed`
 show `message` and stop. Pass the user's reply verbatim in `user_input`. Never compose, complete, \
 or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may type one.
 
+Only when the user explicitly requests execution without planning, send build instead of request. \
+Its user_instruction must be that user's exact authorization; specify the objective, new codex/ \
+branch, remote base branch, scoped units with observable acceptance and test commands, and full_suite. \
+This records direct BUILD authority without claiming planning reviews or a CONFIRM PLAN message. \
+Normal requests still use the planning and confirmation flow. Never infer direct BUILD permission.
+
 Use Astra as the parent coordinator. Include the same host_session_id in every hwahap_step call: \
 the current parent task ID, or one UUID created once for this parent if the host exposes no ID. \
 Never copy another task's identity. In this repository the pool retains at most three children \
@@ -90,6 +96,9 @@ checks pass, and the final review is still fresh.";
 /// Arguments to `hwahap_step`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct StepArgs {
+    /// Explicitly authorized execution without planning. Never set merely to avoid confirmation.
+    #[serde(default)]
+    pub build: Option<crate::engine::BuildRequest>,
     /// Absolute path to the repository Hwahap should work in.
     pub cwd: String,
     /// Stable identity of this parent Codex task. Reuse the same value on every step and run.
@@ -239,6 +248,7 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    build: args.build,
                     host_session_id: Some(args.host_session_id),
                     request: args.request,
                     user_input: args.user_input,

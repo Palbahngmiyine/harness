@@ -16,6 +16,7 @@ use crate::state::Store;
 
 #[derive(Default)]
 pub struct NativeInput {
+    pub build: Option<crate::engine::BuildRequest>,
     pub host_session_id: Option<String>,
     pub request: Option<String>,
     pub user_input: Option<String>,
@@ -63,7 +64,8 @@ impl NativeHost {
     }
 
     pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
-        let actions = usize::from(input.registration.is_some())
+        let actions = usize::from(input.build.is_some())
+            + usize::from(input.registration.is_some())
             + usize::from(input.completion.is_some())
             + usize::from(input.stopped.is_some())
             + usize::from(input.dispatch_failure.is_some())
@@ -95,6 +97,18 @@ impl NativeHost {
                 "native work belongs to another parent task; do not reuse or stop its agents"
                     .into(),
             ));
+        }
+        if let Some(build) = &input.build {
+            if active.contains_key(root) || orphan(&store)?.is_some() {
+                return Err(Error::Rejected(
+                    "native execution must finish before direct BUILD".into(),
+                ));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            return Ok(NativeProgress {
+                outcome: Engine::open(root)?.start_build(build)?,
+                dispatch: None,
+            });
         }
         if let Some(failure) = &input.dispatch_failure {
             super::failure::check_failure(&store, failure)?;

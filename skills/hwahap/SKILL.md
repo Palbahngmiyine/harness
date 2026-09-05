@@ -6,6 +6,7 @@ description: "Turn an implementation or refactoring request into a confirmed pla
 # Hwahap
 
 Use Astra as parent. Call `hwahap_step` with the repository path, stable `host_session_id`, and request.
+If the user explicitly skips planning, use the server's `build` contract and verbatim authorization.
 Follow the MCP server's `instructions`; it owns scheduling, scope, tests, commits, and publication gates.
 
 Forward user messages verbatim in `user_input`. Never invent, complete, or infer a decision,

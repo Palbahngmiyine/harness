@@ -83,6 +83,81 @@ impl BuildRequest {
     }
 }
 
+impl super::Engine {
+    /// Start only from a caller-relayed, explicit execution instruction, without planning calls.
+    pub fn start_build(&self, input: &BuildRequest) -> Result<super::StepOutcome> {
+        if self.store.recover()?.is_some() {
+            return Err(Error::Rejected(
+                "an existing run must finish before a direct BUILD".into(),
+            ));
+        }
+        if !self.git.is_clean(&self.repo_root)? {
+            return Err(Error::Rejected(
+                "direct BUILD requires a clean committed starting point".into(),
+            ));
+        }
+        self.git
+            .run(&["check-ref-format", "--branch", &input.branch])?;
+        if input.base_branch.is_empty() || input.base_branch.starts_with('-') {
+            return Err(Error::Rejected("invalid BUILD base branch".into()));
+        }
+        self.git
+            .run(&["check-ref-format", "--branch", &input.base_branch])?;
+        if self.git.branch_exists(&input.branch)? || self.store.worktree_path().exists() {
+            return Err(Error::Rejected(
+                "BUILD branch/worktree already exists; do not duplicate or adopt interrupted work"
+                    .into(),
+            ));
+        }
+        let base = self.git.run(&[
+            "rev-parse",
+            "--verify",
+            &format!("refs/remotes/origin/{}^{{commit}}", input.base_branch),
+        ])?;
+        let source = self.git.head_sha()?;
+        self.git
+            .run(&["merge-base", "--is-ancestor", &base, &source])?;
+        let id = super::goal_id(&self.clock.now(), &input.objective);
+        let mut plan = input.plan(&id, &base)?;
+        let digest = plan.digest()?;
+        plan.frozen = Some(crate::plan::Frozen {
+            digest: digest.clone(),
+            confirmed_at: self.clock.now(),
+            answer_text: input.user_instruction.clone(),
+        });
+        self.forge.require_auth(&self.repo_root)?;
+        self.git
+            .add_worktree(&self.store.worktree_path(), &input.branch, &source)?;
+        self.store.write_artifact(
+            "build-request.json",
+            &serde_json::to_string_pretty(&serde_json::json!({
+                "request":input, "source_head":source, "base_commit":base, "contract_digest":digest,
+                "authorization_source":"explicit_build_instruction", "planning_performed":false
+            }))
+            .map_err(|e| Error::Internal(e.to_string()))?,
+        )?;
+        self.save_plan(&plan)?;
+        let run = crate::state::Run {
+            schema: crate::plan::SCHEMA.into(),
+            run_id: id.clone(),
+            goal_id: id,
+            revision: 1,
+            state: crate::state::RunState::Coding {
+                unit: "U1".into(),
+                attempt: 1,
+            },
+            accepted_units: vec![],
+            accepted_fingerprints: Default::default(),
+            plan_digest: Some(digest),
+            branch: input.branch.clone(),
+            reviewed_head: None,
+            seq: 0,
+        };
+        self.store.write_run(&*self.clock, &run)?;
+        Ok(self.report(&run, "BUILD started from the recorded explicit instruction. Planning was omitted; scope, tests and independent review remain required.".into()))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
