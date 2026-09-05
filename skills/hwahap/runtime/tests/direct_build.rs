@@ -71,15 +71,22 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
             Role::UnitReviewer,
             Reply::say(r#"{"verdict":"pass","findings":[]}"#),
         ),
-        step(
-            Role::FinalReview,
-            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
-        ),
     ]);
     let next = engine.step_with(&script, None, None).await.unwrap();
     assert_eq!(next.state, "final_verifying", "{}", next.message);
     let done = engine.step_with(&script, None, None).await.unwrap();
-    assert_eq!(done.state, "awaiting_adjust_or_ship", "{}", done.message);
+    assert_eq!(done.state, "pr_review", "{}", done.message);
+    assert_eq!(done.next, "continue");
+    let progress = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        progress.binding.head,
+        git(&fixture.worktree(), &["rev-parse", "HEAD"])
+    );
+    assert_eq!(progress.binding.contract_digest, plan.digest().unwrap());
+    assert_eq!(progress.stage, hwahap::pr_review::ReviewStage::Attack);
+    assert!(engine.ship("SHIP anything").is_err());
     assert_eq!(script.remaining(), 0);
     assert!(git(&fixture.worktree(), &["log", "-1", "--format=%s"]).contains("U1"));
     assert!(done.pr_url.is_some());

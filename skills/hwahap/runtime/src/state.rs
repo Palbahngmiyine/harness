@@ -73,6 +73,10 @@ pub enum RunState {
     },
     /// Full suite and final review.
     FinalVerifying,
+    /// A draft exists, but two independent reviews are still required.
+    PrReview {
+        pr_url: String,
+    },
     /// The draft pull request exists; the user adjusts or ships.
     AwaitingAdjustOrShip {
         pr_url: String,
@@ -101,6 +105,7 @@ impl RunState {
             RunState::AwaitingConfirmation { .. } => "awaiting_confirmation",
             RunState::Coding { .. } => "coding",
             RunState::FinalVerifying => "final_verifying",
+            RunState::PrReview { .. } => "pr_review",
             RunState::AwaitingAdjustOrShip { .. } => "awaiting_adjust_or_ship",
             RunState::Shipped { .. } => "shipped",
             RunState::PlanConflict { .. } => "plan_conflict",
@@ -117,6 +122,7 @@ impl RunState {
             | RunState::PlanConflict { .. } => Phase::Plan,
             RunState::Coding { .. } => Phase::Build,
             RunState::FinalVerifying
+            | RunState::PrReview { .. }
             | RunState::AwaitingAdjustOrShip { .. }
             | RunState::Shipped { .. }
             | RunState::Blocked { .. } => Phase::Review,
@@ -129,7 +135,8 @@ impl RunState {
             RunState::Inspecting
             | RunState::Proving
             | RunState::Coding { .. }
-            | RunState::FinalVerifying => Next::Continue,
+            | RunState::FinalVerifying
+            | RunState::PrReview { .. } => Next::Continue,
             RunState::Deciding
             | RunState::AwaitingConfirmation { .. }
             | RunState::AwaitingAdjustOrShip { .. }
@@ -147,6 +154,7 @@ impl RunState {
                 | RunState::Proving
                 | RunState::Coding { .. }
                 | RunState::FinalVerifying
+                | RunState::PrReview { .. }
         )
     }
 
@@ -158,9 +166,9 @@ impl RunState {
     /// The draft pull request, once one exists.
     pub fn pr_url(&self) -> Option<&str> {
         match self {
-            RunState::AwaitingAdjustOrShip { pr_url, .. } | RunState::Shipped { pr_url } => {
-                Some(pr_url)
-            }
+            RunState::PrReview { pr_url }
+            | RunState::AwaitingAdjustOrShip { pr_url, .. }
+            | RunState::Shipped { pr_url } => Some(pr_url),
             _ => None,
         }
     }

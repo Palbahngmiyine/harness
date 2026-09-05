@@ -34,6 +34,7 @@ use crate::{frontier, prompts, proposal, render, validate};
 const MAX_ATTEMPTS: u32 = 2;
 
 mod build;
+mod pr_review;
 pub use build::{BuildRequest, BuildUnit};
 
 /// A source of agent sessions.
@@ -344,6 +345,7 @@ impl Engine {
             RunState::Proving => self.prove(run, sessions).await,
             RunState::Coding { .. } => self.code(run, sessions).await,
             RunState::FinalVerifying => self.finalize(run, sessions).await,
+            RunState::PrReview { .. } => self.review_pr(run, sessions).await,
             other => Err(Error::Internal(format!(
                 "state {} does not need an agent session",
                 other.name()
@@ -984,7 +986,7 @@ impl Engine {
         Ok(Ok(()))
     }
 
-    async fn finalize(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
+    async fn finalize(&self, mut run: Run, _sessions: &dyn Sessions) -> Result<StepOutcome> {
         let plan = self.require_frozen_plan(&run)?;
         let worktree = self.store.worktree_path();
 
@@ -1012,41 +1014,6 @@ impl Engine {
             return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
         }
 
-        let diff = self.git.run_in(
-            &worktree,
-            &[
-                "diff",
-                &format!(
-                    "{}...HEAD",
-                    plan.base_commit.as_deref().unwrap_or(&plan.base_branch)
-                ),
-            ],
-        )?;
-        let review = self
-            .ask(
-                sessions,
-                Role::FinalReview,
-                None,
-                prompts::final_review(&render::plan_markdown(&plan)?, &tail(&diff, 400_000)),
-            )
-            .await?;
-        let review = ReviewResult::parse(&review.final_message)?;
-        if review.verdict == Verdict::Fail {
-            run.state = RunState::Blocked {
-                reason: format!(
-                    "the final review rejected the branch:\n{}",
-                    review
-                        .findings
-                        .iter()
-                        .map(|f| format!("- {f}"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                ),
-            };
-            self.store.write_run(&*self.clock, &run)?;
-            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
-        }
-
         let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
         self.forge
             .existing_draft(&worktree, &plan.base_branch, &run.branch)?;
@@ -1065,11 +1032,27 @@ impl Engine {
             &report,
         )?;
 
-        run.reviewed_head = Some(head);
-        run.state = RunState::AwaitingAdjustOrShip {
-            pr_url: pr.url.clone(),
-            challenge: plan.digest()?.challenge(),
+        let progress = crate::pr_review::ReviewProgress {
+            binding: crate::pr_review::ReviewBinding {
+                pr_url: pr.url.clone(),
+                head: head.clone(),
+                contract_digest: plan.digest()?,
+            },
+            round: 1,
+            stage: crate::pr_review::ReviewStage::Attack,
+            repairs: 0,
         };
+        progress.save(&self.store)?;
+        run.reviewed_head = None;
+        run.state = RunState::PrReview {
+            pr_url: pr.url.clone(),
+        };
+        self.store.write_run(&*self.clock, &run)?;
+        if pr.head_sha != head || self.git.run_in(&worktree, &["rev-parse", "HEAD"])? != head {
+            return Err(Error::BoundaryViolation(
+                "published PR head differs from tested commit".into(),
+            ));
+        }
         self.store.write_run(&*self.clock, &run)?;
         Ok(self.report(&run, self.describe(&run, Some(&plan))?))
     }
@@ -1433,7 +1416,13 @@ impl Engine {
             next: run.state.next().name().to_string(),
             message,
             plan_digest: run.plan_digest.as_ref().map(|d| d.to_string()),
-            pr_url: run.state.pr_url().map(str::to_string),
+            pr_url: run.state.pr_url().map(str::to_string).or_else(|| {
+                crate::pr_review::ReviewProgress::load(&self.store)
+                    .ok()
+                    .flatten()
+                    .filter(|p| Some(&p.binding.contract_digest) == run.plan_digest.as_ref())
+                    .map(|p| p.binding.pr_url)
+            }),
         }
     }
 
@@ -1455,7 +1444,10 @@ impl Engine {
                 "Building {unit} (attempt {attempt}). {} unit(s) accepted so far.",
                 run.accepted_units.len()
             ),
-            RunState::FinalVerifying => "Running the full suite and the final review.".into(),
+            RunState::FinalVerifying => "Running the full suite before draft publication.".into(),
+            RunState::PrReview { pr_url } => {
+                format!("Draft {pr_url} requires independent Astra attack and defense review.")
+            }
             RunState::AwaitingAdjustOrShip { pr_url, challenge } => match plan {
                 Some(plan) => self.summary(plan, run, pr_url, challenge),
                 None => format!("{pr_url} is ready. Type `SHIP {challenge}` to mark it ready."),
