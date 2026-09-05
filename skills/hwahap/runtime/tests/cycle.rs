@@ -1295,9 +1295,14 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
         outcome.message
     );
     assert_eq!(outcome.pr_url, first.last().unwrap().pr_url);
-    for log in ["pr-created", "pr-edited"] {
+    // One creation; report refresh after each review plus the adjustment publication.
+    for (log, expected) in [("pr-created", 1), ("pr-edited", 3)] {
         let calls = std::fs::read_to_string(fixture.dir.path().join(log)).unwrap();
-        assert_eq!(calls.lines().count(), 1, "unexpected {log} calls: {calls}");
+        assert_eq!(
+            calls.lines().count(),
+            expected,
+            "unexpected {log} calls: {calls}"
+        );
     }
     let after = store.read_run().unwrap().unwrap();
     assert_eq!(after.branch, before.branch);

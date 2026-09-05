@@ -169,3 +169,48 @@ fn explicit_rates_price_cached_input_once_and_never_claim_a_bill() {
         1_000_000
     );
 }
+
+#[test]
+fn no_counters_and_replaced_session_identity_are_unavailable() {
+    let (_dir, store, log) = fixture();
+    meter::attach(&store, &log, false).unwrap();
+    let value = meter::summary(&store).unwrap();
+    assert_eq!(value["observed_sessions"], 0);
+    assert_eq!(value["unavailable_sessions"], json!(["parent"]));
+    event(&log, 100, 80, 10);
+    assert_eq!(meter::summary(&store).unwrap()["observed_sessions"], 1);
+    let text = std::fs::read_to_string(&log)
+        .unwrap()
+        .replace("parent", "replacement");
+    std::fs::write(&log, text).unwrap();
+    assert_eq!(meter::summary(&store).unwrap()["observed_sessions"], 0);
+}
+
+#[test]
+fn absent_write_rate_is_unpriced_until_explicitly_configured() {
+    use std::io::Write;
+    let (_dir, store, log) = fixture();
+    meter::attach(&store, &log, false).unwrap();
+    writeln!(std::fs::OpenOptions::new().append(true).open(&log).unwrap(), "{}", json!({
+        "type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{
+        "input_tokens":1_000_000,"cached_input_tokens":700_000,"cache_write_input_tokens":100_000,"output_tokens":20_000}}}})).unwrap();
+    let mut card = json!({"currency":"test-units","source":"synthetic regression rates",
+        "effective_date":"2026-09-06","assumptions":"flat test tariff",
+        "per_million":{"gpt-6-astra":{"input":2.0,"cached_input":0.2,"output":10.0}}});
+    let path = store.root().join("pricing.json");
+    std::fs::write(&path, card.to_string()).unwrap();
+    let value = hwahap::cost::summary(&store).unwrap();
+    assert!(value["cost_estimate"]["priced_subtotal"].is_null());
+    assert_eq!(
+        value["cost_estimate"]["unpriced_models"],
+        json!(["gpt-6-astra"])
+    );
+    card["per_million"]["gpt-6-astra"]["cache_write_input"] = json!(2.5);
+    std::fs::write(&path, card.to_string()).unwrap();
+    let value = hwahap::cost::summary(&store).unwrap();
+    assert!((value["cost_estimate"]["priced_subtotal"].as_f64().unwrap() - 0.99).abs() < 1e-9);
+    card["per_million"] = json!({});
+    std::fs::write(&path, card.to_string()).unwrap();
+    let value = hwahap::cost::summary(&store).unwrap();
+    assert!(value["cost_estimate"]["priced_subtotal"].is_null());
+}

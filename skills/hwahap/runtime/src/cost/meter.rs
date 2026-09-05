@@ -183,6 +183,9 @@ pub fn summary(store: &Store) -> Result<serde_json::Value> {
             registered += 1;
             let result = (|| -> Result<BTreeMap<String, Tokens>> {
                 let (id, current) = scan(Path::new(&source.path))?;
+                if current.is_empty() {
+                    return Err(Error::Rejected("usage source has no counters yet".into()));
+                }
                 if id != source.session_id || run_id.as_ref() != Some(&source.run_id) {
                     return Err(Error::Rejected("usage identity or run mismatch".into()));
                 }
