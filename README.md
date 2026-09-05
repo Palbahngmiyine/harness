@@ -99,14 +99,15 @@ Hwahap v3 runs one implementation request end to end:
 - success is judged from repository state and exit status, never from what an agent claims
 - it finishes with a draft pull request, and marks it ready only on an explicit `SHIP <challenge>`
 
-One Rust binary is both a local STDIO MCP server (exactly three tools) and an ACP client driving a
-pinned `codex-acp` adapter, one session at a time. There is no daemon, no database, no HTTP
+One Rust binary is a local STDIO MCP server (exactly three tools) and a durable broker for
+Codex native sub-agents, one dispatch at a time. Astra handles deep reasoning and one repair
+attempt; an already-Astra coordinator can handle two planning roles without extra children. There is no daemon, no database, no HTTP
 transport, and no lifecycle hook.
 
-Requirements: Rust 1.90 or newer, an authenticated `gh`, and `codex-acp` on `PATH`. It is a
+Requirements: Rust 1.90 or newer, an authenticated `gh`, and a Codex host with native sub-agent tools. It is a
 Unix-only tool today: the engine runs a plan's test commands through `sh -c`.
 Installation, the architecture, the fixed model/effort policy, and the design decisions are in
-[`skills/hwahap/README.md`](skills/hwahap/README.md); the measured platform facts it depends on
+[`skills/hwahap/README.md`](skills/hwahap/README.md); the observed platform behavior and validation limits
 are in [`skills/hwahap/PLATFORM.md`](skills/hwahap/PLATFORM.md).
 
 Validate from the repository root:

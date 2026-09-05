@@ -142,13 +142,13 @@ for banned in None Low Max Ultra; do
 done
 pass "none, low, max and ultra are unrepresentable efforts"
 
-if ! grep -q 'receipt.verify()' "$src/acp.rs"; then
-  fail "acp.rs does not verify the receipt before prompting"
+if [ -f "$src/acp.rs" ] || grep -q 'agent-client-protocol' "$manifest"; then
+  fail "the removed ACP runtime or dependency is present"
 fi
-if ! grep -q 'UnsupportedProfile' "$src/acp.rs"; then
-  fail "acp.rs has no fail-closed path for an unsupported profile"
+if ! grep -q 'receipt.verify_for' "$src/engine.rs"; then
+  fail "native receipts are not checked against the requested role and profile"
 fi
-pass "requested and applied model/effort are compared before every prompt"
+pass "native request evidence is validated without claiming an applied-model echo"
 
 # Comparing them is only half the promise: the run has to *stop*. An earlier version of this gate
 # checked only that the words appeared in acp.rs, and passed while `is_terminal_for_run` had no
@@ -163,8 +163,8 @@ pass "an unrecoverable error is written down as a blocked run"
 
 # -------------------------------------------------------- one session at a time
 
-if ! grep -q 'engine_lock' "$src/mcp.rs"; then
-  fail "mcp.rs does not serialize concurrent tool calls; rmcp dispatches them in parallel"
+if ! grep -q 'RepoLock::acquire' "$src/native/host.rs"; then
+  fail "native host does not lock execution across MCP processes"
 fi
 pass "concurrent step and ship calls are serialized"
 

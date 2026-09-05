@@ -1,25 +1,34 @@
 ---
 name: hwahap
-description: "Turn an implementation or refactoring request into a confirmed plan, then let Hwahap build, test, review, and open a draft PR autonomously. Trigger for implementation, refactoring, or build requests; never for questions, documentation-only work, or ideation."
+description: "Turn an implementation or refactoring request into a confirmed plan, then build, test, independently review, and open a draft PR with Codex native sub-agents. Never for questions, documentation-only work, or ideation."
 ---
 
 # Hwahap
 
-Use Hwahap only for implementation or refactoring requests. For questions, documentation-only work,
-or ideation, answer directly instead.
+Call `hwahap_step` with the repository path and the user's request. Follow the MCP server's
+`instructions`; it owns scheduling, scope, tests, commits, and publication gates.
 
-Call `hwahap_step` with the repository path and the user's request. Do not implement anything, run
-tests, spawn workers, or edit files yourself: Hwahap owns the whole cycle.
+Forward user messages verbatim in `user_input`. Never invent, complete, or infer a decision,
+`CONFIRM PLAN`, or `SHIP` line. Call `hwahap_ship` only for the user's exact `SHIP <challenge>`.
 
-Forward the user's message verbatim in `user_input`. Never write, complete, correct, or infer a
-`CONFIRM PLAN` or `SHIP` line on the user's behalf, and never answer a decision for them.
+Follow `next`:
 
-Then follow `next` in the response:
+- `continue`: call `hwahap_step` again.
+- `native_dispatch`: execute the exact returned native dispatch using the server protocol.
+  Use one Codex native child with `fork_turns=none`, the requested model/effort and exact brief.
+  Only an already-Astra host may handle a `coordinator_allowed` planning role itself.
+  Register the returned agent ID immediately; never create two children for one dispatch.
+- `native_wait`: wait for the registered child, or poll after one second during host validation.
+  Relay exact final text after the child and its commands stop. Usage is null unless tools report it.
+- `native_stop`: stop the exact child and remaining commands, then acknowledge the dispatch.
+  Do not acknowledge an uncertain stop; locate unregistered children by `hwahap_<dispatch_id>`.
+- `await_user`: show `message` and wait for the user.
+- `completed` or `blocked`: show `message` and stop.
 
-- `continue` — call `hwahap_step` again immediately, without asking the user anything.
-- `await_user` — show `message` and stop. Send whatever the user replies as the next `user_input`.
-- `completed` or `blocked` — show `message` and stop.
+Outside the assigned dispatch, do not edit files, run tests, spawn agents, or create branches/PRs.
+Final review always uses an independent child. Native workers must not invoke Hwahap recursively.
+If the native tools or requested model are unavailable, report the limitation; do not fall back
+to ACP or CLI sessions or fabricate results. Requested settings and read-only instructions are
+not independent proof of the applied model or OS isolation. Unknown usage is never zero cost.
 
-Call `hwahap_status` to report progress without changing anything.
-
-Call `hwahap_ship` only after the user has typed an exact `SHIP <challenge>` line themselves.
+Use `hwahap_status` for progress and cost evidence. Installation and scope are in [README.md](README.md).
