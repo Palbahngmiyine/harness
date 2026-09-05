@@ -164,6 +164,19 @@ fn the_step_tool_requires_only_the_repository_path() {
     let properties = schema["properties"].as_object().expect("properties");
     assert!(properties.contains_key("request"));
     assert!(properties.contains_key("user_input"));
+    for key in [
+        "plan_only",
+        "build_confirmed",
+        "adjust_build",
+        "question_response",
+    ] {
+        assert!(properties.contains_key(key), "missing {key}");
+    }
+    assert!(
+        Hwahap::step_tool_attr().output_schema.unwrap()["properties"]
+            .get("question_batch")
+            .is_some()
+    );
 }
 
 #[test]

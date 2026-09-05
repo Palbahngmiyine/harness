@@ -134,10 +134,15 @@ impl QuestionBatch {
             .ready
             .into_iter()
             .filter(|id| !plan.interactive || plan.question_frontier.contains(id))
+            .filter(|id| {
+                !plan.open_items.iter().any(|o| {
+                    o.id == format!("NA-{}", plan.decision(id).expect("validated").surface)
+                })
+            })
             .take(3)
         {
             let decision = plan.decision(&id).expect("frontier validated decision ids");
-            questions.push(decision_question(decision));
+            questions.push(decision_question(decision, plan));
         }
         for surface in SURFACES {
             if plan.interactive && !plan.question_frontier.contains(&surface.id().to_string()) {
@@ -206,7 +211,7 @@ fn alternative_label(decision: &Decision, alt: &Alternative) -> String {
     format!("{}: {}{suffix}", alt.id, alt.value)
 }
 
-fn decision_question(decision: &Decision) -> Question {
+fn decision_question(decision: &Decision, plan: &Plan) -> Question {
     let recommended = decision.recommendation.recommended_alternative();
     let mut alternatives: Vec<_> = decision.alternatives.iter().collect();
     alternatives.sort_by_key(|alt| {
@@ -239,9 +244,19 @@ fn decision_question(decision: &Decision) -> Question {
         Recommendation::NoRecommendation { rationale } => format!("추천 없음: {}", rationale.join("; ")),
         Recommendation::ProbeRequired { probe_unit, rationale } => format!("먼저 확인할 실험: {probe_unit}\n근거: {}", rationale.join("; ")),
     };
+    let sources = if let Recommendation::Recommended { evidence, .. } = &decision.recommendation {
+        evidence
+            .iter()
+            .filter_map(|id| plan.facts.iter().find(|f| &f.id == id))
+            .map(|f| format!("{}: {} (출처: {})", f.id, f.answer, f.sources.join(", ")))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        String::new()
+    };
     Question {
         id: decision.id.clone(),
-        question: format!("{}\n\n{detail}", decision.question),
+        question: format!("{}\n\n{detail}\n{sources}", decision.question),
         options,
     }
 }
@@ -470,6 +485,44 @@ mod tests {
             serde_json::from_str::<QuestionResponse>(&serde_json::to_string(&payload).unwrap())
                 .unwrap(),
             payload
+        );
+    }
+
+    #[test]
+    fn applicability_precedes_decisions_on_that_surface() {
+        let mut plan = fixture();
+        plan.open_items.push(OpenItem {
+            id: "NA-S1".into(),
+            decision_id: String::new(),
+            detail: "Is this scope relevant?".into(),
+        });
+        let batch = QuestionBatch::derive(&plan).unwrap().unwrap();
+        assert_eq!(batch.questions.len(), 1);
+        assert_eq!(batch.questions[0].id, "S1");
+    }
+
+    #[test]
+    fn downstream_questions_wait_for_the_next_logical_round() {
+        let mut plan = fixture();
+        plan.interactive = true;
+        plan.question_frontier = vec!["C1".into(), "C4".into(), "C10".into()];
+        plan.decision_mut("C2").unwrap().depends_on = vec!["C1".into()];
+        let c1 = plan.decision_mut("C1").unwrap();
+        c1.answer = Some(crate::plan::Answer {
+            text: "ALT1".into(),
+            selection: Selection::Alternative { id: "ALT1".into() },
+            ts: "now".into(),
+            identity: c1.identity_digest().unwrap(),
+            recommendation: None,
+        });
+        let batch = QuestionBatch::derive(&plan).unwrap().unwrap();
+        assert_eq!(
+            batch
+                .questions
+                .iter()
+                .map(|q| q.id.as_str())
+                .collect::<Vec<_>>(),
+            ["C4", "C10"]
         );
     }
 }

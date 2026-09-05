@@ -37,6 +37,14 @@ pub fn plan_markdown(plan: &Plan) -> Result<String> {
     plan.require_supported_schema()?;
     let mut md = Md::default();
     render_header(plan, &mut md)?;
+    if plan.interactive {
+        md.line(if plan.plan_only { "Execution: PLAN only. Confirmation saves this plan; BUILD requires a later explicit request." }
+            else { "Execution: PLAN then BUILD. Confirmation starts implementation, tests and draft review." });
+        if let Some(head) = &plan.source_head {
+            md.line(&format!("Inspected source commit: `{head}`"));
+        }
+        md.line("Recommendations and review judgments remain inspectable claims, not proof that every requirement has been discovered.");
+    }
     render_goal(plan, &mut md);
     if plan.execution_authorization.is_none() {
         render_surfaces(plan, &mut md)?;

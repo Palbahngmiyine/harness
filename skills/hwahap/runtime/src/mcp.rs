@@ -36,6 +36,27 @@ without asking the user; `await_user` means show `message` and wait; `completed`
 show `message` and stop. Pass the user's reply verbatim in `user_input`. Never compose, complete, \
 or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may type one.
 
+For PLAN alone, start with request and plan_only:true. Confirmation saves plan_ready without \
+implementation or GitHub authentication. Default plan_only:false continues from confirmed PLAN to BUILD. \
+When the user later requests BUILD of that saved plan, send build_confirmed with its full plan_digest, \
+never reconstruct a direct-build contract. A stale source requires reopening PLAN. For ADJUST, use \
+adjust_build with the verbatim user_instruction, current contract_digest and affected unit_ids only \
+when correcting implementation under unchanged acceptance, tests and paths. Any contract change or \
+uncertain routing returns to PLAN through user_input. Both paths re-review the updated draft before SHIP.
+
+When question_batch is present, present its exact question bodies and all option labels using the \
+host's actually available request_user_input or request_user_input_async capability. request_user_input \
+may require Codex Plan mode; do not call an unavailable tool, invent AskUserQuestion, or switch modes. \
+Use the asynchronous question UI if available in the current mode. Never shorten away alternatives. \
+If the UI cannot represent every option, use a free-text question showing all full labels; if no \
+question tool is available, show that same complete page in the conversation. Relay actual answers \
+as question_response:{batch_id,responses:[{id,answer}]} with the unchanged batch ID and answer text. \
+Do not translate labels into C= directives or infer missing choices. A selected default, timeout, \
+cancel, or request-resolved event is not a submitted answer. Remain waiting until actual input arrives. \
+The engine pages the whole ready frontier, then rechecks implications. Free text is unconfirmed until \
+the user chooses a clarified interpretation. CONFIRM PLAN and SHIP still require the user's exact typed \
+line in user_input/confirmation; never manufacture them from a question UI response.
+
 Only when the user explicitly requests execution without planning, send build instead of request. \
 Its user_instruction must be that user's exact authorization; specify the objective, new codex/ \
 branch, remote base branch, scoped units with observable acceptance and test commands, and full_suite. \
