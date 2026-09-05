@@ -1315,7 +1315,8 @@ async fn every_session_leaves_its_own_receipt() {
 async fn a_final_reviewer_that_writes_cannot_create_a_draft_pr() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps.last_mut().unwrap().reply = Reply::write(&[("src/added.txt", "reviewer changed this\n")], PASS);
+    steps.last_mut().unwrap().reply =
+        Reply::write(&[("src/added.txt", "reviewer changed this\n")], PASS);
     let script = Script::new(steps);
     let outcomes = run_to_draft_pr(&fixture, &script).await;
     let outcome = outcomes.last().unwrap();
@@ -1329,11 +1330,38 @@ async fn receipts_survive_a_new_engine_for_every_mcp_step() {
     let fixture = Fixture::new();
     let script = Script::new(happy_path_steps());
     let challenge = plan_to_confirmation(&fixture, &script).await;
-    let mut outcome = fixture.engine().step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}"))).await.unwrap();
+    let mut outcome = fixture
+        .engine()
+        .step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}")))
+        .await
+        .unwrap();
     while outcome.next == "continue" {
-        outcome = fixture.engine().step_with(&script, None, None).await.unwrap();
+        outcome = fixture
+            .engine()
+            .step_with(&script, None, None)
+            .await
+            .unwrap();
     }
-    let receipts = std::fs::read_dir(fixture.repo.join(".hwahap/artifacts")).unwrap()
-        .filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("receipt-")).count();
+    let receipts = std::fs::read_dir(fixture.repo.join(".hwahap/artifacts"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_string_lossy().starts_with("receipt-"))
+        .count();
     assert_eq!(receipts, script.calls().len());
+}
+
+#[tokio::test]
+async fn a_successful_full_suite_that_mutates_files_cannot_publish() {
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps();
+    let mut proposal: serde_json::Value = serde_json::from_str(&structure()).unwrap();
+    proposal["full_suite"] = "printf changed > src/added.txt".into();
+    steps[2].reply = Reply::say(proposal.to_string());
+    let script = Script::new(steps);
+    let outcomes = run_to_draft_pr(&fixture, &script).await;
+    let outcome = outcomes.last().unwrap();
+    assert_eq!(outcome.state, "blocked");
+    assert!(outcome.message.contains("full suite changed"));
+    assert!(outcome.pr_url.is_none());
+    assert!(!script.roles().contains(&Role::FinalReview));
 }
