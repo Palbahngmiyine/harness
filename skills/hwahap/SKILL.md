@@ -1,6 +1,6 @@
 ---
 name: hwahap
-description: "Turn an implementation or refactoring request into a confirmed plan, then build, test, independently review, and open a draft PR with Codex native sub-agents. Never for questions, documentation-only work, or ideation."
+description: "Build, test and review implementation requests with Codex native sub-agents. Use PLAN unless the user explicitly authorizes direct BUILD. Publish a draft and run independent Astra attack and defense. Never for questions, documentation-only work or ideation."
 ---
 
 # Hwahap
@@ -16,7 +16,7 @@ Follow `next`:
 
 - `continue`: call `hwahap_step` again.
 - `native_dispatch`: execute the exact returned native dispatch using the server protocol.
-  Retain the Worker, Critic and Auditor identities; follow the server's spawn/follow-up protocol.
+  Retain Critic and Auditor (also Worker in PLAN mode); follow the server's spawn/follow-up protocol.
   Only new children use `fork_turns=none`; coordinator work runs in this Astra parent.
   Never create replacements, switch lanes, or change retained models/efforts.
 - `native_wait`: for `agent_id=coordinator`, perform the assigned role here and send completion;
@@ -30,7 +30,8 @@ Follow `next`:
 - `completed` or `blocked`: show `message` and stop.
 
 Outside the assigned dispatch, do not edit files, run tests, spawn agents, or create branches/PRs.
-Final review uses the independent Auditor. Native workers must not invoke Hwahap recursively.
+After draft publication, Astra Critic attacks and a distinct Astra Auditor defends; parent repairs.
+Use `recheck_pr=true` to recheck this run's draft. Native workers must not invoke Hwahap recursively.
 Record spawn failures or unavailable native tools through the server protocol; never repeat spawn,
 use ACP/CLI substitutes, or fabricate results. Requested settings and read-only instructions are
 not independent proof of the applied model or OS isolation. Unknown usage is never zero cost.
