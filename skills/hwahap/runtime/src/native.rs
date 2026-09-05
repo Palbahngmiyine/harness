@@ -11,6 +11,8 @@ use crate::state::Store;
 
 mod broker;
 pub use broker::NativeSessions;
+mod host;
+pub use host::{NativeHost, NativeInput, NativeProgress};
 
 const PENDING: &str = "native-pending.json";
 
@@ -26,6 +28,8 @@ pub struct NativeDispatch {
     pub effort: String,
     pub cwd: String,
     pub access: String,
+    /// Only an already-Astra host may perform these planning roles directly.
+    pub coordinator_allowed: bool,
     pub prompt_digest: String,
     pub plan_digest: Option<String>,
     pub base_head: String,
@@ -97,14 +101,20 @@ pub fn orphan(store: &Store) -> Result<Option<NativeDispatch>> {
 }
 
 pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
-    let pending = load(store)?.ok_or_else(|| Error::Rejected("no native dispatch to stop".into()))?;
+    let pending =
+        load(store)?.ok_or_else(|| Error::Rejected("no native dispatch to stop".into()))?;
     if !ack.all_work_stopped
         || ack.dispatch_id != pending.dispatch.dispatch_id
         || ack.agent_id != pending.dispatch.agent_id
     {
-        return Err(Error::Rejected("stop acknowledgment does not match the pending native dispatch".into()));
+        return Err(Error::Rejected(
+            "stop acknowledgment does not match the pending native dispatch".into(),
+        ));
     }
-    store.write_artifact(&format!("native-stopped-{}.json", ack.dispatch_id), &json(ack)?)?;
+    store.write_artifact(
+        &format!("native-stopped-{}.json", ack.dispatch_id),
+        &json(ack)?,
+    )?;
     clear(store)
 }
 
@@ -125,19 +135,29 @@ impl RepoLock {
         let dir = root.join(".hwahap");
         std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
         let path: PathBuf = dir.join("native.lock");
-        let file = std::fs::OpenOptions::new().create(true).truncate(false).read(true).write(true)
-            .open(&path).map_err(|e| Error::io(&path, e))?;
+        let file = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| Error::io(&path, e))?;
         #[cfg(unix)]
         {
             use std::os::fd::AsRawFd;
             // SAFETY: flock only observes this live descriptor and stores no Rust pointer.
             if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-                return Err(Error::Rejected(format!("another Hwahap process owns {}", root.display())));
+                return Err(Error::Rejected(format!(
+                    "another Hwahap process owns {}",
+                    root.display()
+                )));
             }
             Ok(Self(file))
         }
         #[cfg(not(unix))]
-        Err(Error::Rejected("native runs require a supported OS file lock".into()))
+        Err(Error::Rejected(
+            "native runs require a supported OS file lock".into(),
+        ))
     }
 }
 
@@ -147,7 +167,9 @@ impl Drop for RepoLock {
         {
             use std::os::fd::AsRawFd;
             // SAFETY: this descriptor remains live until the File field is dropped.
-            unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN); }
+            unsafe {
+                libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+            }
         }
     }
 }
@@ -171,8 +193,14 @@ mod tests {
         let store = Store::open(temp.path()).unwrap();
         assert!(orphan(&store).unwrap().is_none());
         assert!(!store.root().exists());
-        assert!(acknowledge_stopped(&store, &NativeStopped {
-            dispatch_id: "unknown".into(), agent_id: None, all_work_stopped: true,
-        }).is_err());
+        assert!(acknowledge_stopped(
+            &store,
+            &NativeStopped {
+                dispatch_id: "unknown".into(),
+                agent_id: None,
+                all_work_stopped: true,
+            }
+        )
+        .is_err());
     }
 }

@@ -13,7 +13,6 @@ use std::future::Future;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 
-use crate::acp::{SessionOutcome, SessionSpec};
 use crate::agentresult::{ReviewResult, Verdict, WorkerResult, WorkerStatus};
 use crate::answer::{parse_message, Directive};
 use crate::canonical::Digest;
@@ -24,15 +23,15 @@ use crate::forge::Forge;
 use crate::git::{paths_outside, Git};
 use crate::plan::{Answer, Frozen, Plan, PlanReview, Selection, Surface, SurfaceStatus, Unit};
 use crate::profile::Role;
+use crate::session::{SessionOutcome, SessionSpec};
 use crate::state::{Next, Run, RunState, Store};
 use crate::{frontier, prompts, proposal, render, validate};
 
 /// How many implementation attempts one unit gets before the run is blocked.
 ///
-/// Attempt 1 implements, attempt 2 reworks against findings, and attempt 3 only happens when the
-/// diagnosis says there is a specific reason it would succeed. Beyond that a fourth try is just the
-/// same failure again at the user's expense.
-const MAX_ATTEMPTS: u32 = 3;
+/// One Economy attempt followed by one Deep repair with the failure evidence. No separate
+/// diagnosis call, and no repeated same-model retry loop.
+const MAX_ATTEMPTS: u32 = 2;
 
 /// A source of agent sessions.
 ///
@@ -65,8 +64,6 @@ pub struct Engine {
     forge: Forge,
     config: Config,
     clock: Box<dyn Clock>,
-    /// How many agent sessions this engine has run, so receipts get distinct names.
-    sessions_run: std::sync::atomic::AtomicU32,
 }
 
 impl Engine {
@@ -88,7 +85,6 @@ impl Engine {
             forge: Forge::default(),
             config,
             clock: Box::new(SystemClock),
-            sessions_run: std::sync::atomic::AtomicU32::new(0),
         })
     }
 
@@ -130,7 +126,10 @@ impl Engine {
             Resolved::Started(outcome) => Ok(outcome),
             Resolved::Advance(run) if run.state.needs_sessions() => {
                 let resumable = run.clone();
-                self.block_if_terminal(resumable, self.with_sessions(run).await)
+                let _ = resumable;
+                Err(Error::Rejected(
+                    "agent work must use the native MCP dispatcher".into(),
+                ))
             }
             Resolved::Advance(run) => {
                 let resumable = run.clone();
@@ -331,14 +330,6 @@ impl Engine {
     }
 
     /// Runs the states that need a live adapter.
-    async fn with_sessions(&self, run: Run) -> Result<StepOutcome> {
-        let profiles = self.config.profiles.clone();
-        crate::acp::with_link(&self.config.adapter, &profiles, async move |link| {
-            self.drive(run, &link).await
-        })
-        .await
-    }
-
     /// The state dispatch that needs sessions. Split out so tests can drive it with a script.
     pub async fn drive(&self, run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         match run.state.clone() {
@@ -885,31 +876,6 @@ impl Engine {
             }
 
             findings = rejected.unwrap_or_default();
-
-            if attempt == MAX_ATTEMPTS - 1 {
-                let diagnosis = self
-                    .ask(
-                        sessions,
-                        Role::FailureDiagnosis,
-                        Some(unit.id.clone()),
-                        prompts::failure_diagnosis(unit, attempt, &findings.join("\n")),
-                    )
-                    .await?;
-                let diagnosis = ReviewResult::parse(&diagnosis.final_message)?;
-                if diagnosis.verdict == Verdict::Fail {
-                    self.git.reset_hard(worktree, &checkpoint)?;
-                    return Ok(UnitOutcome::Blocked(format!(
-                        "{} could not be built after {attempt} attempts:\n{}",
-                        unit.id,
-                        diagnosis
-                            .findings
-                            .iter()
-                            .map(|f| format!("- {f}"))
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                    )));
-                }
-            }
         }
 
         self.git.reset_hard(worktree, &checkpoint)?;
@@ -953,6 +919,10 @@ impl Engine {
                 )]));
             }
         }
+        let outside = paths_outside(&unit.paths, &self.git.changed_paths(worktree)?);
+        if !outside.is_empty() {
+            return Ok(Err(vec![format!("test commands changed paths outside the unit: {outside:?}")]));
+        }
 
         // The reviewer is read-only. That is enforced by comparing the tree before and after,
         // because a permission callback that is never invoked proves nothing.
@@ -964,25 +934,18 @@ impl Engine {
         // identical, so a name comparison keeps its verdict and commits the reviewer's text as the
         // unit's work. A tree id covers content, mode and deletion in one value.
         self.git.run_in(worktree, &["add", "-A"])?;
-        let before = self.git.run_in(worktree, &["write-tree"])?;
         let diff = self.git.run_in(worktree, &["diff", "--cached", "HEAD"])?;
-        let review = self
+        let review = match self
             .ask(
                 sessions,
                 Role::UnitReviewer,
                 Some(unit.id.clone()),
                 prompts::unit_reviewer(plan, unit, &tail(&diff, 200_000)),
             )
-            .await?;
-        self.git.run_in(worktree, &["add", "-A"])?;
-        let after = self.git.run_in(worktree, &["write-tree"])?;
-        if before != after {
-            return Ok(Err(vec![
-                "the review session changed the working tree, so its verdict was discarded"
-                    .to_string(),
-            ]));
-        }
-
+            .await {
+                Err(Error::BoundaryViolation(detail)) => return Ok(Err(vec![detail])),
+                result => result?,
+            };
         let review = ReviewResult::parse(&review.final_message)?;
         if review.verdict == Verdict::Fail {
             return Ok(Err(review.findings));
@@ -1169,11 +1132,11 @@ impl Engine {
         unit: Option<String>,
         prompt: String,
     ) -> Result<SessionOutcome> {
-        let cwd = match crate::acp::access_for(role) {
+        let cwd = match crate::session::access_for(role) {
             // Writers see only the run worktree. Readers see the repository, because a reviewer
             // that cannot read the code it is reviewing is not a reviewer.
-            crate::acp::Access::WorkspaceWrite => self.store.worktree_path(),
-            crate::acp::Access::ReadOnly => {
+            crate::session::Access::WorkspaceWrite => self.store.worktree_path(),
+            crate::session::Access::ReadOnly => {
                 let worktree = self.store.worktree_path();
                 if worktree.exists() {
                     worktree
@@ -1188,20 +1151,30 @@ impl Engine {
             unit,
             prompt,
         };
+        let head = self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])?;
+        let before = if crate::session::access_for(role) == crate::session::Access::ReadOnly {
+            Some(self.git.fingerprint(&spec.cwd)?)
+        } else { None };
+        let sequence = self.store.append_event(&*self.clock, "session_requested", serde_json::json!({
+            "role": role.as_str(), "unit": spec.unit,
+            "model_requested": self.config.profiles.for_role(role).model,
+            "prompt_digest": Digest::of_bytes(spec.prompt.as_bytes()),
+        }))?.seq;
         let outcome = sessions.run(&spec).await?;
-        outcome.receipt.verify()?;
-        // Numbered, not timestamped: two sessions of the same role inside one second are ordinary,
-        // and a name built from the clock would let the second overwrite the first. The profile
-        // evidence for a run has to be complete or it proves nothing.
-        let sequence = self
-            .sessions_run
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
-            + 1;
+        outcome.receipt.verify_for(&spec, &self.config.profiles)?;
         self.store.write_artifact(
             &format!("receipt-{sequence:04}-{}.json", role.as_str()),
             &serde_json::to_string_pretty(&outcome.receipt)
                 .map_err(|e| Error::Internal(e.to_string()))?,
         )?;
+        if self.git.run_in(&spec.cwd, &["rev-parse", "HEAD"])? != head {
+            return Err(Error::BoundaryViolation(format!("{} changed HEAD; the host owns checkpoints", role.as_str())));
+        }
+        if let Some(before) = before {
+            if self.git.fingerprint(&spec.cwd)? != before {
+                return Err(Error::BoundaryViolation(format!("the read-only {} session changed the working tree or index; its result was discarded", role.as_str())));
+            }
+        }
         Ok(outcome)
     }
 
@@ -1733,9 +1706,9 @@ mod tests {
     }
 
     #[test]
-    fn a_unit_gets_at_most_three_attempts() {
+    fn a_unit_gets_one_economy_attempt_and_one_deep_repair() {
         // The constant is the whole retry policy; a change to it is a change to the contract with
         // the user about how long a stuck unit burns tokens.
-        assert_eq!(MAX_ATTEMPTS, 3);
+        assert_eq!(MAX_ATTEMPTS, 2);
     }
 }

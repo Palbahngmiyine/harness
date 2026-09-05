@@ -3,7 +3,7 @@
 //! The host sees `hwahap_step`, `hwahap_status`, and `hwahap_ship` and nothing else. There is no
 //! `plan`, `cycle`, `retry`, `create_unit`, `spawn_worker`, or `integrate` tool, because every one
 //! of those would hand a scheduling or approval decision back to the calling model. The state
-//! machine decides; the host only relays.
+//! machine decides; the host executes the explicit native dispatch protocol.
 //!
 //! [`INSTRUCTIONS`] is the single source of the cross-tool protocol. The skill file does not repeat
 //! it, and neither does any reference document: one rule, one place.
@@ -17,8 +17,10 @@ use rmcp::{tool, tool_handler, tool_router, ErrorData, Json, ServerHandler};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::engine::{Engine, StepOutcome};
+use crate::engine::StepOutcome;
 use crate::error::Error;
+use crate::git::Git;
+use crate::native::{NativeCompletion, NativeDispatch, NativeHost, NativeInput, NativeProgress, NativeRegistration, NativeStopped};
 
 /// The cross-tool protocol, returned in the MCP `initialize` response.
 ///
@@ -31,9 +33,26 @@ without asking the user; `await_user` means show `message` and wait; `completed`
 show `message` and stop. Pass the user's reply verbatim in `user_input`. Never compose, complete, \
 or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may type one.
 
-Hwahap owns implementation. Do not edit files, run tests, spawn agents, or create branches or pull \
-requests yourself while a run is active; hwahap_step does all of it and verifies the result from \
-git and exit status rather than from what any agent claims.
+For `native_dispatch`, use the returned native_dispatch exactly. If coordinator_allowed is true \
+and you are already Astra, register agent_id `coordinator` and perform only that planning role. \
+Otherwise spawn exactly one fresh Codex native sub-agent with task_name=hwahap_<dispatch_id>, \
+fork_turns=none, the specified model \
+and effort, and the exact brief. Never silently substitute models or inherit conversation history. \
+If native spawn/wait tools are unavailable, report that limitation; never fabricate a child result \
+or launch an ACP/CLI replacement. \
+Immediately call hwahap_step with registration={dispatch_id,agent_id}, then wait for that child. \
+Do not spawn a second child for a dispatch with an agent_id. For `native_wait`, wait on the registered \
+child, or poll hwahap_step after one second when no child is pending. Once the child has stopped and \
+its commands have ended, pass its exact final text via completion={dispatch_id,agent_id,final_message,\
+agent_stopped:true,reported_usage:null}. Report token usage only if native tools actually expose it; \
+never estimate or ask the child to invent counters. Model/effort and read-only access are host \
+requests, not independently verified sandbox or applied-model evidence.
+
+For `native_stop`, stop the named child and all remaining commands before sending \
+stopped={dispatch_id,agent_id,all_work_stopped:true}. If no agent_id was registered, locate and stop \
+any child you may have spawned for this exact dispatch. Never acknowledge an uncertain stop. \
+Hwahap owns code edits, test execution, commits and PRs. Outside a dispatch, do not edit files, \
+run tests, spawn agents or create branches/PRs. Final reviews always require an independent child.
 
 There are two human gates and no others. `CONFIRM PLAN <challenge>` freezes the plan; after that, a \
 normal cycle asks the user nothing until it finishes. `SHIP <challenge>` marks the finished draft \
@@ -55,6 +74,15 @@ pub struct StepArgs {
     /// The user's message, verbatim. Never paraphrase, complete, or invent it.
     #[serde(default)]
     pub user_input: Option<String>,
+    /// Record the native child immediately after spawning it.
+    #[serde(default)]
+    pub registration: Option<NativeRegistration>,
+    /// Relay an exact terminal native result; absent usage remains unknown.
+    #[serde(default)]
+    pub completion: Option<NativeCompletion>,
+    /// Confirm an orphan and its commands have stopped before recovery.
+    #[serde(default)]
+    pub stopped: Option<NativeStopped>,
 }
 
 /// Arguments to `hwahap_status`.
@@ -82,7 +110,7 @@ pub struct RunReport {
     pub phase: String,
     /// The engine state, for diagnostics.
     pub state: String,
-    /// `continue`, `await_user`, `completed`, or `blocked`.
+    /// `continue`, `await_user`, `completed`, `blocked`, or a `native_*` protocol action.
     pub next: String,
     /// The text to show the user.
     pub message: String,
@@ -92,6 +120,9 @@ pub struct RunReport {
     /// The draft pull request, once there is one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pr_url: Option<String>,
+    /// The exact native request, present while dispatching, waiting or stopping a child.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native_dispatch: Option<NativeDispatch>,
 }
 
 impl From<StepOutcome> for RunReport {
@@ -104,21 +135,27 @@ impl From<StepOutcome> for RunReport {
             message: outcome.message,
             plan_digest: outcome.plan_digest,
             pr_url: outcome.pr_url,
+            native_dispatch: None,
         }
+    }
+}
+
+impl From<NativeProgress> for RunReport {
+    fn from(progress: NativeProgress) -> Self {
+        let mut report = RunReport::from(progress.outcome);
+        report.native_dispatch = progress.dispatch;
+        report
     }
 }
 
 /// The MCP server.
 ///
-/// `rmcp` dispatches tool calls concurrently and does not serialize them, so the one-active-run
-/// invariant is enforced here: `step` and `ship` take [`Hwahap::engine_lock`] for their whole
-/// duration. `status` deliberately does not, because it only reads files that are replaced
-/// atomically, and a progress query that blocked behind an hour of autonomous coding would be
-/// useless.
+/// NativeHost owns background continuations and repository locks. Tool requests return promptly;
+/// status reads a snapshot while a native child or test command is running.
 #[derive(Clone)]
 pub struct Hwahap {
     tool_router: ToolRouter<Self>,
-    engine_lock: std::sync::Arc<tokio::sync::Mutex<()>>,
+    native: std::sync::Arc<NativeHost>,
 }
 
 impl Default for Hwahap {
@@ -134,7 +171,7 @@ impl Hwahap {
     pub fn new() -> Self {
         Hwahap {
             tool_router: Self::tool_router(),
-            engine_lock: std::sync::Arc::new(tokio::sync::Mutex::new(())),
+            native: std::sync::Arc::new(NativeHost::default()),
         }
     }
 
@@ -157,10 +194,12 @@ impl Hwahap {
         &self,
         Parameters(args): Parameters<StepArgs>,
     ) -> Result<Json<RunReport>, ErrorData> {
-        let _exclusive = self.engine_lock.lock().await;
-        let engine = engine_for(&args.cwd)?;
-        let outcome = engine
-            .step(args.request.as_deref(), args.user_input.as_deref())
+        let root = root_for(&args.cwd)?;
+        let outcome = self.native
+            .advance(&root, NativeInput {
+                request: args.request, user_input: args.user_input, registration: args.registration,
+                completion: args.completion, stopped: args.stopped,
+            })
             .await
             .map_err(to_error_data)?;
         Ok(Json(outcome.into()))
@@ -183,8 +222,8 @@ impl Hwahap {
         &self,
         Parameters(args): Parameters<StatusArgs>,
     ) -> Result<Json<RunReport>, ErrorData> {
-        let engine = engine_for(&args.cwd)?;
-        let outcome = engine.status().map_err(to_error_data)?;
+        let root = root_for(&args.cwd)?;
+        let outcome = self.native.status(&root).await.map_err(to_error_data)?;
         Ok(Json(outcome.into()))
     }
 
@@ -207,9 +246,8 @@ impl Hwahap {
         &self,
         Parameters(args): Parameters<ShipArgs>,
     ) -> Result<Json<RunReport>, ErrorData> {
-        let _exclusive = self.engine_lock.lock().await;
-        let engine = engine_for(&args.cwd)?;
-        let outcome = engine.ship(&args.confirmation).map_err(to_error_data)?;
+        let root = root_for(&args.cwd)?;
+        let outcome = self.native.ship(&root, &args.confirmation).await.map_err(to_error_data)?;
         Ok(Json(outcome.into()))
     }
 }
@@ -226,7 +264,12 @@ impl ServerHandler for Hwahap {
     }
 }
 
-fn engine_for(cwd: &str) -> Result<Engine, ErrorData> {
+#[cfg(test)]
+fn engine_for(cwd: &str) -> Result<crate::engine::Engine, ErrorData> {
+    crate::engine::Engine::open(&root_for(cwd)?).map_err(to_error_data)
+}
+
+fn root_for(cwd: &str) -> Result<PathBuf, ErrorData> {
     let path = PathBuf::from(cwd);
     if !path.is_absolute() {
         return Err(ErrorData::invalid_params(
@@ -234,7 +277,7 @@ fn engine_for(cwd: &str) -> Result<Engine, ErrorData> {
             None,
         ));
     }
-    Engine::open(&path).map_err(to_error_data)
+    Git::open(&path).map(|git| git.root().to_path_buf()).map_err(to_error_data)
 }
 
 /// Maps a Hwahap error onto the MCP error the host will render.

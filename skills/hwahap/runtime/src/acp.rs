@@ -563,16 +563,6 @@ impl AgentLink {
     }
 }
 
-impl crate::engine::Sessions for AgentLink {
-    fn run<'a>(
-        &'a self,
-        spec: &'a SessionSpec,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<SessionOutcome>> + Send + 'a>>
-    {
-        Box::pin(self.run_session(spec))
-    }
-}
-
 /// Finds a select config option in `category` that offers `wanted`, returning its id.
 fn require_offered(
     options: &[SessionConfigOption],

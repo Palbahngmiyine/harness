@@ -118,6 +118,35 @@ fn structure() -> String {
 const PASS: &str = r#"{"verdict":"pass","findings":[]}"#;
 const DONE: &str = r#"{"status":"completed","summary":"did the unit"}"#;
 
+#[tokio::test]
+async fn repeated_failure_gets_one_astra_repair_and_no_separate_diagnosis() {
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps()[..5].to_vec();
+    let failed = r#"{"status":"failed","summary":"reproducible failure"}"#;
+    steps.push(step(Role::Implementer, Reply::say(failed)));
+    steps.push(step(Role::Rework, Reply::say(failed)));
+    let script = Script::new(steps);
+    let outcomes = run_to_draft_pr(&fixture, &script).await;
+    assert_eq!(outcomes.last().unwrap().state, "blocked");
+    assert!(outcomes.last().unwrap().message.contains("2 attempts"));
+    assert_eq!(
+        script
+            .roles()
+            .iter()
+            .filter(|r| **r == Role::Rework)
+            .count(),
+        1
+    );
+    assert!(!script.roles().contains(&Role::FailureDiagnosis));
+    assert_eq!(
+        hwahap::profile::Profiles::defaults()
+            .for_role(Role::Rework)
+            .model,
+        "gpt-6-astra"
+    );
+    assert_eq!(script.remaining(), 0);
+}
+
 fn build_u1() -> Reply {
     Reply::write(&[("src/added.txt", "generated\n")], DONE)
 }
@@ -1280,4 +1309,31 @@ async fn every_session_leaves_its_own_receipt() {
         "one receipt per session, and there were {} sessions",
         script.calls().len()
     );
+}
+
+#[tokio::test]
+async fn a_final_reviewer_that_writes_cannot_create_a_draft_pr() {
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps();
+    steps.last_mut().unwrap().reply = Reply::write(&[("src/added.txt", "reviewer changed this\n")], PASS);
+    let script = Script::new(steps);
+    let outcomes = run_to_draft_pr(&fixture, &script).await;
+    let outcome = outcomes.last().unwrap();
+    assert_eq!(outcome.state, "blocked");
+    assert!(outcome.message.contains("final_review"));
+    assert!(outcome.pr_url.is_none());
+}
+
+#[tokio::test]
+async fn receipts_survive_a_new_engine_for_every_mcp_step() {
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    let challenge = plan_to_confirmation(&fixture, &script).await;
+    let mut outcome = fixture.engine().step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}"))).await.unwrap();
+    while outcome.next == "continue" {
+        outcome = fixture.engine().step_with(&script, None, None).await.unwrap();
+    }
+    let receipts = std::fs::read_dir(fixture.repo.join(".hwahap/artifacts")).unwrap()
+        .filter_map(|e| e.ok()).filter(|e| e.file_name().to_string_lossy().starts_with("receipt-")).count();
+    assert_eq!(receipts, script.calls().len());
 }

@@ -21,6 +21,8 @@ pub struct Config {
     pub profiles: Profiles,
     /// How long a single test command may run before it counts as failed.
     pub test_timeout_secs: u64,
+    pub native_max_calls: u64,
+    pub native_timeout_secs: u64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -52,6 +54,10 @@ struct AdapterSection {
 struct LimitsSection {
     #[serde(default)]
     test_timeout_secs: Option<u64>,
+    #[serde(default)]
+    native_max_calls: Option<u64>,
+    #[serde(default)]
+    native_timeout_secs: Option<u64>,
 }
 
 impl Default for Config {
@@ -62,6 +68,8 @@ impl Default for Config {
             adapter: Adapter::new("codex-acp", Vec::new()),
             profiles: Profiles::defaults(),
             test_timeout_secs: 1_800,
+            native_max_calls: 64,
+            native_timeout_secs: 900,
         }
     }
 }
@@ -107,6 +115,25 @@ impl Config {
         }
 
         if let Some(limits) = document.limits {
+            for (name, value, target) in [
+                (
+                    "native_max_calls",
+                    limits.native_max_calls,
+                    &mut config.native_max_calls,
+                ),
+                (
+                    "native_timeout_secs",
+                    limits.native_timeout_secs,
+                    &mut config.native_timeout_secs,
+                ),
+            ] {
+                if let Some(value) = value {
+                    if value == 0 {
+                        return Err(Error::Rejected(format!("[limits] {name} must be positive")));
+                    }
+                    *target = value;
+                }
+            }
             if let Some(seconds) = limits.test_timeout_secs {
                 if seconds == 0 {
                     return Err(Error::Rejected(
