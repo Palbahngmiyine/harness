@@ -1,6 +1,6 @@
 # hwahap v3
 
-구현 요청 하나를 `PLAN → PLAN FREEZE → AUTONOMOUS CODING → DRAFT PR → ADJUST | SHIP` 으로 끌고 가는
+구현 요청 하나를 `PLAN 또는 명시적 BUILD → CODING → DRAFT PR → 공격·방어 → ADJUST | SHIP`으로 진행하는
 Codex 스킬과 local STDIO MCP 서버다. Rust 실행기는 계획·검증·복구를 담당하고,
 호스트 Codex가 기본 하위 에이전트를 실행한다. 진행 상태와 실행 요청은 `.hwahap/`에 저장한다.
 
@@ -15,11 +15,15 @@ v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2
 | PLAN | Economy(사실) + Deep(결정) | 저장소를 직접 조사하고, 결정마다 추천·근거·trade-off를 붙여 한 라운드에 전부 제시 | 답변만. 사실은 묻지 않는다 |
 | PLAN FREEZE | Rust validator + Deep Auditor + Critic | traceability·DAG·완결성 검사, 작성자와 독립된 계약 검토, 적대적 검토 | `CONFIRM PLAN <challenge>` 정확히 입력 |
 | CODING | Economy(첫 구현) + Deep(재작업) + Critic(리뷰) | unit을 순서대로 구현·검증·리뷰하고 통과한 변경을 commit | 없음. 승인 범위가 충돌하면 중단 |
-| DRAFT PR | Deep(최종 리뷰) | full suite 1회, 브랜치 전체 최종 검토, draft PR 생성 | 결과 확인 |
+| DRAFT PR / PR REVIEW | Astra Critic + 별도 Astra Auditor | full suite 후 draft 게시, 공격 보고서·방어 판정, 확인된 결함 수정 후 새 head 재검토 | 결과 확인 |
 | ADJUST / SHIP | — | 피드백을 결정으로 환원해 revision 증가, 또는 draft를 ready로 | `SHIP <challenge>` 정확히 입력 |
 
-human gate는 `CONFIRM PLAN`과 `SHIP` 두 개뿐이다. 둘 다 내용에 결속된 digest challenge라서, 계획이
+일반 PLAN 경로의 human gate는 `CONFIRM PLAN`과 `SHIP`이다. 둘 다 내용에 결속된 digest challenge라서, 계획이
 바뀌면 이전 challenge는 더 이상 맞지 않는다. 호스트 모델은 이 문장을 생성·보완·추론할 수 없다.
+
+사용자가 기획 생략을 명시하면 `hwahap_step.build`에 원문 권한, 목표, 기준·작업 브랜치,
+unit별 acceptance·경로·테스트와 full suite를 전달한다. 실행기는 이 BUILD 계약을 검증·고정하고
+바로 구현한다. 계획 답변·검토·`CONFIRM PLAN`은 만들지 않는다. `SHIP` 권한은 별도다.
 
 ## 2. 설치
 
@@ -123,21 +127,25 @@ agent ID를 등록한다. 완료 기록은 결과 전달 전에 저장하며 같
 | Profile | 모델 | Effort | 담당 |
 |---|---|---|---|
 | Economy | `gpt-5.6-luna` | `medium` | Worker: 사실 조사, 첫 구현 |
-| Critic | `gpt-5.6-terra` | `high` | Critic: plan·unit 리뷰, 기존 FailureDiagnosis 역할 |
-| Deep | `gpt-6-astra` | `high` | 부모: 추천·합성·재계획·재작업; Auditor: ColdConsumer·최종 리뷰 |
+| Critic | `gpt-6-astra` | `high` | Critic: plan·unit 리뷰, PR 공격 |
+| Deep | `gpt-6-astra` | `high` | 부모: 추천·합성·재계획·재작업; 별도 Auditor: ColdConsumer·PR 방어 |
 
-Luna의 첫 구현이 실패하면 Astra가 한 번 재작업한다. 다시 실패하면 실패 근거를 보고하고 중단한다.
+일반 PLAN 경로는 Luna가 첫 구현을 맡고, direct BUILD는 부모 Astra가 첫 구현도 맡는다.
+실패하면 부모 Astra가 한 번 재작업하고, 다시 실패하면 근거와 함께 중단한다.
 부모는 Astra이며 추천·plan 합성·PlanConflict replan·재작업을 직접 처리한다.
 Worker·Critic·Auditor 세 자식은 같은 저장소와 같은 `host_session_id` 안에서 unit과 run을 넘어 유지한다.
 완료마다 닫고 새로 만들지 않는다. ColdConsumer는 작성자와 독립된 계약 검토자이며,
 재사용된 Auditor에 과거 검토 문맥이 남을 수 있으므로 매번 완전히 새 문맥이라는 보장은 없다.
 Worker·Critic·Auditor 사이의 전환, 모델·effort 변경이나 사라진 작업자는 교체 spawn으로 우회하지 않는다.
-처음 세 슬롯은 확보돼야 하며 다른 저장소·부모는 별도 pool이다. 전역 quota 회복을 보장하지 않는다.
+direct BUILD에는 Worker가 필요 없고 Critic·Auditor 두 자식만 유지한다. 처음 필요한 자식 슬롯은
+일반 경로 세 개, direct BUILD 두 개다. 다른 저장소·부모는 별도 pool이며 전역 quota 회복은 보장하지 않는다.
 
 `.hwahap/config.toml`의 `[profiles.*]`에서 model과 effort를 함께 지정할 수 있지만 이미 유지 중인 pool과 다르면 실행을 거부한다.
-부모가 처리하는 Deep 역할은 `gpt-6-astra`를 요구하며 다른 모델 설정은 dispatch 전에 거부한다.
+부모가 처리하는 Deep 역할과 두 검토자는 `gpt-6-astra`를 요구하며 다른 모델 설정은 dispatch 전에 거부한다.
+direct BUILD는 Economy 역할도 부모 Astra로 고정한다. `native-owner.json`이 run의 부모 소유권을 유지한다.
 `[limits]`의 기본값은 `native_max_calls=64`, `native_timeout_secs=180`이다. 요청 한도에는
-재시도와 follow-up도 포함된다. soft 목표는 역할별 60/90/120초이며 hard 제한으로 상한을 둔다.
+재시도와 follow-up도 포함된다. soft 목표는 역할별 60/90/120초이며 native 요청의 hard 제한은 180초다.
+이는 테스트·Git·GitHub 명령을 포함한 전체 작업의 시간 상한이 아니다.
 시간 초과는 자동 종료 증거가 아니므로 중단 확인이 필요하다. 구체적 분류·관측 기록은 [PLATFORM](PLATFORM.md#2-저장과-중단-복구)을 따른다.
 이 요청 예산은 호스트의 열린 thread 한도와 다르다. 생성 거절은 `native_paused`로 기록하고,
 새 회복 근거가 있을 때 기존 run을 재개한다. [운영 절차](OPERATIONS.md#6-중단-상태별-대응)를 따른다.
@@ -146,6 +154,11 @@ Worker·Critic·Auditor 사이의 전환, 모델·effort 변경이나 사라진 
 요청·완료·중단·미완료·생성 실패·복구 수, requested model별 보고 토큰과 보고 비율을 남긴다. 호스트 처리와 하위
 에이전트의 사용량 보고 비율은 구분한다. 도구가 제공하지 않은 사용량과 호스트의 전달 토큰은
 `unknown`이며, 전체 청구금액이나 실제 비용 절감을 계산했다고 주장하지 않는다.
+
+PR 공격·방어 결과는 PR URL·head SHA·계약 digest에 결속한다. 방어자는 공격 항목마다
+`confirmed/refuted/unresolved`와 근거를 제출한다. 미해결은 중단하고, 확인된 결함은 부모가 수정해
+full suite·commit·같은 PR push 이후 두 팀이 다시 검토한다. 저장된 공격 보고서는 방어 단절 후 재사용한다.
+`hwahap_step(recheck_pr=true)`는 이 run의 기존 draft를 다시 검증하며 수정 예산을 초기화하지 않는다.
 
 ## 6. 테스트 규칙
 

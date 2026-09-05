@@ -18,19 +18,20 @@ Hwahap은 호스트에 노출된 native 도구를 사용하며 MCP 서버 자체
 실행 증거는 [native 모듈](runtime/src/native.rs)과
 [MCP instructions](runtime/src/mcp.rs)에 정의되어 있다.
 요청 모델은 실제 적용 모델과 구분하며, 도구가 없는 호스트에서는 실행 한계를 보고한다.
-부모 Astra가 추천·합성·충돌 재계획·재작업을 수행하고, Worker Luna·Critic Terra·Auditor Astra를 유지한다.
+부모 Astra가 추천·합성·충돌 재계획·재작업을 수행하고, Worker Luna·Critic Astra·Auditor Astra를 유지한다.
 Auditor는 ColdConsumer·최종 리뷰를 맡는다. 작성에 참여하지 않지만 이전 검토 문맥은 남을 수 있다.
 
 공식 문서는 플랫폼 기능의 근거이며, 이 저장소의 기본 프로필은
 [profile.rs](runtime/src/profile.rs)가 정의한다. Deep은 `gpt-6-astra` / `high`,
-Economy는 Luna / `medium`, Critic은 Terra / `high`다.
+Economy는 Luna / `medium`, Critic은 Astra / `high`다. direct BUILD는 Economy도 부모 Astra로 고정한다.
 
 [공식 설정 문서](https://learn.chatgpt.com/docs/config-file/config-reference)의
 `agents.max_concurrent_threads_per_session`은 부모를 제외한 동시에 열린 하위 에이전트 스레드 한도다.
 미설정 시 Codex가 기본값을 정하며 `agents.max_threads`는 이전 이름이다. 이는 실행 완료 횟수의 한도가 아니다.
 공식 subagents 문서에는 스레드 닫기가 설명되어 있지만, 2026-09-05 이 작업에 노출된 collaboration 도구에는
 작업 중단용 `interrupt_agent`는 있고 close/release는 없다. 완료·중단은 스레드 해제의 증거가 아니며 해제 여부는 `unknown`이다.
-Hwahap은 매 완료 뒤 자식을 해제하지 않고 같은 세 ID를 유지한다. 최초 세 슬롯은 여전히 필요하다.
+Hwahap은 매 완료 뒤 자식을 해제하지 않는다. 일반 PLAN은 자식 세 ID, direct BUILD는
+작성자를 제외한 검토자 두 ID를 유지한다. 이 최초 슬롯은 여전히 필요하다.
 같은 저장소·부모 `host_session_id`만 pool을 공유한다. 다른 저장소·부모는 별도 pool이며,
 기존 모델·effort 변경과 Worker·Critic·Auditor 사이의 전환·교체 생성을 거부한다. 근거는 [pool.rs](runtime/src/native/pool.rs)다.
 Hwahap은 외부 capacity 회복을 보장하지 않으며 전역 한도 변경이나 무관한 작업 종료로 우회하지 않는다.
@@ -44,6 +45,9 @@ MCP 프로세스의 동시 실행을 거부한다. `status`는 진행 상황을 
 |---|---|
 | `native-request-<id>.json` | 호스트에 전달하기 전에 저장한 실행 요청 |
 | `native-pending.json` | 현재 요청과 등록된 agent ID, 완료 상태 |
+| `native-owner.json` | pending 유무와 무관하게 유지되는 run ID·부모 scope |
+| `pr-review.json` | PR·head·계약 binding, round·stage·누적 수정 횟수 |
+| `pr-<binding>-<round>-<team>.json` | 교체 불가한 공격·방어 보고서와 receipt 또는 예정 수정 commit |
 | `native-completion-<id>.json` | 호스트가 전달한 종료 결과와 선택적 사용량 |
 | `native-stopped-<id>.json` | 호스트가 남은 에이전트와 명령의 종료를 확인한 기록 |
 | `native-failure-<id>.json` | 정확한 spawn 실패와 생성 여부에 대한 호스트 관찰 |
@@ -83,6 +87,7 @@ run·plan·accepted unit을 유지한다. 새로 관찰한 호스트 회복 근�
 - [capacity 테스트](runtime/tests/native_capacity.rs): 통제한 실패 주입으로 no-child 중단·재시작, 새 근거 재개, 근거 재사용 거부, unknown-child 종료 확인, 실패 기록 중 단절을 검사한다.
 - [pool 테스트](runtime/tests/native_pool.rs): 통제한 세 슬롯에서 300개 작업을 생성 3회·follow-up 297회로 처리하고 역할·ID·모델·effort 변경과 오래된 응답을 거부한다.
 - [timing 테스트](runtime/src/native/timing.rs): 최초 시각·실패 보존, legacy 호환, 누락·손상 오류와 시계 역행을 검사한다.
+- [direct BUILD 테스트](runtime/tests/direct_build.rs): 기획 생략, 초기화 재전송, 실제 Git commit·원격 push와 같은 PR 수정, 오래된 보고서·동일 검토자 거부, 방어 단절 재개·예산 보존·범위 변조 거부.
 - MCP 인터페이스 테스트: 세 도구의 공개 계약과 입력 검증.
 
 capacity 테스트는 실제 호스트 pool을 고갈시킨 실험이 아니다. 실제 스레드 해제와 슬롯 반환,
@@ -110,6 +115,14 @@ pending 제거를 확인했으며 EOF로 MCP가 종료됐다. 실제 사용 토�
 부모의 전달·병행 작업 시간도 포함되므로 이 두 표본은 속도 비교 실험이 아니다. 실제 청구금액은 unknown이다.
 시험 바이너리 SHA-256: `af9fea8ee4228bb1e33a684f5f2465048a30f608cc9118ca2a8fee24aeeb00b2`.
 실제 검증 범위는 FactFinder의 run 간 재사용이며 세 역할 전체의 모델 실행이나 pool 고갈·회복은 포함하지 않는다.
+
+이번 개선의 실제 실행은 원격 main `0198e190`에서 시작했다. 병합된 버전에는 direct BUILD 진입점이 없어
+최소 bootstrap 변경을 검증한 뒤 고정 바이너리로 U1부터 실행했다. bootstrap 바이너리 SHA-256은
+`1ffd237e854132b87c5b33ca78f9dff862c2c404861d771c07a62634b4733db3`이다.
+이 문서 작성 시점에는 부모 Astra의 구현, 동일 Astra Critic의 unit 재사용, 실패·timeout 뒤 정상 종료 확인과
+run 복구를 관찰했다. bootstrap은 이전의 PR 전 최종 리뷰를 수행한다. 후보가 구현한 PR 후 두 팀 검토는
+후보 바이너리로 기존 draft를 recheck하는 별도 검증이 필요하며, 이 문서는 아직 그 완료를 주장하지 않는다.
+요청·등록·결과 전달 지연은 모델 실행 시간과 다르며 사용량은 제공되지 않았다.
 
 다음은 별도 실제 실행으로 검증해야 한다.
 

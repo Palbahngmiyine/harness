@@ -3,7 +3,9 @@
 Hwahap은 구현 요청을 승인된 계획과 draft PR까지 진행한다. 한 run은 요청 하나의 실행 기록이며,
 unit은 그 계획 안에서 구현·검증·검토하는 작업 단위다. 정상 흐름은 다음과 같다.
 
-`범위·성공 기준 → PLAN → CONFIRM PLAN → 순차 unit → draft → ADJUST 또는 SHIP → 별도 merge·배포·실사용 검증`
+`범위·성공 기준 → PLAN·CONFIRM 또는 명시적 BUILD → 순차 unit → draft → 공격·방어·수정 → ADJUST 또는 SHIP`
+
+merge·배포·실사용 검증은 이후 별도 작업이다.
 
 이 문서는 `hwahap/v3` 운영 기준이다. 설치는 [README](README.md), 실제 호스트 검증 범위는
 [PLATFORM](PLATFORM.md)을 따른다. native 도구 호출·등록·완료 전달의 단일 절차는 실행 중인
@@ -33,7 +35,20 @@ CLI 동작과 회귀 테스트까지 이번 PR에 포함하고, GUI와 자동 �
 Hwahap 자체를 수정하는 작업은 검증한 Hwahap commit과 실행 바이너리 경로·해시를 먼저 기록한다.
 실행기는 변경하지 않는 별도 경로의 검증된 바이너리에 고정할 수 있으며, 런처는 `HWAHAP_BIN`을 우선한다.
 작업 중 다시 빌드되는 후보 바이너리로 활성 MCP 실행기를 바꾸지 않는다. 후보의 테스트·실제 호스트 검증을
-마친 뒤 다음 작업부터 채택한다. 실행 버전과 수정 대상 버전은 각각 기록한다.
+마친 뒤 채택한다. 기존 실행을 정상 종료하고 pending이 없는 상태에서 같은 부모 ID로 후보 MCP를 시작해
+`recheck_pr=true`로 기존 draft를 검증할 수도 있다. 실행 버전과 수정 대상 버전은 각각 기록한다.
+
+기획 생략을 명시한 요청에는 `request` 대신 `build`를 보낸다. 필요한 필드는 다음과 같다.
+
+- `user_instruction`: 사용자의 생략·구현 권한 원문. 확인 문장을 대신 생성하지 않는다.
+- `objective`, `base_branch`, `branch`: 목표, `origin/<base_branch>` 기준, 새 `codex/` 작업 브랜치.
+- `units`: `title`, `acceptance`, `paths`, `test_command`를 가진 순차 작업 목록.
+- `full_suite`: PR 게시와 수정 후 실행할 통합 검증 명령.
+
+실행기는 원격 기준 commit·범위·추적 관계를 검증하고 계약을 고정한다. 부모 Astra가 구현하고
+서로 다른 Astra Critic·Auditor만 자식으로 사용한다. 같은 BUILD 재전송은 동일 run을 반환한다.
+초기 worktree 생성 중 단절은 저장된 계약과 Git 상태가 정확히 일치할 때 이어간다. 다른 입력은 거부한다.
+기존 run을 다른 BUILD로 덮어쓰지 않는다. 아래 PLAN 절차는 기획을 생략하지 않은 요청에 적용한다.
 
 ## 2. PLAN: 결정하고 구현 계약을 확인하기
 
@@ -53,7 +68,7 @@ Hwahap 자체를 수정하는 작업은 검증한 Hwahap commit과 실행 바이
 
 여러 답은 한 줄에 하나씩 보낸다. 잘못된 형식이나 충돌한 답을 호스트가 고쳐서 승인으로 전달하면 안 된다.
 질문·답변 뒤에는 요구사항, 관찰 가능한 acceptance, unit 의존관계, unit별 테스트와 full suite가 구성된다.
-Astra Auditor의 ColdConsumer는 작성자와 독립적으로 계약을 읽고, Terra의 PlanCritic은 빠진 결정·모순을 검토한다.
+Astra Auditor의 ColdConsumer는 작성자와 독립적으로 계약을 읽고, 별도 Astra Critic의 PlanCritic은 빠진 결정·모순을 검토한다.
 완료된 검토는 현재 `review_digest`와 정확히 같을 때만 재사용한다. 내용이 달라지면 다시 검토한다.
 기계 검증과 두 검토가 끝나면 `.hwahap/plan.md`를 읽는다. 범위·경로·테스트·제외 사항이 원하는 계약인지 확인한다.
 
@@ -66,11 +81,17 @@ Astra Auditor의 ColdConsumer는 작성자와 독립적으로 계약을 읽고, 
 승인된 정상 실행에서는 unit마다 추가 승인을 묻지 않는다. 호스트는 Hwahap이 지정한 작업만 실행한다.
 
 1. 의존관계 순서로 아직 유효하게 통과하지 않은 unit을 선택한다.
-2. Luna가 허용된 경로에서 첫 구현을 수행한다.
-3. 실행기가 실제 변경 경로와 테스트 명령의 종료 상태를 검사하고 Terra가 unit을 검토한다.
+2. 일반 PLAN에서는 Luna, direct BUILD에서는 부모 Astra가 허용 경로에서 첫 구현을 수행한다.
+3. 실행기가 실제 변경 경로와 테스트 명령의 종료 상태를 검사하고 Astra Critic이 unit을 검토한다.
 4. 실패하면 오류·검토 결과를 전달해 Astra가 한 번 재작업한다. 다시 실패하면 근거와 함께 중단한다.
 5. 통과한 일반 unit은 commit한다. 임시 실험인 probe의 산출물은 commit 전에 폐기한다.
-6. 모든 unit 이후 full suite와 독립 Astra 최종 리뷰를 수행하고 draft PR을 생성한다.
+6. 모든 unit 이후 full suite를 통과하면 draft PR을 게시하고 원격 head가 검사한 commit인지 확인한다.
+7. Astra Critic이 공격 보고서를 작성하고, 별도 Astra Auditor가 각 항목을 재현·반증·미해결로 판정한다.
+8. 확인된 결함과 방어자가 찾은 추가 결함은 부모가 수정한다. full suite 후 같은 PR에 push하고 두 팀을 다시 실행한다.
+
+공격·방어 모두 읽기 전용이며 Git 변경이 발견되면 결과를 폐기한다. 각 보고서는 PR URL·head SHA·
+계약 digest에 결속한다. 같은 에이전트의 양팀 참여, 오래된 결과, 누락된 판정은 검토 완료가 될 수 없다.
+미해결 판정이나 실행 예산 소진은 PR과 근거를 남기고 중단한다. 확인된 결함이 없어야 다음 단계로 간다.
 
 에이전트의 “테스트 통과” 문장만으로 성공을 판정하지 않는다. 실제 명령 결과·Git 변경·독립 리뷰를 확인한다.
 작업 중 사용자가 같은 worktree를 수정하거나 별도 프로세스로 commit·push하면 실행 기준이 달라질 수 있다.
@@ -84,6 +105,7 @@ draft가 나오면 diff, 테스트·리뷰 근거, 계획 충족 여부, 미검�
 draft에 수정할 점이 있으면 같은 run에 피드백을 보낸다. `ADJUST`라는 명령 문법을 외울 필요는 없다.
 예: “오류 메시지에 잘못된 키 이름도 포함해 줘.” 호스트는 사용자의 원문을 전달한다.
 계획 revision이 증가하고 필요한 결정·구조를 다시 만들며, 사용자는 새 계획의 `CONFIRM PLAN`을 입력한다.
+이 일반 ADJUST는 direct BUILD로 시작했어도 PLAN을 열 수 있다. 기획 생략이 모든 후속 변경의 승인은 아니다.
 
 계약이 유효한 accepted unit은 유지한다. 변경된 unit과 그에 의존하는 unit은 다시 수행한다.
 기존 작업 브랜치와 일치하는 draft PR을 갱신한다. 계획·통과 기록 재사용은 같은 run에 한정한다.
@@ -91,12 +113,19 @@ draft에 수정할 점이 있으면 같은 run에 피드백을 보낸다. `ADJUS
 외부에서 PR을 ready로 바꿨거나 PR 식별 조건이 맞지 않으면 갱신을 거부할 수 있으므로 상태와 메시지를 확인한다.
 
 검토 가능한 결과가 되었을 때 사용자가 현재 출력된 `SHIP <challenge>`를 정확히 입력한다.
-Hwahap은 계획 결속, 최종 검토한 PR head, 필수 checks를 다시 확인하고 draft를 ready로 바꾼다.
+Hwahap은 계약 결속, 현재 PR head에 대한 두 독립 검토·미해결 결함 부재, 필수 checks를 확인하고 draft를 ready로 바꾼다.
 **SHIP은 merge가 아니다.** 자동 merge·배포·운영 성공을 뜻하지 않는다.
 
 ready 이후 코드 소유자 리뷰, merge, 배포, 마이그레이션, 실제 사용자 경로 확인은 별도의 작업이다.
 배포·데이터 변경은 해당 작업의 승인 범위와 운영 절차에 따른다. 로컬 테스트만 가능한 경우에는
 실사용 검증을 미완료로 기록하고, 필요한 환경에서 확인하기 전까지 전체 제품 성공을 주장하지 않는다.
+
+검토 재개는 `hwahap_step`에 같은 `cwd`, `host_session_id`와 `recheck_pr=true`만 보낸다.
+이 run의 draft URL·브랜치·깨끗한 worktree·원격 head·계약이 맞아야 full suite로 돌아간다.
+완료한 검토는 새 round에서 다시 받고, 단절된 검토의 저장 보고서와 누적 수정 횟수는 보존한다.
+PR이 닫혔거나 ready로 바뀌었으면 다른 PR을 자동 생성하지 않는다. dirty 수정은 자동 폐기하지 않는다.
+수정 commit은 예정 SHA를 저장한 뒤 branch를 이동하므로 commit·push 사이 단절을 같은 PR에서 복구한다.
+예정 commit을 저장하기 전 중단된 dirty 수정은 이 자동 복구에 포함되지 않는다.
 
 ## 5. 큰 기능을 여러 단계로 진행하기
 
@@ -112,7 +141,8 @@ ready 이후 코드 소유자 리뷰, merge, 배포, 마이그레이션, 실제 
 여러 run의 전체 계약에는 단계 간 API·상태 형식·호환성, 최종 통합 검증, 각 단계의 완료 조건을 남긴다.
 다음 run은 그 문서와 실제 선행 commit을 함께 읽어야 한다. 앞선 대화가 자동으로 전달된다고 가정하지 않는다.
 Hwahap은 전체 단계표를 보고 다음 run을 자동 생성하거나 여러 PR을 자동 통합하지 않는다.
-각 run은 자기 PLAN과 정확한 `CONFIRM PLAN`이 필요하며, 각 draft의 ready 전환에는 자기 `SHIP`이 필요하다.
+일반 run마다 PLAN과 `CONFIRM PLAN`, direct BUILD마다 명시적 실행 권한과 고정 계약이 필요하다.
+각 draft의 ready 전환에는 자기 `SHIP`이 필요하다.
 전체 목표에 대한 동의가 모든 후속 run의 challenge를 대신하지 않는다.
 
 Hwahap 자체처럼 큰 기능을 새로 만드는 경우 다음과 같이 단계별 결과를 정할 수 있다.
@@ -128,13 +158,14 @@ Hwahap 자체처럼 큰 기능을 새로 만드는 경우 다음과 같이 단�
 보통 이전 PR을 별도로 merge하고, 대상 checkout을 갱신한 뒤 기준 브랜치와 commit을 확인해서 시작한다.
 merge 전 브랜치에 의존하는 구성이 필요하면 그 기반을 명시적으로 선택하고 검토한다. Hwahap이 자동으로
 이전 PR의 head를 다음 run의 기반으로 삼거나 stacked PR을 관리한다고 가정하지 않는다.
-이전 run이 종료된 뒤 새 요청을 시작하면 기록은 archive되며, 기존 run의 accepted 기록을 새 run이 이어받지는 않는다.
+일반 `request`는 종료된 run을 archive하고 새로 시작한다. direct `build`는 기존 run과 다른 요청을 거부하므로
+새 checkout에서 시작한다. 기존 run의 accepted 기록을 새 run이 이어받지는 않는다.
 
 ## 6. 중단 상태별 대응
 
 | 상태 | 의미 | 다음 행동 |
 |---|---|---|
-| `plan_conflict` (`PlanConflict`) | 구현하려면 승인된 계획에 없는 결정이나 변경이 필요함 | 충돌 내용을 읽고 답·수정 요구를 전달한다. 같은 run의 PLAN을 다시 열어 재검토·재승인한다. |
+| `plan_conflict` (`PlanConflict`) | 구현하려면 승인된 계획에 없는 결정이나 변경이 필요함 | 충돌 내용을 읽고 답·수정 요구를 전달한다. 일반 경로는 PLAN을 다시 열어 재검토·재승인한다. direct BUILD 충돌은 자동 PLAN 전환 없이 blocked로 남긴다. |
 | `blocked` | 반복 실패·검증 실패·지원 불가 등으로 해당 실행이 멈춤 | 원인·테스트·Git 상태·증거를 확인한다. 해결되지 않은 원인으로 같은 호출을 반복하지 않는다. 원인 해결과 남은 실행의 종료 확인 후 새 요청은 별도 run·승인으로 시작한다. |
 | `native_paused` | 호스트가 자식 생성이 없었다고 확인한 spawn 실패·native 도구 부재를 저장함 | 실패를 알리고 자동 재시도·polling·새 요청을 멈춘다. 기존 run을 유지하고 새 호스트 회복 근거를 관찰했을 때만 명시적으로 재개한다. |
 | `native_stop` | 자식 생성 여부가 불명확하거나 단절·timeout으로 종료 확인이 필요함 | 같은 dispatch를 다시 spawn하지 않는다. 정확한 에이전트와 남은 명령을 찾아 중단·확인한 뒤 해당 dispatch를 확인 처리한다. 종료가 불명확하면 복구하지 않는다. |
@@ -151,10 +182,11 @@ timeout이 났다는 이유만으로 에이전트·명령이 끝났다고 가정
 재개는 새 PLAN 승인이 아니라 운영 복구다. 저장된 run 단계에서 다시 진행하므로 아직 accepted가 아닌
 unit이나 그 단계의 역할은 반복될 수 있다. 모든 미완료 변경이나 정확한 역할 위치의 보존을 기대하지 않는다.
 
-같은 저장소와 같은 부모 `host_session_id`에는 Worker Luna·Critic Terra·Auditor Astra를 최대 하나씩 유지한다.
+같은 저장소와 같은 부모 `host_session_id`에는 일반 경로의 Worker Luna와 Critic·Auditor Astra를 최대 하나씩 유지한다.
+direct BUILD는 부모가 작성하므로 검토자 두 ID만 필요하다. `native-owner.json`은 pending 제거 뒤에도 부모를 고정한다.
 첫 자식만 새로 만들고 이후 작업은 동일 ID에 follow-up한다. 완료마다 close/spawn하지 않으므로
 같은 pool의 반복 작업만으로 네 번째 자식을 만들지 않는다. 기존 작업자의 모델·effort를 바꾸거나
-다른 작업자 그룹으로 돌리지 않는다. 세 슬롯이 처음부터 부족하거나 유지한 자식이 사라지면 실행을 중단한다.
+다른 작업자 그룹으로 돌리지 않는다. 필요한 최초 슬롯이 부족하거나 유지한 자식이 사라지면 실행을 중단한다.
 다른 저장소·부모는 별도 pool이며, 전역 한도를 늘리거나 무관한 작업을 닫아 우회하지 않는다.
 완료·interrupt는 슬롯 반환 증거가 아니다. 상세 호출 절차는 MCP instructions를 따른다.
 
@@ -163,7 +195,9 @@ unit이나 그 단계의 역할은 반복될 수 있다. 모든 미완료 변경
 호스트는 최대 30초의 이벤트 대기로 진행을 확인한다. soft 목표 도달은 완료나 자동 취소의 근거가 아니다.
 시간을 맞추려고 검증을 생략하거나 통과를 꾸미지 않고, 막힌 이유를 결과 계약에 맞게 보고한다.
 `native-timing-<id>.json`에서 요청·등록·종료 시각, 입력·출력 크기와 종료 사유를 확인한다.
-360초 지연의 실제 원인과 변경 후 시간 단축 수치는 아직 확인하지 않았다.
+native 제한에는 호스트의 전달 대기도 포함된다. Git·GitHub·테스트 명령에는 이 180초 상한이 적용되지 않는다.
+현재 unit 재시작은 미승인 변경과 ignored 산출물을 초기화하므로 빌드 캐시는 worktree 밖에 두는 편이 낫다.
+과거 360초 지연의 원인이나 동일 조건에서의 개선 수치는 아직 확인하지 않았다.
 [공식 한도 정의](https://learn.chatgpt.com/docs/config-file/config-reference)와
 [스레드 관리 설명](https://learn.chatgpt.com/docs/agent-configuration/subagents)은 플랫폼 기능의 근거이며,
 현재 호스트에 해당 도구가 노출되거나 슬롯 반환이 실제 검증됐다는 뜻은 아니다.
