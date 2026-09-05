@@ -126,7 +126,17 @@ impl DecisionsProposal {
         plan: &Plan,
     ) -> Result<(Vec<Decision>, Vec<ProposedNotApplicable>)> {
         let proposal: DecisionsProposal = parse_strict(final_message, Self::CONTRACT)?;
-        let existing: Vec<&str> = plan.decisions.iter().map(|d| d.id.as_str()).collect();
+        let existing: Vec<&str> = plan
+            .decisions
+            .iter()
+            .filter(|d| {
+                !plan
+                    .open_items
+                    .iter()
+                    .any(|o| o.id == format!("CLARIFY-{}", d.id))
+            })
+            .map(|d| d.id.as_str())
+            .collect();
         check_ids(
             "C",
             proposal.decisions.iter().map(|d| d.id.as_str()),

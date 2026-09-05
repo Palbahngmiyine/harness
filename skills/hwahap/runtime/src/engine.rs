@@ -1405,7 +1405,15 @@ impl Engine {
         if !decisions.is_empty() || !not_applicable.is_empty() {
             plan.structure_stale = true;
         }
-        plan.decisions.extend(decisions);
+        for decision in decisions {
+            if let Some(existing) = plan.decision_mut(&decision.id) {
+                *existing = decision.clone();
+                plan.open_items
+                    .retain(|o| o.id != format!("CLARIFY-{}", decision.id));
+            } else {
+                plan.decisions.push(decision);
+            }
+        }
         for na in not_applicable {
             // Recorded as a proposal only. The surface stays applicable until the user types
             // `S<n>=NA`, which is what [`Engine::record_answers`] acts on.
@@ -1423,6 +1431,7 @@ impl Engine {
 
     fn record_answers(&self, plan: &mut Plan, directives: &[Directive]) -> Result<()> {
         let now = self.clock.now();
+        let before = plan.decisions.clone();
         for directive in directives {
             match directive {
                 Directive::Decision { id, selection } => {
@@ -1458,6 +1467,7 @@ impl Engine {
                         identity,
                         recommendation,
                     });
+                    plan.open_items.retain(|o| o.id != format!("CLARIFY-{id}"));
                 }
                 Directive::Surface { id } => {
                     let Some(surface) = Surface::parse(id) else {
@@ -1487,6 +1497,26 @@ impl Engine {
                 Directive::ConfirmPlan { .. } | Directive::Ship { .. } => continue,
             }
             plan.structure_stale = true;
+        }
+        let changed: Vec<_> = plan
+            .decisions
+            .iter()
+            .filter(|d| {
+                before.iter().find(|old| old.id == d.id).is_some_and(|old| {
+                    old.answer
+                        .as_ref()
+                        .map(|a| (&a.selection, &a.identity, &a.recommendation))
+                        != d.answer
+                            .as_ref()
+                            .map(|a| (&a.selection, &a.identity, &a.recommendation))
+                })
+            })
+            .map(|d| d.id.clone())
+            .collect();
+        if !changed.is_empty() {
+            Self::invalidate_dependents(plan, &changed);
+            plan.frozen = None;
+            plan.reviews = Default::default();
         }
         Ok(())
     }
