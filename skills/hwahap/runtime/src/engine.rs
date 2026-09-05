@@ -264,6 +264,8 @@ impl Engine {
             ));
         }
 
+        let progress = self.require_review_progress(&run, &plan)?;
+        self.refresh_review_report(&run, &plan, &progress)?;
         self.forge.mark_ready(&self.repo_root, &pr_url)?;
         run.state = RunState::Shipped {
             pr_url: pr_url.clone(),
