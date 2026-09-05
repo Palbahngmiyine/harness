@@ -1014,7 +1014,13 @@ impl Engine {
 
         let diff = self.git.run_in(
             &worktree,
-            &["diff", &format!("{}...HEAD", plan.base_branch)],
+            &[
+                "diff",
+                &format!(
+                    "{}...HEAD",
+                    plan.base_commit.as_deref().unwrap_or(&plan.base_branch)
+                ),
+            ],
         )?;
         let review = self
             .ask(
