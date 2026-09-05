@@ -11,6 +11,7 @@ pub mod canonical;
 pub mod clock;
 pub mod config;
 pub mod cost;
+pub mod dialogue;
 pub mod engine;
 pub mod error;
 pub mod forge;
