@@ -664,3 +664,41 @@ async fn transient_repair_suite_failure_can_retry_without_losing_the_draft() {
         "ready\n"
     );
 }
+
+#[tokio::test]
+async fn pr_review_indexes_large_changes_without_relaying_the_entire_patch() {
+    let f = Fixture::new();
+    git(&f.repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    let mut input = request();
+    input.units[0].acceptance = "feature payload exists".into();
+    input.units[0].test_command = "test -s feature.txt".into();
+    let engine = f.engine();
+    engine.start_build(&input).unwrap();
+    let script = Script::new(vec![
+        step(
+            Role::Implementer,
+            Reply::write(
+                &[("feature.txt", &"large-payload-line\n".repeat(20_000))],
+                r#"{"status":"completed","summary":"payload","conflict":null}"#,
+            ),
+        ),
+        step(
+            Role::UnitReviewer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
+    engine.step_with(&script, None, None).await.unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "awaiting_adjust_or_ship"
+    );
+    for call in script.calls().into_iter().skip(2) {
+        assert!(call.prompt.contains("feature.txt"));
+        assert!(call.prompt.contains("Read the full diff"));
+        assert!(!call.prompt.contains("large-payload-line"));
+        assert!(call.prompt.len() < 20_000);
+    }
+}

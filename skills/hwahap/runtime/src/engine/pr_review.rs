@@ -177,23 +177,23 @@ impl Engine {
             return self.repair_pr(run, sessions).await;
         }
         let mut progress = self.require_review_progress(&run, &plan)?;
-        let diff = self.git.run_in(
+        let revision = format!(
+            "{}...{}",
+            plan.base_commit.as_deref().unwrap_or(&plan.base_branch),
+            progress.binding.head
+        );
+        let changed = self.git.run_in(
             &self.store.worktree_path(),
-            &[
-                "diff",
-                &format!(
-                    "{}...HEAD",
-                    plan.base_commit.as_deref().unwrap_or(&plan.base_branch)
-                ),
-            ],
+            &["diff", "--name-status", "--no-renames", &revision, "--"],
         )?;
+        let manifest = format!("Review revision: {revision}\nChanged paths (possibly truncated; retrieve the full list with git diff --name-status):\n{}\nRead the full diff and relevant source locally using git diff for this exact revision. This manifest is an index, not review evidence.", tail(&changed, 12_000));
         let contract = render::plan_markdown(&plan)?;
         let attack: ReviewRecord<AttackReport> = self
             .review_record(
                 sessions,
                 Role::UnitReviewer,
                 &progress,
-                prompts::pr_attack(&progress.binding, &contract, &tail(&diff, 400_000)),
+                prompts::pr_attack(&progress.binding, &contract, &manifest),
             )
             .await?;
         attack.report.validate(&progress.binding)?;
@@ -206,7 +206,7 @@ impl Engine {
                 sessions,
                 Role::FinalReview,
                 &progress,
-                prompts::pr_defense(&attack.report, &contract, &tail(&diff, 400_000)),
+                prompts::pr_defense(&attack.report, &contract, &manifest),
             )
             .await?;
         defense.report.validate(&attack.report, &progress.binding)?;

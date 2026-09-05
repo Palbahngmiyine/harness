@@ -75,7 +75,7 @@ impl Engine {
                     .collect();
                 if let Some(failure) = previous_failure {
                     details.push(format!("The previous repair failed `{}`: {}. Its full patch and results are retained at {}",
-                        failure["command"], failure["output"],
+                        failure["command"], tail(failure["output"].as_str().unwrap_or("unknown"), 4000),
                         self.store.artifacts_path().join(format!("{key}-failed-{}.json", p.repairs - 1)).display()));
                 }
                 // Repairs may change every non-probe unit: retain each frozen test obligation.
