@@ -128,14 +128,16 @@ pub(super) fn clear(store: &Store) -> Result<()> {
 }
 
 /// An OS lock survives task cancellation and is released automatically on process death.
-pub struct RepoLock(std::fs::File);
+pub struct RepoLock {
+    _file: std::fs::File,
+}
 
 impl RepoLock {
     pub fn acquire(root: &Path) -> Result<Self> {
         let dir = root.join(".hwahap");
         std::fs::create_dir_all(&dir).map_err(|e| Error::io(&dir, e))?;
         let path: PathBuf = dir.join("native.lock");
-        let file = std::fs::OpenOptions::new()
+        let _file = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .read(true)
@@ -146,13 +148,13 @@ impl RepoLock {
         {
             use std::os::fd::AsRawFd;
             // SAFETY: flock only observes this live descriptor and stores no Rust pointer.
-            if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
+            if unsafe { libc::flock(_file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
                 return Err(Error::Rejected(format!(
                     "another Hwahap process owns {}",
                     root.display()
                 )));
             }
-            Ok(Self(file))
+            Ok(Self { _file })
         }
         #[cfg(not(unix))]
         Err(Error::Rejected(
@@ -168,7 +170,7 @@ impl Drop for RepoLock {
             use std::os::fd::AsRawFd;
             // SAFETY: this descriptor remains live until the File field is dropped.
             unsafe {
-                libc::flock(self.0.as_raw_fd(), libc::LOCK_UN);
+                libc::flock(self._file.as_raw_fd(), libc::LOCK_UN);
             }
         }
     }
