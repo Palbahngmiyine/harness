@@ -361,10 +361,17 @@ impl Store {
         std::fs::create_dir_all(&self.root).map_err(|e| Error::io(&self.root, e))?;
         let path = self.journal_path();
         use std::io::Write as _;
+        // `write` rather than `append`: the tail sometimes has to be cut back before the new
+        // record goes on, and a handle opened for appending carries no permission to shorten the
+        // file — on Windows `set_len` on it fails outright. The write offset is therefore set by
+        // hand below rather than implied by the open mode.
         let mut file = std::fs::OpenOptions::new()
             .create(true)
             .read(true)
-            .append(true)
+            .write(true)
+            // Never truncate: the journal is the run's history, and this call is only ever adding
+            // one line to the end of it.
+            .truncate(false)
             .open(&path)
             .map_err(|e| Error::io(&path, e))?;
         lock_exclusive(&file).map_err(|e| Error::io(&path, e))?;
@@ -393,6 +400,9 @@ impl Store {
                 .and_then(|()| file.sync_all())
                 .map_err(|e| Error::io(&path, e))?;
         }
+        use std::io::Seek as _;
+        file.seek(std::io::SeekFrom::Start(journal.complete_len))
+            .map_err(|e| Error::io(&path, e))?;
 
         // `to_canonical_line` already terminates the line; adding another newline here would
         // interleave blank lines, and a blank line is exactly what a tamper check skips over.
@@ -1390,6 +1400,10 @@ mod tests {
         assert!(!meta.file_type().is_symlink());
     }
 
+    // Unix only: the writer lock is `flock`, and there is no portable equivalent. Hwahap is
+    // unix-only for other reasons already (PLATFORM.md §4), so this documents the guarantee where
+    // it exists rather than pretending it exists everywhere.
+    #[cfg(unix)]
     #[test]
     fn p7_two_writers_collide_and_brick_the_journal() {
         let (_dir, store) = store();
