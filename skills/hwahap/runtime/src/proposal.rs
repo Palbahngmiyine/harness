@@ -45,6 +45,12 @@ impl FactsProposal {
                     fact.id
                 )));
             }
+            if fact.sources.iter().any(|source| source.trim().is_empty()) {
+                return Err(Error::Rejected(format!(
+                    "fact {} contains a blank source location",
+                    fact.id
+                )));
+            }
         }
         Ok(proposal)
     }
@@ -147,6 +153,14 @@ impl DecisionsProposal {
         let mut decisions = Vec::with_capacity(proposal.decisions.len());
         for proposed in proposal.decisions {
             let decision = proposed.into_decision()?;
+            let missing = missing_recommendation_fields(&decision.recommendation);
+            if !missing.is_empty() {
+                return Err(Error::Rejected(format!(
+                    "decision {} needs nonempty, nonblank recommendation fields: {}",
+                    decision.id,
+                    missing.join(", ")
+                )));
+            }
             if decision.alternatives.len() < 2 {
                 return Err(Error::Rejected(format!(
                     "decision {} offers fewer than two alternatives, so it is not a question",
@@ -176,6 +190,34 @@ impl DecisionsProposal {
         }
         Ok((decisions, proposal.not_applicable))
     }
+}
+
+/// Presence checks only: readable explanations are required, but their truth and relevance need
+/// evidence review. A nonempty string is not a machine proof of a recommendation's merits.
+pub(crate) fn missing_recommendation_fields(recommendation: &Recommendation) -> Vec<&'static str> {
+    let fields: Vec<(&str, &[String])> = match recommendation {
+        Recommendation::Recommended {
+            rationale,
+            evidence,
+            tradeoffs,
+            impact,
+            ..
+        } => vec![
+            ("rationale", rationale),
+            ("evidence", evidence),
+            ("tradeoffs", tradeoffs),
+            ("impact", impact),
+        ],
+        Recommendation::NoRecommendation { rationale }
+        | Recommendation::ProbeRequired { rationale, .. } => vec![("rationale", rationale)],
+    };
+    fields
+        .into_iter()
+        .filter(|(_, values)| {
+            values.is_empty() || values.iter().any(|value| value.trim().is_empty())
+        })
+        .map(|(name, _)| name)
+        .collect()
 }
 
 /// The requirement, acceptance, unit and test graph derived from answered decisions.
@@ -299,11 +341,11 @@ mod tests {
             "id": id,
             "surface": "S1",
             "kind": "decision",
-            "question": "q?",
-            "alternatives": [{"id": "ALT1", "value": "a"}, {"id": "ALT2", "value": "b"}],
+            "question": "Should dry-run call the existing admission webhook?",
+            "alternatives": [{"id": "ALT1", "value": "call the webhook"}, {"id": "ALT2", "value": "skip the webhook"}],
             "recommendation": {
-                "mode": "recommended", "choice": "ALT1", "rationale": ["r"],
-                "evidence": ["F1"], "tradeoffs": ["t"], "impact": ["api"], "confidence": "high"
+                "mode": "recommended", "choice": "ALT1", "rationale": ["reuse apply's admission validation"],
+                "evidence": ["F1"], "tradeoffs": ["webhook failures also fail dry-run"], "impact": ["api validation"], "confidence": "high"
             },
             "depends_on": []
         })
@@ -318,6 +360,49 @@ mod tests {
         assert_eq!(decisions[0].id, "C1");
         assert_eq!(decisions[0].surface, Surface::S1);
         assert!(na.is_empty());
+    }
+
+    #[test]
+    fn explanation_fields_cannot_be_omitted_or_padded_with_blank_entries() {
+        let plan = plan_with_a_fact();
+        for field in ["rationale", "evidence", "tradeoffs", "impact"] {
+            for invalid in [serde_json::json!([]), serde_json::json!(["F1", " \u{a0}"])] {
+                let mut decision = a_decision("C1");
+                decision["recommendation"][field] = invalid;
+                let err = DecisionsProposal::parse(
+                    &serde_json::json!({"decisions": [decision]}).to_string(),
+                    &plan,
+                )
+                .unwrap_err();
+                assert!(err.to_string().contains(field), "{err}");
+            }
+        }
+        for mode in ["no_recommendation", "probe_required"] {
+            let mut decision = a_decision("C1");
+            decision["recommendation"] = serde_json::json!({"mode": mode, "rationale": []});
+            if mode == "probe_required" {
+                decision["recommendation"]["probe_unit"] = "U1".into();
+            }
+            let err = DecisionsProposal::parse(
+                &serde_json::json!({"decisions": [decision]}).to_string(),
+                &plan,
+            )
+            .unwrap_err();
+            assert!(err.to_string().contains("rationale"), "{err}");
+        }
+    }
+
+    #[test]
+    fn a_source_list_cannot_hide_a_blank_citation_beside_a_real_one() {
+        let plan = Plan::new("g", "main", "goal");
+        let err = FactsProposal::parse(
+            &serde_json::json!({"facts": [{"id": "F1", "question": "where is apply?",
+                "answer": "src/apply.rs", "sources": ["src/apply.rs:10-20", " \u{a0}"]}]})
+            .to_string(),
+            &plan,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("blank source"), "{err}");
     }
 
     #[test]
