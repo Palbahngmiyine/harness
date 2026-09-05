@@ -588,7 +588,7 @@ impl Store {
     /// that is already there. The temp name is derivable by anything that can write inside
     /// `.hwahap` — an agent's worktree sits in it — and without `O_EXCL` a symlink planted at that
     /// name would send the write wherever the link points.
-    fn write_atomic(&self, path: &Path, contents: &str) -> Result<()> {
+    pub(crate) fn write_atomic(&self, path: &Path, contents: &str) -> Result<()> {
         use std::io::Write as _;
         let parent = path.parent().unwrap_or(&self.root);
         std::fs::create_dir_all(parent).map_err(|e| Error::io(parent, e))?;

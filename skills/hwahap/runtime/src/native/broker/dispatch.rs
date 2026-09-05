@@ -62,6 +62,9 @@ impl NativeSessions {
             agent_id: None,
             stop_required: false,
             failure: None,
+            pool_scope: String::new(),
+            lane: crate::native::NativeLane::Worker,
+            reuse_agent_id: None,
         };
         let (sender, receiver) = oneshot::channel();
         {

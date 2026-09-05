@@ -15,6 +15,8 @@ mod host;
 pub use host::{NativeHost, NativeInput, NativeProgress};
 mod failure;
 pub use failure::{record_failure, resume_failed, NativeFailure, NativeResume};
+mod pool;
+pub use pool::NativeLane;
 
 const PENDING: &str = "native-pending.json";
 
@@ -42,6 +44,14 @@ pub struct NativeDispatch {
     /// Host-reported spawn failure; no-child failures pause without an imaginary stop.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<NativeFailure>,
+    /// Stable parent task identity; pool ownership never crosses this boundary.
+    #[serde(default)]
+    pub pool_scope: String,
+    #[serde(default)]
+    pub lane: NativeLane,
+    /// Register this identity before sending exactly one follow-up turn.
+    #[serde(default)]
+    pub reuse_agent_id: Option<String>,
 }
 
 /// Persist the child identity immediately after spawn, before waiting for its answer.
