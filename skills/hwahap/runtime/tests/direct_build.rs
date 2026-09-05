@@ -87,6 +87,25 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
     assert_eq!(progress.binding.contract_digest, plan.digest().unwrap());
     assert_eq!(progress.stage, hwahap::pr_review::ReviewStage::Attack);
     assert!(engine.ship("SHIP anything").is_err());
+    let binding = progress.binding;
+    let reviews = Script::new(vec![
+        step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"findings":[],"evidence":["checked published feature"]}).to_string())),
+        step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["independently checked published feature"]}).to_string())),
+    ]);
+    let reviewed = engine.step_with(&reviews, None, None).await.unwrap();
+    assert_eq!(
+        reviewed.state, "awaiting_adjust_or_ship",
+        "{}",
+        reviewed.message
+    );
+    assert_eq!(reviews.remaining(), 0);
+    assert_eq!(
+        hwahap::pr_review::ReviewProgress::load(&store)
+            .unwrap()
+            .unwrap()
+            .stage,
+        hwahap::pr_review::ReviewStage::Complete
+    );
     assert_eq!(script.remaining(), 0);
     assert!(git(&fixture.worktree(), &["log", "-1", "--format=%s"]).contains("U1"));
     assert!(done.pr_url.is_some());
