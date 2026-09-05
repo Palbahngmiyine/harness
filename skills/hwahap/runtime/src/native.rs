@@ -180,6 +180,7 @@ impl Drop for RepoLock {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
     #[test]
     fn independent_lock_owners_are_excluded() {
         let temp = tempfile::tempdir().unwrap();
@@ -187,6 +188,17 @@ mod tests {
         assert!(RepoLock::acquire(temp.path()).is_err());
         drop(lock);
         RepoLock::acquire(temp.path()).unwrap();
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn unsupported_platforms_reject_native_execution() {
+        let temp = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            RepoLock::acquire(temp.path()),
+            Err(Error::Rejected(message))
+                if message == "native runs require a supported OS file lock"
+        ));
     }
 
     #[test]
