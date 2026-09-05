@@ -31,6 +31,21 @@ fn facts() -> String {
     .to_string()
 }
 
+fn facts_after_build() -> String {
+    let mut proposal: serde_json::Value = serde_json::from_str(&facts()).unwrap();
+    proposal["facts"][0]["answer"] =
+        "the seed file, generated output and its documentation exist".into();
+    proposal["facts"][0]["sources"] =
+        serde_json::json!(["src/existing.txt:1", "src/added.txt:1", "docs/added.md:1"]);
+    proposal.to_string()
+}
+
+fn repeated_surface_proposals() -> String {
+    let mut proposal: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    proposal["decisions"] = serde_json::json!([]);
+    proposal.to_string()
+}
+
 fn decisions() -> String {
     let not_applicable: Vec<serde_json::Value> = (2..=12)
         .map(|n| {
@@ -1233,11 +1248,17 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
         "test -f src/added.txt && test -f docs/added.md && test -s src/extra.txt"
     );
     script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts_after_build())),
         step(
             Role::Recommender,
             Reply::say(
-                serde_json::json!({"decisions":[decision], "not_applicable":[]}).to_string(),
+                serde_json::json!({"decisions":[decision], "not_applicable":old["not_applicable"]})
+                    .to_string(),
             ),
+        ),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
         ),
         step(Role::PlanSynthesis, Reply::say(proposed.to_string())),
         step(Role::ColdConsumer, Reply::say(PASS)),
@@ -1265,10 +1286,14 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
     );
     assert_eq!(
         engine
-            .step_with(&script, None, Some("C3=REC"))
+            .step_with(&script, None, Some(&format!("{}\nC3=REC", all_answers())))
             .await
             .unwrap()
             .state,
+        "refining"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
         "proving"
     );
     let preview = engine.step_with(&script, None, None).await.unwrap();
@@ -1509,6 +1534,8 @@ async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
     proposed["requirements"][0]["statement"] =
         serde_json::json!("the generated file has revised contents");
     script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts_after_build())),
+        step(Role::Recommender, Reply::say(repeated_surface_proposals())),
         step(
             Role::Recommender,
             Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
@@ -1537,6 +1564,19 @@ async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
     assert_eq!(
         engine.step_with(&script, None, None).await.unwrap().state,
         "deciding"
+    );
+    let remaining_answers = all_answers()
+        .lines()
+        .filter(|line| !line.starts_with("C1="))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some(&remaining_answers))
+            .await
+            .unwrap()
+            .state,
+        "refining"
     );
     assert_eq!(
         engine.step_with(&script, None, None).await.unwrap().state,
@@ -1681,8 +1721,11 @@ async fn an_adjustment_is_written_into_the_plan_and_reaches_the_next_planner() {
     assert_eq!(adjustments[0]["revision"], 2);
 
     // And the planner is handed it on the next round.
-    script.extend(vec![step(Role::Recommender, Reply::say(decisions()))]);
-    let _ = engine.step_with(&script, None, None).await;
+    script.extend(vec![
+        step(Role::FactFinder, Reply::say(facts_after_build())),
+        step(Role::Recommender, Reply::say(repeated_surface_proposals())),
+    ]);
+    engine.step_with(&script, None, None).await.unwrap();
     let asked = script.prompts_for(Role::Recommender);
     assert!(
         asked.iter().any(|p| p.contains("--dry-run")),
@@ -2162,6 +2205,10 @@ async fn direct_build_adjust_preserves_branch_and_enters_plan() {
     script.extend(vec![
         step(Role::FactFinder, Reply::say(facts())),
         step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
         step(Role::PlanSynthesis, Reply::say(structure())),
         step(
             Role::ColdConsumer,
@@ -2182,6 +2229,10 @@ async fn direct_build_adjust_preserves_branch_and_enters_plan() {
             .await
             .unwrap()
             .state,
+        "refining"
+    );
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
         "proving"
     );
     let reviewed = engine.step_with(&script, None, None).await.unwrap();
