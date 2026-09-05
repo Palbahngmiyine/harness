@@ -88,6 +88,41 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
     assert_eq!(progress.stage, hwahap::pr_review::ReviewStage::Attack);
     assert!(engine.ship("SHIP anything").is_err());
     let binding = progress.binding;
+    let finding = serde_json::json!({"id":"A1","file":"feature.txt","line":1,"condition":"Read feature as a line","expected":"ready followed by newline","observed":"no terminal newline","evidence":["inspected exact file bytes"]});
+    let rejection = Script::new(vec![
+        step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"findings":[finding],"evidence":["checked file bytes"]}).to_string())),
+        step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"assessments":[{"finding_id":"A1","judgment":"confirmed","evidence":["independently read missing newline"]}],"additional_findings":[],"evidence":["confirmed byte comparison"]}).to_string())),
+    ]);
+    assert_eq!(
+        engine
+            .step_with(&rejection, None, None)
+            .await
+            .unwrap()
+            .state,
+        "pr_review"
+    );
+    let fix = Script::new(vec![step(
+        Role::Rework,
+        Reply::write(
+            &[("feature.txt", "ready\n")],
+            r#"{"status":"completed","summary":"Repaired line","conflict":null}"#,
+        ),
+    )]);
+    let repaired = engine.step_with(&fix, None, None).await.unwrap();
+    assert_eq!(repaired.state, "pr_review", "{}", repaired.message);
+    let next = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(next.repairs, 1);
+    assert_eq!(next.round, 2);
+    assert_ne!(next.binding.head, binding.head);
+    assert_eq!(next.binding.pr_url, binding.pr_url);
+    assert_eq!(
+        std::fs::read_to_string(fixture.worktree().join("feature.txt")).unwrap(),
+        "ready\n"
+    );
+    assert_eq!(fix.remaining(), 0);
+    let binding = next.binding;
     let reviews = Script::new(vec![
         step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"findings":[],"evidence":["checked published feature"]}).to_string())),
         step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"assessments":[],"additional_findings":[],"evidence":["independently checked published feature"]}).to_string())),
@@ -107,7 +142,7 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
         hwahap::pr_review::ReviewStage::Complete
     );
     assert_eq!(script.remaining(), 0);
-    assert!(git(&fixture.worktree(), &["log", "-1", "--format=%s"]).contains("U1"));
+    assert!(git(&fixture.worktree(), &["log", "--format=%s"]).contains("U1"));
     assert!(done.pr_url.is_some());
 }
 
