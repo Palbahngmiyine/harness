@@ -917,7 +917,8 @@ impl Engine {
         sessions: &dyn Sessions,
     ) -> Result<UnitOutcome> {
         let checkpoint = self.git.run_in(worktree, &["rev-parse", "HEAD"])?;
-        let mut findings = self.build_adjustment_findings(plan, unit)?;
+        let adjustment_findings = self.build_adjustment_findings(plan, unit)?;
+        let mut findings = adjustment_findings.clone();
 
         for attempt in 1..=MAX_ATTEMPTS {
             self.git.reset_hard(worktree, &checkpoint)?;
@@ -1001,7 +1002,11 @@ impl Engine {
                 }
             }
 
-            findings = rejected.unwrap_or_default();
+            findings = adjustment_findings
+                .iter()
+                .cloned()
+                .chain(rejected.unwrap_or_default())
+                .collect();
         }
 
         self.git.reset_hard(worktree, &checkpoint)?;
