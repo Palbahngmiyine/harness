@@ -3,6 +3,8 @@ use crate::{canonical::Digest, Error, Result};
 use serde::{Deserialize, Serialize};
 mod defense;
 pub use defense::*;
+mod security;
+pub use security::*;
 use std::{
     collections::BTreeSet,
     path::{Component, Path},
