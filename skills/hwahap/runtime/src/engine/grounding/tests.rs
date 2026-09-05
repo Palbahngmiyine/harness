@@ -77,7 +77,7 @@ fn rejects_nontext_empty_and_oversized_blobs_without_following_symlinks() {
     let dir = fixture();
     let git = Git::open(dir.path()).unwrap();
     std::fs::write(dir.path().join("invalid.bin"), [0xff]).unwrap();
-    std::fs::write(dir.path().join("nul.bin"), b"start\0end\n").unwrap();
+    std::fs::write(dir.path().join("binary-control.bin"), b"start\0end\n").unwrap();
     std::fs::write(dir.path().join("empty.txt"), "").unwrap();
     std::fs::write(
         dir.path().join("large.txt"),
@@ -93,7 +93,7 @@ fn rejects_nontext_empty_and_oversized_blobs_without_following_symlinks() {
         .unwrap();
     for (source, reason) in [
         ("invalid.bin:1", "not UTF-8"),
-        ("nul.bin:1", "binary control"),
+        ("binary-control.bin:1", "binary control"),
         ("empty.txt:1", "0 lines"),
         ("large.txt:1", "4 MiB"),
         ("directory:1", "regular tracked file"),
