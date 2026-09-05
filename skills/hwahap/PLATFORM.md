@@ -10,16 +10,16 @@
 Hwahap은 호스트에 노출된 native 도구를 사용하며 MCP 서버 자체가 모델 세션을 시작하지 않는다.
 
 현재 호스트의 `spawn_agent` 호출에는 `task_name`, `message`, `fork_turns`, `model`,
-`reasoning_effort`가 있다. 별도 `cwd`·`sandbox` 인수는 없다. Hwahap은 `fork_turns=none`과
-요청된 모델·effort를 전달하도록 요구하며 절대 작업 경로와 접근 범위는 지시에 포함한다.
+`reasoning_effort`가 있다. 별도 `cwd`·`sandbox` 인수는 없다. Hwahap은 새 자식에만 `fork_turns=none`을
+사용하고, 유지된 자식은 follow-up으로 재사용한다. 요청 모델·effort, 절대 경로와 접근 범위는 지시로 전달한다.
 따라서 read-only 지침과 Git 사후 검사는 OS 격리의 증거가 아니다. 공식 문서의 custom agent
 설정 기능도 이 구현이 개별 spawn의 샌드박스를 검증했다는 뜻은 아니다.
 
 실행 증거는 [native 모듈](runtime/src/native.rs)과
 [MCP instructions](runtime/src/mcp.rs)에 정의되어 있다.
 요청 모델은 실제 적용 모델과 구분하며, 도구가 없는 호스트에서는 실행 한계를 보고한다.
-호스트가 Astra인 경우에도 `Recommender`·`PlanSynthesis`만 coordinator 처리가 허용된다.
-최종 리뷰와 그 밖의 독립 역할은 새 하위 에이전트가 수행한다.
+부모 Astra가 추천·합성·충돌 재계획·재작업을 수행하고, Worker Luna·Critic Terra·Auditor Astra를 유지한다.
+Auditor는 ColdConsumer·최종 리뷰를 맡는다. 작성에 참여하지 않지만 이전 검토 문맥은 남을 수 있다.
 
 공식 문서는 플랫폼 기능의 근거이며, 이 저장소의 기본 프로필은
 [profile.rs](runtime/src/profile.rs)가 정의한다. Deep은 `gpt-6-astra` / `high`,
@@ -30,7 +30,9 @@ Economy는 Luna / `medium`, Critic은 Terra / `high`다.
 미설정 시 Codex가 기본값을 정하며 `agents.max_threads`는 이전 이름이다. 이는 실행 완료 횟수의 한도가 아니다.
 공식 subagents 문서에는 스레드 닫기가 설명되어 있지만, 2026-09-05 이 작업에 노출된 collaboration 도구에는
 작업 중단용 `interrupt_agent`는 있고 close/release는 없다. 완료·중단은 스레드 해제의 증거가 아니며 해제 여부는 `unknown`이다.
-호스트가 close/release를 제공할 때만 완료가 저장된 뒤 해당 Hwahap 소유 에이전트를 해제한다.
+Hwahap은 매 완료 뒤 자식을 해제하지 않고 같은 세 ID를 유지한다. 최초 세 슬롯은 여전히 필요하다.
+같은 저장소·부모 `host_session_id`만 pool을 공유한다. 다른 저장소·부모는 별도 pool이며,
+기존 모델·effort 변경과 Worker·Critic·Auditor 사이의 전환·교체 생성을 거부한다. 근거는 [pool.rs](runtime/src/native/pool.rs)다.
 Hwahap은 외부 capacity 회복을 보장하지 않으며 전역 한도 변경이나 무관한 작업 종료로 우회하지 않는다.
 
 ## 2. 저장과 중단 복구
@@ -46,6 +48,8 @@ MCP 프로세스의 동시 실행을 거부한다. `status`는 진행 상황을 
 | `native-stopped-<id>.json` | 호스트가 남은 에이전트와 명령의 종료를 확인한 기록 |
 | `native-failure-<id>.json` | 정확한 spawn 실패와 생성 여부에 대한 호스트 관찰 |
 | `native-resume-<id>.json` | 해당 중단을 재개하는 새 호스트 회복 관찰 |
+| `native-timing-<id>.json` | 요청·등록·종료 시각, 역할·예산, 입력·출력 bytes와 최초 종료 사유 |
+| `.hwahap/native-pool-<scope digest>.json` | 부모별 작업자 ID·역할·모델·effort; artifacts 밖에 있어 run archive 후에도 유지 |
 | `receipt-<sequence>-<role>.json` | 실행 증거의 출처가 명시된 세션 결과 |
 
 호스트는 생성 직후 agent ID를 등록하고, 동일 요청에 두 번째 에이전트를 만들지 않는다.
@@ -53,7 +57,12 @@ MCP 프로세스의 동시 실행을 거부한다. `status`는 진행 상황을 
 생성 후 등록 전에 끊겼다면 호스트는 해당 요청으로 만든 에이전트가 있는지 찾아 종료해야 한다.
 종료 여부가 불명확할 때 `all_work_stopped=true`를 보내면 안 된다.
 
-기본 한도는 실행당 native 요청 64회, 요청당 대기 900초다. 재시도 요청도 한도에 포함된다.
+기본 한도는 run당 native 요청 64회, 요청당 hard timeout 180초다. 재시도·follow-up도 요청 수에 포함된다.
+역할별 soft 목표 60/90/120초는 hard 값으로 상한을 둔다. 분류는 [timing.rs](runtime/src/native/timing.rs)를 따른다.
+호스트는 최대 30초 이벤트 대기로 완료를 확인하며, hard 만료는 기존 중단 확인 절차로 이어진다.
+종료 사유는 `completed`·`deadline`·`channel_closed`·`spawn_failed`·`spawn_unknown`·`stopped`를 기록하고 최초 값을 보존한다.
+관측 구간에는 호스트 queue·spawn·relay가 포함된다. 등록 이후 구간도 순수 모델 실행 시간은 아니다.
+완료된 계획 검토는 현재 `review_digest`가 같은 경우에만 재사용한다. 실패 findings도 보존한다.
 자식이 없다고 확인된 spawn 실패는 `native_paused`로 저장한다. 자동 재시도·polling·새 요청은 중단하고
 run·plan·accepted unit을 유지한다. 새로 관찰한 호스트 회복 근거로 명시적으로 재개하며, 같은 근거를
 다른 재시도에 재사용할 수 없다. 재개 후 생성되는 새 요청도 `native_max_calls`에 포함된다.
@@ -72,18 +81,35 @@ run·plan·accepted unit을 유지한다. 새로 관찰한 호스트 회복 근�
 - 사이클 테스트: Luna 첫 구현 뒤 Astra 재작업 한 번, 검증·검토·commit·ship 조건.
 - native 인터페이스 테스트: 등록·완료 연결, 중복 완료, 재시작 복구, 시간 초과와 잠금.
 - [capacity 테스트](runtime/tests/native_capacity.rs): 통제한 실패 주입으로 no-child 중단·재시작, 새 근거 재개, 근거 재사용 거부, unknown-child 종료 확인, 실패 기록 중 단절을 검사한다.
+- [pool 테스트](runtime/tests/native_pool.rs): 통제한 세 슬롯에서 300개 작업을 생성 3회·follow-up 297회로 처리하고 역할·ID·모델·effort 변경과 오래된 응답을 거부한다.
+- [timing 테스트](runtime/src/native/timing.rs): 최초 시각·실패 보존, legacy 호환, 누락·손상 오류와 시계 역행을 검사한다.
 - MCP 인터페이스 테스트: 세 도구의 공개 계약과 입력 검증.
 
 capacity 테스트는 실제 호스트 pool을 고갈시킨 실험이 아니다. 실제 스레드 해제와 슬롯 반환,
 해제 후 spawn 성공은 검증하지 않았으며, 아래의 canary도 그 증거가 아니다.
 
-2026-09-05의 제한된 실제 호스트 canary에서는 Luna `fact_finder` 하위 에이전트를 생성하고,
+세 작업자 pool 변경 전인 2026-09-05의 제한된 실제 호스트 canary에서는 Luna `fact_finder` 하위 에이전트를 생성하고,
 등록한 뒤 반환된 JSON을 completion으로 전달했다. 이어 현재 Astra가 `recommender`를
 `coordinator`로 등록·처리했고, 실행은 `deciding / await_user`까지 진행했다. 요청 2개, 완료 2개
 (하위 에이전트 1개·coordinator 1개), 미완료 0개, 사용량 보고 0개가 기록됐다. 두 native receipt와
 pending 제거를 확인했으며 EOF로 MCP가 종료됐다. 실제 사용 토큰이나 청구금액은 확인하지 못했다.
 초기 canary에서 발견한 자체 상태 파일 변경 오탐은 수정하고 `.gitignore` 없는 저장소에서 재검증했다.
-이 관찰은 전체 계획·구현·최종 검토·PR 생성의 성공 증거가 아니다.
+이 관찰은 전체 계획·구현·최종 검토·PR 생성이나 새 pool 재사용의 실제 호스트 성공 증거가 아니다.
+과거 360초 소요를 설명하는 실행 타임라인은 확인하지 못했다. hard 제한 변경은 실제 시간 단축의 측정 결과가 아니다.
+
+같은 날 pool 변경 후 실제 호스트에서 두 run의 FactFinder를 생성 1회·follow-up 1회로 실행했다.
+동일 ID를 유지하고 README 변경 전 `alpha-1`, 변경 후 `beta-2`를 실제 파일 인용과 함께 반환했다.
+각 run은 시험 설정 `native_max_calls=1`로 사실 수집 후 의도적으로 blocked 종료했다. 계획 승인은 생성하지 않았다.
+완료 2개, pending 제거, archive 후 pool 유지, MCP 정상 종료를 확인했다. 호스트 관측 시간은 다음과 같다.
+
+| 요청 | 요청→등록 | 등록→결과 전달 | 요청→결과 전달 |
+|---|---:|---:|---:|
+| 첫 생성 | 27,084ms | 30,278ms | 57,362ms |
+| 동일 ID 재사용 | 5,559ms | 52,931ms | 58,490ms |
+
+부모의 전달·병행 작업 시간도 포함되므로 이 두 표본은 속도 비교 실험이 아니다. 실제 청구금액은 unknown이다.
+시험 바이너리 SHA-256: `af9fea8ee4228bb1e33a684f5f2465048a30f608cc9118ca2a8fee24aeeb00b2`.
+실제 검증 범위는 FactFinder의 run 간 재사용이며 세 역할 전체의 모델 실행이나 pool 고갈·회복은 포함하지 않는다.
 
 다음은 별도 실제 실행으로 검증해야 한다.
 

@@ -435,6 +435,28 @@ async fn coordinator_is_limited_to_astra_planning_roles() {
     let _ = task.await;
 }
 
+#[tokio::test]
+async fn incompatible_coordinator_model_is_rejected_before_dispatch() {
+    let (temp, _, mut spec) = fixture(5, 30).await;
+    spec.role = Role::Recommender;
+    let profiles = Profiles::from_toml(
+        "[profiles.economy]\nmodel = 'gpt-5.6-luna'\neffort = 'medium'\n\
+         [profiles.critic]\nmodel = 'gpt-5.6-terra'\neffort = 'high'\n\
+         [profiles.deep]\nmodel = 'other-model'\neffort = 'high'\n",
+    )
+    .unwrap();
+    let store = Store::open(temp.path()).unwrap();
+    let broker = NativeSessions::new(store.clone(), profiles, 5, 30);
+    let error = broker.execute(&spec).await.unwrap_err().to_string();
+    assert!(error.contains("Astra parent"), "{error}");
+    assert!(broker.dispatch().unwrap().is_none());
+    assert!(orphan(&store).unwrap().is_none());
+    assert_eq!(
+        hwahap::cost::summary(&store).unwrap()["total"]["requests"],
+        0
+    );
+}
+
 async fn host_dispatch(
     host: &hwahap::native::NativeHost,
     root: &std::path::Path,

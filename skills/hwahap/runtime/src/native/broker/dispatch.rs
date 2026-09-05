@@ -32,6 +32,11 @@ impl NativeSessions {
             Access::WorkspaceWrite => "workspace_write",
         };
         let lane = NativeLane::for_role(spec.role);
+        if lane == NativeLane::Coordinator && wanted.model != "gpt-6-astra" {
+            return Err(Error::Rejected(
+                "native planning and repair require an Astra parent and profiles.deep.model=gpt-6-astra".into(),
+            ));
+        }
         let soft_budget_secs = timing::soft_budget(spec.role).min(self.timeout_secs);
         let hard_timeout_secs = self.timeout_secs;
         let pool_scope = self
