@@ -182,9 +182,25 @@ impl Engine {
     }
 
     fn resolve(&self, request: Option<&str>) -> Result<Resolved> {
+        self.resolve_planning(request, false, false)
+    }
+
+    pub fn start_planning(&self, request: &str, plan_only: bool) -> Result<StepOutcome> {
+        match self.resolve_planning(Some(request), plan_only, true)? {
+            Resolved::Started(outcome) => Ok(outcome),
+            Resolved::Advance(_) => unreachable!("a request starts or rejects"),
+        }
+    }
+
+    fn resolve_planning(
+        &self,
+        request: Option<&str>,
+        plan_only: bool,
+        interactive: bool,
+    ) -> Result<Resolved> {
         let existing = self.store.recover()?;
         match (existing, request) {
-            (None, Some(request)) => Ok(Resolved::Started(self.start(request)?)),
+            (None, Some(request)) => Ok(Resolved::Started(self.start(request, plan_only, interactive)?)),
             (None, None) => Err(Error::Rejected(
                 "there is no active Hwahap run in this repository; call hwahap_step again with \
                  `request` set to the user's implementation request"
@@ -196,7 +212,7 @@ impl Engine {
                 // ever removes it, and the next run cannot create one at a path that still exists.
                 self.store.archive(&*self.clock)?;
                 self.git.remove_worktree(&self.store.worktree_path())?;
-                Ok(Resolved::Started(self.start(request)?))
+                Ok(Resolved::Started(self.start(request, plan_only, interactive)?))
             }
             (Some(run), Some(_)) => Err(Error::Rejected(format!(
                 "a Hwahap run is already active in this repository ({}, state {}). Finish or abandon \
@@ -279,7 +295,7 @@ impl Engine {
 
     // ---------------------------------------------------------------- planning
 
-    fn start(&self, request: &str) -> Result<StepOutcome> {
+    fn start(&self, request: &str, plan_only: bool, interactive: bool) -> Result<StepOutcome> {
         if request.trim().is_empty() {
             return Err(Error::Rejected(
                 "the implementation request is empty".into(),
@@ -294,7 +310,17 @@ impl Engine {
             incarnation += 1;
             goal_id = format!("{stem}-{incarnation}");
         }
-        let plan = Plan::new(&goal_id, &base_branch, request.trim());
+        let mut plan = Plan::new(&goal_id, &base_branch, request.trim());
+        plan.plan_only = plan_only;
+        plan.interactive = interactive;
+        if interactive {
+            if !self.git.is_clean(&self.repo_root)? {
+                return Err(Error::Rejected(
+                    "PLAN requires a clean committed source so its evidence can be bound".into(),
+                ));
+            }
+            plan.source_head = Some(self.git.head_sha()?);
+        }
         self.store.write_plan(&plan)?;
         self.store
             .write_plan_markdown(&render::plan_markdown(&plan)?)?;
@@ -326,6 +352,7 @@ impl Engine {
             RunState::AwaitingConfirmation { challenge } => {
                 self.freeze(run, &challenge, user_input)
             }
+            RunState::PlanReady => self.adjust(run, user_input),
             RunState::AwaitingAdjustOrShip { .. } => self.adjust(run, user_input),
             RunState::PlanConflict { .. } => self.resolve_conflict(run, user_input),
             RunState::Shipped { .. } | RunState::Blocked { .. } => {
@@ -572,9 +599,9 @@ impl Engine {
         Ok(self.report(
             &run,
             format!(
-                "The plan is complete. Read `.hwahap/plan.md`.\n\nAfter Hwahap freezes it, it will \
-                 implement, test, review, and open a draft pull request without asking you \
-                 anything else. To confirm, type exactly:\n\nCONFIRM PLAN {challenge}"
+                "Read `.hwahap/plan.md`, including decisions and expected behavior.\n\n{} To confirm this exact plan, type:\n\nCONFIRM PLAN {challenge}",
+                if plan.plan_only { "PLAN-only saves the confirmed plan and stops before BUILD." }
+                else { "Confirmation starts BUILD, tests, independent review and draft publication." }
             ),
         ))
     }
@@ -678,6 +705,48 @@ impl Engine {
         self.store
             .write_plan_markdown(&render::plan_markdown(&plan)?)?;
 
+        run.plan_digest = Some(digest);
+        run.state = RunState::PlanReady;
+        self.store.write_run(&*self.clock, &run)?;
+        if plan.plan_only {
+            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+        }
+        self.begin_frozen_build(run)
+    }
+
+    /// Resume precisely the previously confirmed PLAN, never construct a direct BUILD contract.
+    pub fn build_confirmed(&self, digest: &str) -> Result<StepOutcome> {
+        let run = self
+            .store
+            .recover()?
+            .ok_or_else(|| Error::Rejected("no confirmed plan".into()))?;
+        if run.state != RunState::PlanReady
+            || run.plan_digest.as_ref().map(ToString::to_string).as_deref() != Some(digest)
+        {
+            return Err(Error::Rejected(
+                "BUILD requires the current plan_ready contract digest".into(),
+            ));
+        }
+        self.begin_frozen_build(run)
+    }
+
+    fn begin_frozen_build(&self, mut run: Run) -> Result<StepOutcome> {
+        let plan = self.require_frozen_plan(&run)?;
+        if run.branch.is_empty()
+            && plan
+                .source_head
+                .as_ref()
+                .is_some_and(|head| self.git.head_sha().as_ref().ok() != Some(head))
+        {
+            return Err(Error::Rejected(
+                "source changed after PLAN; reopen planning before BUILD".into(),
+            ));
+        }
+        if run.branch.is_empty() && !self.git.is_clean(&self.repo_root)? {
+            return Err(Error::Rejected(
+                "source has uncommitted changes after PLAN".into(),
+            ));
+        }
         // Checked here, at the boundary of the autonomous phase, rather than at delivery time.
         // Discovering a missing GitHub login after an hour of unattended coding wastes the run.
         self.forge.require_auth(&self.repo_root)?;
@@ -700,8 +769,11 @@ impl Engine {
                 ));
             }
         } else if !self.git.branch_exists(&branch)? {
-            self.git
-                .add_worktree(&worktree, &branch, &plan.base_branch)?;
+            self.git.add_worktree(
+                &worktree,
+                &branch,
+                plan.source_head.as_deref().unwrap_or(&plan.base_branch),
+            )?;
         }
 
         // Anything accepted against a plan detail this revision changed is no longer accepted.
@@ -719,7 +791,6 @@ impl Engine {
             .cloned()
             .ok_or_else(|| Error::Rejected("the frozen plan has no units to build".into()))?;
 
-        run.plan_digest = Some(digest);
         run.branch = branch;
         run.state = RunState::Coding {
             unit: first,
@@ -1533,6 +1604,7 @@ impl Engine {
             RunState::AwaitingConfirmation { challenge } => format!(
                 "Read `.hwahap/plan.md`. To freeze it, type exactly:\n\nCONFIRM PLAN {challenge}"
             ),
+            RunState::PlanReady => "PLAN is confirmed and saved in `.hwahap/plan.md`. Implementation has not started. Request BUILD with this plan's digest when ready.".into(),
             RunState::Coding { unit, attempt } => format!(
                 "Building {unit} (attempt {attempt}). {} unit(s) accepted so far.",
                 run.accepted_units.len()
