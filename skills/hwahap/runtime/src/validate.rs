@@ -66,6 +66,18 @@ pub fn build_blockers(plan: &Plan) -> Result<Vec<Violation>> {
     check_substance(plan, &mut out);
     check_traceability(plan, &mut out)?;
     check_verification(plan, &mut out);
+    if plan.acceptance.iter().any(|a| a.requirement_ids.is_empty())
+        || plan
+            .units
+            .iter()
+            .any(|u| !u.probe && u.acceptance_ids.is_empty())
+        || plan.tests.iter().any(|t| t.acceptance_ids.is_empty())
+    {
+        out.push(Violation::new(
+            "empty_build_trace",
+            "BUILD acceptance, units and tests need explicit traceability edges",
+        ));
+    }
     if plan
         .execution_authorization
         .as_ref()

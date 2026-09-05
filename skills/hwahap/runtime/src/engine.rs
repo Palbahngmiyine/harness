@@ -783,6 +783,11 @@ impl Engine {
                     self.store.write_run(&*self.clock, &run)?;
                 }
                 UnitOutcome::Conflict(detail) => {
+                    if plan.execution_authorization.is_some() {
+                        run.state = RunState::Blocked { reason: format!("Direct BUILD contract conflict: {detail}. Planning was not reopened.") };
+                        self.store.write_run(&*self.clock, &run)?;
+                        return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+                    }
                     run.state = RunState::PlanConflict {
                         unit: unit_id.clone(),
                         detail: detail.clone(),
@@ -1152,6 +1157,11 @@ impl Engine {
     /// `.hwahap` by hand and losing the plan and the journal with it.
     fn resolve_conflict(&self, mut run: Run, user_input: Option<&str>) -> Result<StepOutcome> {
         let mut plan = self.require_plan()?;
+        if plan.execution_authorization.is_some() {
+            run.state = RunState::Blocked { reason: "Direct BUILD needs an explicit revised execution contract; planning was not reopened.".into() };
+            self.store.write_run(&*self.clock, &run)?;
+            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+        }
         let Some(input) = user_input.map(str::trim).filter(|i| !i.is_empty()) else {
             return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
         };
