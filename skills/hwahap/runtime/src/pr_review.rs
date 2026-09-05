@@ -1,6 +1,8 @@
 //! Evidence for two independent reviews of one published commit.
 use crate::{canonical::Digest, Error, Result};
 use serde::{Deserialize, Serialize};
+mod defense;
+pub use defense::*;
 use std::{
     collections::BTreeSet,
     path::{Component, Path},
@@ -93,7 +95,7 @@ impl AttackReport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    fn report() -> AttackReport {
+    pub(super) fn report() -> AttackReport {
         AttackReport {
             binding: ReviewBinding {
                 pr_url: "https://github.com/a/b/pull/1".into(),
