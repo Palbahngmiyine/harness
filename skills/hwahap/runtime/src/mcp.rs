@@ -103,6 +103,15 @@ checks pass, and the final review is still fresh.";
 /// Arguments to `hwahap_step`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct StepArgs {
+    /// With request, confirm and retain PLAN without starting BUILD. Default continues to BUILD.
+    #[serde(default)]
+    pub plan_only: bool,
+    /// Explicit user request to BUILD the saved plan_ready contract with this exact full digest.
+    #[serde(default)]
+    pub build_confirmed: Option<String>,
+    /// Explicit implementation correction within existing acceptance, tests and paths.
+    #[serde(default)]
+    pub adjust_build: Option<crate::engine::AdjustBuildRequest>,
     /// Revalidate this run's existing draft and resume both Astra reviews without planning.
     #[serde(default)]
     pub recheck_pr: bool,
@@ -258,6 +267,9 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    plan_only: args.plan_only,
+                    build_confirmed: args.build_confirmed,
+                    adjust_build: args.adjust_build,
                     recheck_pr: args.recheck_pr,
                     build: args.build,
                     host_session_id: Some(args.host_session_id),

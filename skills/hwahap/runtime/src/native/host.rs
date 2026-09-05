@@ -16,6 +16,9 @@ use crate::state::Store;
 
 #[derive(Default)]
 pub struct NativeInput {
+    pub plan_only: bool,
+    pub build_confirmed: Option<String>,
+    pub adjust_build: Option<crate::engine::AdjustBuildRequest>,
     pub recheck_pr: bool,
     pub build: Option<crate::engine::BuildRequest>,
     pub host_session_id: Option<String>,
@@ -66,6 +69,8 @@ impl NativeHost {
 
     pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
         let actions = usize::from(input.build.is_some())
+            + usize::from(input.build_confirmed.is_some())
+            + usize::from(input.adjust_build.is_some())
             + usize::from(input.registration.is_some())
             + usize::from(input.completion.is_some())
             + usize::from(input.stopped.is_some())
@@ -75,6 +80,11 @@ impl NativeHost {
         if actions > 1 || (actions > 0 && (input.request.is_some() || input.user_input.is_some())) {
             return Err(Error::Rejected(
                 "send exactly one native action, without request or user_input".into(),
+            ));
+        }
+        if input.plan_only && input.request.is_none() {
+            return Err(Error::Rejected(
+                "plan_only is a start option and requires request".into(),
             ));
         }
         let mut active = self.active.lock().await;
@@ -157,6 +167,24 @@ impl NativeHost {
                 "native work belongs to another parent task; do not reuse or stop its agents"
                     .into(),
             ));
+        }
+        if input.build_confirmed.is_some() || input.adjust_build.is_some() {
+            if active.contains_key(root) || orphan(&store)?.is_some() {
+                return Err(Error::Rejected(
+                    "finish or recover native work before changing stages".into(),
+                ));
+            }
+            let _lock = RepoLock::acquire(root)?;
+            let engine = Engine::open(root)?;
+            let outcome = if let Some(digest) = &input.build_confirmed {
+                engine.build_confirmed(digest)?
+            } else {
+                engine.adjust_build(input.adjust_build.as_ref().expect("checked action"))?
+            };
+            return Ok(NativeProgress {
+                outcome,
+                dispatch: None,
+            });
         }
         if input.recheck_pr {
             if active.contains_key(root) || orphan(&store)?.is_some() {
@@ -279,6 +307,9 @@ impl NativeHost {
             let task_lock = lock.clone();
             let task = tokio::spawn(async move {
                 let _lock = task_lock;
+                if let Some(request) = input.request.as_deref() {
+                    return engine.start_planning(request, input.plan_only);
+                }
                 engine
                     .step_with(
                         &*sessions,
