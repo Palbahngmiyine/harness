@@ -35,6 +35,7 @@ const MAX_ATTEMPTS: u32 = 2;
 
 mod adjust_build;
 mod build;
+mod interview;
 mod pr_review;
 pub use adjust_build::AdjustBuildRequest;
 pub use build::{BuildRequest, BuildUnit};
@@ -374,6 +375,7 @@ impl Engine {
     pub async fn drive(&self, run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         match run.state.clone() {
             RunState::Inspecting => self.inspect(run, sessions).await,
+            RunState::Refining => self.refine(run, sessions).await,
             RunState::Proving => self.prove(run, sessions).await,
             RunState::Coding { .. } => self.code(run, sessions).await,
             RunState::FinalVerifying => self.finalize(run, sessions).await,
@@ -418,6 +420,7 @@ impl Engine {
             )
             .await?;
         self.apply_decisions(&mut plan, &decisions.final_message)?;
+        Self::capture_frontier(&mut plan)?;
 
         self.save_plan(&plan)?;
         run.state = RunState::Deciding;
@@ -438,6 +441,17 @@ impl Engine {
         }
 
         let frontier = frontier::derive(&plan)?;
+        if plan.interactive
+            && user_input.is_some()
+            && crate::dialogue::QuestionBatch::derive(&plan)?.is_none()
+        {
+            run.state = RunState::Refining;
+            self.store.write_run(&*self.clock, &run)?;
+            return Ok(self.report(
+                &run,
+                "Answers recorded. Checking their implications before the next round.".into(),
+            ));
+        }
         if !frontier.ready.is_empty() {
             let message = render::frontier_markdown(&plan, &frontier.ready)?;
             self.store.write_run(&*self.clock, &run)?;
@@ -1600,6 +1614,7 @@ impl Engine {
     fn describe(&self, run: &Run, plan: Option<&Plan>) -> Result<String> {
         Ok(match &run.state {
             RunState::Inspecting => "Hwahap is reading the repository.".into(),
+            RunState::Refining => "Hwahap is checking new implications and unresolved interpretations from this round.".into(),
             RunState::Deciding => match plan {
                 Some(plan) => {
                     let frontier = frontier::derive(plan)?;
