@@ -1950,3 +1950,123 @@ async fn a_successful_full_suite_that_mutates_files_cannot_publish() {
     assert!(outcome.pr_url.is_none());
     assert!(!script.roles().contains(&Role::FinalReview));
 }
+
+#[tokio::test]
+async fn completed_plan_reviews_survive_an_interrupted_critic_or_recommender() {
+    for fail_cold in [false, true] {
+        let fixture = Fixture::new();
+        let cold = if fail_cold {
+            r#"{"verdict":"fail","findings":["U1 leaves the output encoding undecided"]}"#
+        } else {
+            PASS
+        };
+        let mut steps = happy_path_steps()[..3].to_vec();
+        steps.push(step(Role::ColdConsumer, Reply::say(cold)));
+        steps.push(step(
+            Role::PlanCritic,
+            Reply::Fail("critic interrupted".into()),
+        ));
+        let script = Script::new(steps);
+        let engine = fixture.engine();
+        engine
+            .step_with(&script, Some(REQUEST), None)
+            .await
+            .unwrap();
+        engine.step_with(&script, None, None).await.unwrap();
+        engine
+            .step_with(&script, None, Some(&all_answers()))
+            .await
+            .unwrap();
+        assert!(engine.step_with(&script, None, None).await.is_err());
+        drop(engine);
+        let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+        let plan = store.read_plan().unwrap().unwrap();
+        assert_eq!(
+            plan.reviews.cold_consumer.as_ref().unwrap().passed,
+            !fail_cold
+        );
+        assert!(plan.reviews.critic.is_none());
+        script.extend(vec![step(Role::PlanCritic, Reply::say(PASS))]);
+        if fail_cold {
+            script.extend(vec![step(
+                Role::Recommender,
+                Reply::Fail("recommender interrupted".into()),
+            )]);
+            assert!(fixture
+                .engine()
+                .step_with(&script, None, None)
+                .await
+                .is_err());
+            script.extend(vec![step(
+                Role::Recommender,
+                Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+            )]);
+        }
+        let outcome = fixture
+            .engine()
+            .step_with(&script, None, None)
+            .await
+            .unwrap();
+        assert_eq!(
+            outcome.state,
+            if fail_cold {
+                "blocked"
+            } else {
+                "awaiting_confirmation"
+            }
+        );
+        assert_eq!(script.prompts_for(Role::ColdConsumer).len(), 1);
+        assert_eq!(script.prompts_for(Role::PlanCritic).len(), 2);
+        if fail_cold {
+            assert!(outcome.message.contains("output encoding undecided"));
+            assert_eq!(script.prompts_for(Role::Recommender).len(), 3);
+        }
+        assert_eq!(script.remaining(), 0);
+    }
+}
+
+#[tokio::test]
+async fn changed_plan_content_invalidates_the_checkpointed_cold_review() {
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps()[..4].to_vec();
+    steps.push(step(
+        Role::PlanCritic,
+        Reply::Fail("critic interrupted".into()),
+    ));
+    let script = Script::new(steps);
+    let engine = fixture.engine();
+    engine
+        .step_with(&script, Some(REQUEST), None)
+        .await
+        .unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert!(engine.step_with(&script, None, None).await.is_err());
+    drop(engine);
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let mut plan = store.read_plan().unwrap().unwrap();
+    let old_digest = plan.review_digest().unwrap();
+    plan.tests[0].command = "test -s src/added.txt".into();
+    assert_ne!(plan.review_digest().unwrap(), old_digest);
+    store.write_plan(&plan).unwrap();
+    script.extend(vec![
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    let outcome = fixture
+        .engine()
+        .step_with(&script, None, None)
+        .await
+        .unwrap();
+    assert_eq!(outcome.state, "awaiting_confirmation");
+    assert_eq!(script.prompts_for(Role::ColdConsumer).len(), 2);
+    let plan = store.read_plan().unwrap().unwrap();
+    assert_eq!(
+        plan.reviews.cold_consumer.unwrap().plan_digest,
+        plan.reviews.critic.unwrap().plan_digest
+    );
+    assert_eq!(script.remaining(), 0);
+}
