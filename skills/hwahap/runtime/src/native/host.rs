@@ -299,6 +299,8 @@ impl NativeHost {
                 ));
             }
             let config = Config::for_run(&store)?;
+            let start_store = store.clone();
+            let start_parent = input.host_session_id.clone();
             let mut sessions = NativeSessions::new(
                 store,
                 config.profiles,
@@ -315,7 +317,16 @@ impl NativeHost {
             let task = tokio::spawn(async move {
                 let _lock = task_lock;
                 if let Some(request) = input.request.as_deref() {
-                    return engine.start_planning(request, input.plan_only);
+                    let outcome = engine.start_planning(request, input.plan_only)?;
+                    crate::pr_review::save_evidence(
+                        &start_store,
+                        "native-owner.json",
+                        &serde_json::json!({
+                            "run_id":outcome.run_id,
+                            "pool_scope":start_parent.as_ref().unwrap_or(&outcome.run_id)
+                        }),
+                    )?;
+                    return Ok(outcome);
                 }
                 engine
                     .step_with(
