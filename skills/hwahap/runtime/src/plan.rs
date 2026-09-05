@@ -472,6 +472,10 @@ pub struct Plan {
     /// What the user asked for after seeing a draft pull request, oldest first.
     #[serde(default)]
     pub adjustments: Vec<Adjustment>,
+    /// Derived requirements, acceptance, units, and tests need regeneration from current inputs.
+    /// Omit false so plans saved before this cache marker retain their confirmation digests.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub structure_stale: bool,
     /// The command run once, after every unit is accepted.
     pub full_suite: String,
     #[serde(default)]
@@ -520,6 +524,7 @@ impl Plan {
             tests: Vec::new(),
             open_items: Vec::new(),
             adjustments: Vec::new(),
+            structure_stale: false,
             full_suite: String::new(),
             reviews: PlanReviews::default(),
             frozen: None,
@@ -666,6 +671,25 @@ impl Plan {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn structure_staleness_round_trips_without_changing_legacy_digests() {
+        let mut plan = Plan::new("goal", "main", "a goal");
+        assert!(!plan.structure_stale);
+        let legacy = serde_json::to_value(&plan).unwrap();
+        assert!(legacy.get("structure_stale").is_none());
+        let restored: Plan = serde_json::from_value(legacy.clone()).unwrap();
+        assert!(!restored.structure_stale);
+        assert_eq!(restored.digest().unwrap(), Digest::of(&legacy).unwrap());
+        plan.structure_stale = true;
+        let saved = serde_json::to_value(&plan).unwrap();
+        assert_eq!(saved["structure_stale"], true);
+        assert!(
+            serde_json::from_value::<Plan>(saved)
+                .unwrap()
+                .structure_stale
+        );
+    }
 
     fn decision() -> Decision {
         Decision {

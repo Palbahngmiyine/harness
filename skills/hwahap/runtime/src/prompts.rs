@@ -200,6 +200,30 @@ pub fn structure(plan: &Plan) -> String {
         .filter(|d| d.is_answered().unwrap_or(false))
         .map(|d| format!("{}: {} -> {}", d.id, d.question, outcome_of(d)))
         .collect();
+    let previous = if plan.adjustments.is_empty()
+        && plan.requirements.is_empty()
+        && plan.acceptance.is_empty()
+        && plan.units.is_empty()
+        && plan.tests.is_empty()
+        && plan.full_suite.is_empty()
+    {
+        String::new()
+    } else {
+        format!(
+            "\n## Adjustments and previous structure\n\n{}\n",
+            quoted(
+                &serde_json::json!({
+                    "adjustments": plan.adjustments,
+                    "requirements": plan.requirements,
+                    "acceptance": plan.acceptance,
+                    "units": plan.units,
+                    "tests": plan.tests,
+                    "full_suite": plan.full_suite,
+                })
+                .to_string()
+            )
+        )
+    };
 
     format!(
         "{COMMON}
@@ -211,6 +235,7 @@ Goal: {goal}
 ## The decisions
 
 {answered}
+{previous}
 
 ## What you must produce
 
@@ -229,6 +254,10 @@ Goal: {goal}
 
 Keep units small enough that one session can finish one. Order them so that a unit never needs
 something a later unit builds.
+When revising an existing structure, preserve IDs and contracts for unchanged units and their
+requirements, acceptance criteria, and tests. Revise only the graph affected by the settled
+decisions and adjustments. Map every newly settled decision to requirements, acceptance, units,
+and tests; do not carry forward an old structure that omits the requested change.
 
 Your final message must be exactly this JSON object and nothing else:
 {contract}",
@@ -1084,6 +1113,32 @@ mod tests {
             prompt.contains("C1: Call the admission webhook during dry-run? -> UNKNOWN"),
             "the structure brief never mentions C1, so no requirement can cite it:\n{prompt}"
         );
+    }
+
+    #[test]
+    fn structure_revision_receives_adjustments_and_existing_contracts() {
+        let mut plan = plan_with_one_unit();
+        plan.adjustments.push(crate::plan::Adjustment {
+            revision: 2,
+            text: "also report rejected resources".into(),
+            ts: "2026-09-05T00:00:00Z".into(),
+        });
+        let prompt = structure(&plan);
+        let encoded = prompt.lines().find(|line| line.starts_with('{')).unwrap();
+        let context: serde_json::Value = serde_json::from_str(encoded).unwrap();
+        let original = serde_json::to_value(&plan).unwrap();
+        for key in [
+            "adjustments",
+            "requirements",
+            "acceptance",
+            "units",
+            "tests",
+            "full_suite",
+        ] {
+            assert_eq!(context[key], original[key], "missing or changed {key}");
+        }
+        assert!(prompt.contains("preserve IDs and contracts for unchanged units"));
+        assert!(prompt.contains("Map every newly settled decision"));
     }
 
     #[test]
