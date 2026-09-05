@@ -86,10 +86,33 @@ impl BuildRequest {
 impl super::Engine {
     /// Start only from a caller-relayed, explicit execution instruction, without planning calls.
     pub fn start_build(&self, input: &BuildRequest) -> Result<super::StepOutcome> {
-        if self.store.recover()?.is_some() {
-            return Err(Error::Rejected(
-                "an existing run must finish before a direct BUILD".into(),
+        let saved = crate::pr_review::read_evidence::<serde_json::Value>(
+            &self.store,
+            "build-request.json",
+        )?;
+        if let Some(run) = self.store.recover()? {
+            let plan = self.require_frozen_plan(&run)?;
+            if saved
+                .as_ref()
+                .is_none_or(|v| v["request"] != serde_json::json!(input))
+                || input
+                    .plan(&run.goal_id, plan.base_commit.as_deref().unwrap_or(""))?
+                    .digest()?
+                    != plan.digest()?
+                || run.branch != input.branch
+            {
+                return Err(Error::Rejected(
+                    "BUILD retry differs from the recorded execution contract".into(),
+                ));
+            }
+            return Ok(self.report(
+                &run,
+                "Existing BUILD retained; no branch, worktree or authorization was replaced."
+                    .into(),
             ));
+        }
+        if let Some(saved) = saved {
+            return self.resume_build(input, &saved);
         }
         if !self.git.is_clean(&self.repo_root)? {
             return Err(Error::Rejected(
@@ -126,17 +149,84 @@ impl super::Engine {
             answer_text: input.user_instruction.clone(),
         });
         self.forge.require_auth(&self.repo_root)?;
-        self.git
-            .add_worktree(&self.store.worktree_path(), &input.branch, &source)?;
-        self.store.write_artifact(
-            "build-request.json",
-            &serde_json::to_string_pretty(&serde_json::json!({
-                "request":input, "source_head":source, "base_commit":base, "contract_digest":digest,
-                "authorization_source":"explicit_build_instruction", "planning_performed":false
-            }))
-            .map_err(|e| Error::Internal(e.to_string()))?,
-        )?;
+        let saved = serde_json::json!({
+            "request":input, "source_head":source, "base_commit":base, "contract_digest":digest,
+            "authorization_source":"explicit_build_instruction", "planning_performed":false, "plan":plan
+        });
+        crate::pr_review::save_evidence(&self.store, "build-request.json", &saved)?;
+        self.resume_build(input, &saved)
+    }
+
+    fn resume_build(
+        &self,
+        input: &BuildRequest,
+        saved: &serde_json::Value,
+    ) -> Result<super::StepOutcome> {
+        let plan: Plan = serde_json::from_value(saved["plan"].clone()).map_err(|e| {
+            Error::Corrupt(format!("interrupted BUILD lacks its sealed contract: {e}"))
+        })?;
+        let source = saved["source_head"]
+            .as_str()
+            .ok_or_else(|| Error::Corrupt("missing BUILD source".into()))?;
+        let base = saved["base_commit"]
+            .as_str()
+            .ok_or_else(|| Error::Corrupt("missing BUILD base".into()))?;
+        let digest = plan.digest()?;
+        if saved["request"] != serde_json::json!(input)
+            || saved["contract_digest"] != serde_json::json!(digest)
+            || !plan.is_frozen()?
+            || input.plan(&plan.goal_id, base)?.digest()? != digest
+            || plan
+                .frozen
+                .as_ref()
+                .is_none_or(|f| f.answer_text != input.user_instruction)
+            || self.git.head_sha()? != source
+            || !self.git.is_clean(&self.repo_root)?
+        {
+            return Err(Error::Rejected(
+                "interrupted BUILD request, source or contract changed".into(),
+            ));
+        }
+        self.forge.require_auth(&self.repo_root)?;
+        let worktree = self.store.worktree_path();
+        if !worktree.exists() {
+            if self.git.branch_exists(&input.branch)? {
+                if self.git.run(&["rev-parse", &input.branch])? != source {
+                    return Err(Error::BoundaryViolation(
+                        "BUILD branch changed before recovery".into(),
+                    ));
+                }
+                self.git.run(&[
+                    "worktree",
+                    "add",
+                    worktree
+                        .to_str()
+                        .ok_or_else(|| Error::Rejected("non-UTF8 worktree".into()))?,
+                    &input.branch,
+                ])?;
+            } else {
+                self.git.add_worktree(&worktree, &input.branch, source)?;
+            }
+        }
+        if self.git.run_in(&worktree, &["rev-parse", "HEAD"])? != source
+            || self.git.run_in(
+                &worktree,
+                &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+            )? != self
+                .git
+                .run(&["rev-parse", "--path-format=absolute", "--git-common-dir"])?
+            || self
+                .git
+                .run_in(&worktree, &["rev-parse", "--abbrev-ref", "HEAD"])?
+                != input.branch
+            || !self.git.is_clean(&worktree)?
+        {
+            return Err(Error::BoundaryViolation(
+                "interrupted BUILD worktree ownership changed".into(),
+            ));
+        }
         self.save_plan(&plan)?;
+        let id = plan.goal_id.clone();
         let run = crate::state::Run {
             schema: crate::plan::SCHEMA.into(),
             run_id: id.clone(),

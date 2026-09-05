@@ -71,7 +71,7 @@ async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
         (outcome.phase.as_str(), outcome.state.as_str()),
         ("build", "coding")
     );
-    assert!(engine.start_build(&input).is_err());
+    assert_eq!(engine.start_build(&input).unwrap().run_id, outcome.run_id);
     let store = Store::open(&fixture.repo).unwrap();
     let plan = store.read_plan().unwrap().unwrap();
     assert_eq!(
@@ -245,4 +245,46 @@ async fn native_direct_build_dispatches_authorship_to_the_parent_astra() {
     assert_eq!(dispatch.model, "gpt-6-astra");
     assert!(dispatch.reuse_agent_id.is_none());
     host.shutdown().await;
+}
+
+#[test]
+fn interrupted_build_replays_the_sealed_intent_without_a_second_worktree() {
+    let f = Fixture::new();
+    git(&f.repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    let original = f.engine().start_build(&request()).unwrap();
+    let store = Store::open(&f.repo).unwrap();
+    let plan = store.read_plan().unwrap().unwrap();
+    // A crash after worktree creation but before publishing run state.
+    std::fs::remove_file(store.root().join("run.json")).unwrap();
+    std::fs::remove_file(store.root().join("events.jsonl")).unwrap();
+    std::fs::remove_file(store.root().join("plan.json")).unwrap();
+    let recovered = f.engine().start_build(&request()).unwrap();
+    assert_eq!(recovered.run_id, original.run_id);
+    assert_eq!(store.read_plan().unwrap().unwrap(), plan);
+    assert_eq!(
+        git(&f.repo, &["worktree", "list", "--porcelain"])
+            .matches("worktree ")
+            .count(),
+        2
+    );
+    let mut changed = request();
+    changed.user_instruction.push_str(" changed");
+    assert!(f.engine().start_build(&changed).is_err());
+}
+
+#[test]
+fn build_rejects_missing_traceability_edges() {
+    let original = request().plan("goal", "base").unwrap();
+    for kind in 0..3 {
+        let mut plan = original.clone();
+        match kind {
+            0 => plan.acceptance[0].requirement_ids.clear(),
+            1 => plan.units[0].acceptance_ids.clear(),
+            _ => plan.tests[0].acceptance_ids.clear(),
+        }
+        assert!(hwahap::validate::build_blockers(&plan)
+            .unwrap()
+            .iter()
+            .any(|e| e.code == "empty_build_trace"));
+    }
 }
