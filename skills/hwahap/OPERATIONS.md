@@ -28,6 +28,14 @@ merge·배포·실사용 검증은 이후 별도 작업이다.
 CLI 동작과 회귀 테스트까지 이번 PR에 포함하고, GUI와 자동 배포는 제외해.”
 
 호스트는 현재 Git 상태, 기준 브랜치·commit, 기존 Hwahap run, MCP 연결과 필요한 native 도구를 확인한다.
+Commit 작성자와 커미터는 실행 worktree의 Git 설정(`user.name`, `user.email` 등)을 따른다.
+저장소·worktree 설정이 없으면 사용자 설정을 읽으며 `HOME`·`XDG_CONFIG_HOME` 위치를 유지한다.
+설정이 없으면 commit을 거부한다. Hwahap 이름이나 OS 계정으로 추측하지 않고, 호출자에게서 들어온
+`GIT_AUTHOR_*`·`GIT_COMMITTER_*` 환경 변수도 전달하지 않는다. 기존 system-config 제외와 hook 차단은 유지한다.
+[Git credential](https://git-scm.com/docs/gitcredentials)은 push 인증용이며 commit 작성자 정보가 아니다.
+[GitHub는 commit 이메일로 계정을 연결](https://docs.github.com/en/account-and-profile/how-tos/email-preferences/setting-your-commit-email-address)하므로
+인증한 계정에 연결된 이메일을 Git에 설정한다. 토큰이나 비밀정보를 읽어 작성자를 추측하지 않는다.
+이미 공개된 commit의 작성자 변경은 SHA와 검토 근거를 바꾸는 별도 이력 재작성 작업이다.
 저장소에 이미 active run이 있으면 새 요청으로 덮어쓰지 않는다. 같은 작업의 진행·수정이면 기존 run을 사용한다.
 인증·빌드·권한 조건은 README를 확인한다. 소스에서 알 수 있는 사실은 저장소 조사로 해결하고,
 제품 동작·기술 선택·성공 기준처럼 사용자의 판단이 필요한 내용만 질문한다.
