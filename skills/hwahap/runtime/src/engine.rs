@@ -558,6 +558,7 @@ impl Engine {
                 .await?;
             let before = plan.decisions.len();
             self.apply_decisions(&mut plan, &more.final_message)?;
+            Self::capture_frontier(&mut plan)?;
             let listed = findings
                 .iter()
                 .map(|f| format!("- {f}"))
@@ -594,6 +595,8 @@ impl Engine {
 
         let blockers = validate::freeze_blockers(&plan)?;
         if !blockers.is_empty() {
+            Self::capture_frontier(&mut plan)?;
+            self.save_plan(&plan)?;
             run.state = RunState::Deciding;
             self.store.write_run(&*self.clock, &run)?;
             return Ok(self.report(
@@ -643,6 +646,9 @@ impl Engine {
         let parsed = parse_message(input);
 
         if let Some(rejection) = parsed.rejection_message() {
+            if plan.interactive && parsed.directives.is_empty() && parsed.conflicts.is_empty() {
+                return self.adjust(run, Some(input));
+            }
             return Ok(self.report(&run, rejection));
         }
 
@@ -661,7 +667,11 @@ impl Engine {
                 .any(|d| matches!(d, Directive::ConfirmPlan { .. }));
             self.record_answers(&mut plan, &parsed.directives)?;
             self.save_plan(&plan)?;
-            run.state = RunState::Deciding;
+            run.state = if plan.interactive {
+                RunState::Refining
+            } else {
+                RunState::Deciding
+            };
             self.store.write_run(&*self.clock, &run)?;
             return Ok(self.report(
                 &run,
@@ -1389,6 +1399,14 @@ impl Engine {
             }
         }
         for na in not_applicable {
+            // Keep a pending proposal and its user clarification intact across refinement.
+            if plan
+                .open_items
+                .iter()
+                .any(|o| o.id == format!("NA-{}", na.surface))
+            {
+                continue;
+            }
             // Recorded as a proposal only. The surface stays applicable until the user types
             // `S<n>=NA`, which is what [`Engine::record_answers`] acts on.
             plan.open_items.push(crate::plan::OpenItem {
