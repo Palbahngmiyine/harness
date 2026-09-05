@@ -9,6 +9,9 @@ use crate::error::{Error, Result};
 use crate::session::TokenUsage;
 use crate::state::Store;
 
+mod broker;
+pub use broker::NativeSessions;
+
 const PENDING: &str = "native-pending.json";
 
 /// One exact request to relay to a fresh native child, without inherited history.
