@@ -249,7 +249,7 @@ fn decision_question(decision: &Decision) -> Question {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::plan::{Alternative, Confidence, DecisionKind, Surface};
+    use crate::plan::{Alternative, Confidence, DecisionKind, OpenItem, Surface};
 
     fn fixture() -> Plan {
         let mut plan = Plan::new("dialogue", "main", "a concrete goal");
@@ -359,5 +359,117 @@ mod tests {
                 }]
             );
         }
+    }
+
+    #[test]
+    fn dependencies_wait_and_na_proposals_follow_ready_decisions() {
+        let mut plan = fixture();
+        plan.decisions.retain(|d| d.id == "C1" || d.id == "C2");
+        plan.decision_mut("C2").unwrap().depends_on = vec!["C1".into()];
+        for n in [10, 2] {
+            plan.open_items.push(OpenItem {
+                id: format!("NA-S{n}"),
+                decision_id: String::new(),
+                detail: "no relevant behavior".into(),
+            });
+        }
+        let batch = QuestionBatch::derive(&plan).unwrap().unwrap();
+        assert_eq!(
+            batch
+                .questions
+                .iter()
+                .map(|q| q.id.as_str())
+                .collect::<Vec<_>>(),
+            ["C1", "S2", "S10"]
+        );
+        assert_eq!(batch.questions[1].options[0].label, SURFACE_NA);
+        assert_eq!(batch.questions[1].options[1].label, SURFACE_APPLIES);
+        assert!(QuestionBatch::derive(&Plan::new("empty", "main", "goal"))
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn invalid_batches_fail_atomically_even_after_a_valid_answer() {
+        let plan = fixture();
+        let before = serde_json::to_string(&plan).unwrap();
+        for invalid in ["C10", "C99", "S1", "C1"] {
+            let response = response(&plan, &[("C1", UNKNOWN), (invalid, UNKNOWN)]);
+            assert!(response.validate(&plan).is_err(), "accepted {invalid}");
+            assert_eq!(serde_json::to_string(&plan).unwrap(), before);
+        }
+        let response = response(&plan, &[("C1", UNKNOWN)]);
+        let mut changed = plan.clone();
+        changed
+            .goal
+            .statement
+            .push_str(" with a different contract");
+        assert!(response
+            .validate(&changed)
+            .unwrap_err()
+            .to_string()
+            .contains("stale"));
+        changed = plan.clone();
+        changed.decision_mut("C1").unwrap().alternatives[0].value = "different choice".into();
+        assert!(response.validate(&changed).is_err());
+    }
+
+    #[test]
+    fn missing_answers_never_choose_a_default() {
+        let plan = fixture();
+        for answers in [vec![], vec![("C1", " \n\t")]] {
+            assert!(response(&plan, &answers)
+                .validate(&plan)
+                .unwrap()
+                .is_empty());
+        }
+        assert!(response(&plan, &[("C99", " ")]).validate(&plan).is_err());
+        assert!(response(&plan, &[("C1", ""), ("C1", "")])
+            .validate(&plan)
+            .is_err());
+        let empty = Plan::new("empty", "main", "goal");
+        assert!(response(&empty, &[]).validate(&empty).unwrap().is_empty());
+        assert!(response(&empty, &[("C1", UNKNOWN)])
+            .validate(&empty)
+            .is_err());
+    }
+
+    #[test]
+    fn na_requires_an_exact_selection_and_can_be_declined() {
+        let mut plan = Plan::new("surfaces", "main", "goal");
+        plan.open_items.push(OpenItem {
+            id: "NA-S2".into(),
+            decision_id: String::new(),
+            detail: "proposed exclusion".into(),
+        });
+        for (label, expected) in [
+            (SURFACE_NA, DialogueSelection::SurfaceNA { id: "S2".into() }),
+            (
+                SURFACE_APPLIES,
+                DialogueSelection::SurfaceApplies { id: "S2".into() },
+            ),
+        ] {
+            assert_eq!(
+                response(&plan, &[("S2", label)]).validate(&plan).unwrap(),
+                [expected]
+            );
+        }
+        assert_eq!(
+            response(&plan, &[("S2", "NA")]).validate(&plan).unwrap(),
+            [DialogueSelection::Clarify {
+                id: "S2".into(),
+                text: "NA".into()
+            }]
+        );
+        assert!(matches!(plan.surfaces["S2"], SurfaceStatus::Applicable));
+        let payload = response(&plan, &[("S2", SURFACE_NA)]);
+        let mut json = serde_json::to_value(&payload).unwrap();
+        json["approve_build"] = true.into();
+        assert!(serde_json::from_value::<QuestionResponse>(json).is_err());
+        assert_eq!(
+            serde_json::from_str::<QuestionResponse>(&serde_json::to_string(&payload).unwrap())
+                .unwrap(),
+            payload
+        );
     }
 }
