@@ -18,6 +18,7 @@ pub use failure::{record_failure, resume_failed, NativeFailure, NativeResume};
 mod pool;
 pub use pool::NativeLane;
 mod reply;
+pub mod timing;
 
 const PENDING: &str = "native-pending.json";
 
