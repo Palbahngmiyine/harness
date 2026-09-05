@@ -452,6 +452,9 @@ pub struct Plan {
     /// New native runs use answer-driven interviewing; old saved contracts retain their digest.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub interactive: bool,
+    /// The whole ready frontier for this interview round, paged by the host UI.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub question_frontier: Vec<String>,
     /// Repository commit inspected by a new PLAN, fixed before user confirmation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub source_head: Option<String>,
@@ -521,6 +524,7 @@ impl Plan {
             schema: SCHEMA.to_string(),
             plan_only: false,
             interactive: false,
+            question_frontier: Vec::new(),
             source_head: None,
             execution_authorization: None,
             base_commit: None,

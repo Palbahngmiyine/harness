@@ -2210,7 +2210,15 @@ async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
         Box::new(hwahap::clock::FixedClock::new(NOW)),
         hwahap::forge::Forge::with_program("/missing-forge-for-plan-only"),
     );
-    let script = Script::new(happy_path_steps()[..5].to_vec());
+    let mut steps = happy_path_steps()[..5].to_vec();
+    steps.insert(
+        2,
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+    );
+    let script = Script::new(steps);
     assert_eq!(
         engine.start_planning(REQUEST, true).unwrap().state,
         "inspecting"
@@ -2220,6 +2228,10 @@ async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
         .step_with(&script, None, Some(&all_answers()))
         .await
         .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
     let preview = engine.step_with(&script, None, None).await.unwrap();
     let confirmation = format!(
         "CONFIRM PLAN {}",
@@ -2244,13 +2256,25 @@ async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
 async fn delayed_build_rejects_changed_source() {
     let fixture = Fixture::new();
     let engine = fixture.engine();
-    let script = Script::new(happy_path_steps()[..5].to_vec());
+    let mut steps = happy_path_steps()[..5].to_vec();
+    steps.insert(
+        2,
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+    );
+    let script = Script::new(steps);
     engine.start_planning(REQUEST, true).unwrap();
     engine.step_with(&script, None, None).await.unwrap();
     engine
         .step_with(&script, None, Some(&all_answers()))
         .await
         .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
     let preview = engine.step_with(&script, None, None).await.unwrap();
     let confirmation = format!(
         "CONFIRM PLAN {}",
@@ -2270,4 +2294,32 @@ async fn delayed_build_rejects_changed_source() {
     assert!(error.to_string().contains("source changed"));
     assert!(!fixture.worktree().exists());
     assert_eq!(engine.status().unwrap().state, "plan_ready");
+}
+
+#[tokio::test]
+async fn interactive_round_discovers_new_questions_before_structure() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut followup: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    followup["decisions"] = serde_json::json!([followup["decisions"][1].clone()]);
+    followup["decisions"][0]["id"] = "C3".into();
+    followup["decisions"][0]["depends_on"] = serde_json::json!(["C1"]);
+    followup["not_applicable"] = serde_json::json!([]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(Role::Recommender, Reply::say(followup.to_string())),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    let answered = engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(answered.state, "refining");
+    let refined = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(refined.state, "deciding");
+    assert!(refined.message.contains("C3"));
+    assert!(script.prompts_for(Role::Recommender)[1].contains("replace it every run"));
+    assert!(script.prompts_for(Role::PlanSynthesis).is_empty());
 }

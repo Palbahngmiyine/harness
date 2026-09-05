@@ -60,6 +60,8 @@ pub enum RunState {
     Inspecting,
     /// Putting the decision frontier to the user.
     Deciding,
+    /// Recompute implications of the user's completed interview round.
+    Refining,
     /// Deriving the unit graph and running the two plan reviews.
     Proving,
     /// Waiting for `CONFIRM PLAN <challenge>`.
@@ -103,6 +105,7 @@ impl RunState {
         match self {
             RunState::Inspecting => "inspecting",
             RunState::Deciding => "deciding",
+            RunState::Refining => "refining",
             RunState::Proving => "proving",
             RunState::AwaitingConfirmation { .. } => "awaiting_confirmation",
             RunState::PlanReady => "plan_ready",
@@ -120,6 +123,7 @@ impl RunState {
         match self {
             RunState::Inspecting
             | RunState::Deciding
+            | RunState::Refining
             | RunState::Proving
             | RunState::AwaitingConfirmation { .. }
             | RunState::PlanReady
@@ -137,6 +141,7 @@ impl RunState {
         match self {
             // Autonomous states: the host calls straight back without troubling the user.
             RunState::Inspecting
+            | RunState::Refining
             | RunState::Proving
             | RunState::Coding { .. }
             | RunState::FinalVerifying
@@ -156,6 +161,7 @@ impl RunState {
         matches!(
             self,
             RunState::Inspecting
+                | RunState::Refining
                 | RunState::Proving
                 | RunState::Coding { .. }
                 | RunState::FinalVerifying

@@ -130,11 +130,19 @@ impl QuestionBatch {
         plan.require_supported_schema()?;
         let ready = frontier::derive(plan)?;
         let mut questions = Vec::new();
-        for id in ready.ready.into_iter().take(3) {
+        for id in ready
+            .ready
+            .into_iter()
+            .filter(|id| !plan.interactive || plan.question_frontier.contains(id))
+            .take(3)
+        {
             let decision = plan.decision(&id).expect("frontier validated decision ids");
             questions.push(decision_question(decision));
         }
         for surface in SURFACES {
+            if plan.interactive && !plan.question_frontier.contains(&surface.id().to_string()) {
+                continue;
+            }
             if questions.len() == 3 {
                 break;
             }
