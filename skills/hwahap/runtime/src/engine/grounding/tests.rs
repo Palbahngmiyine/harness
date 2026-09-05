@@ -61,10 +61,62 @@ fn rejects_fabricated_untracked_unsafe_and_out_of_bounds_citations() {
         "cited file.txt:1-6",
         "cited file.txt:-1",
         "cited file.txt",
+        "cited*.txt:1",
+        "cited file.txt:18446744073709551616",
+        "cited file.txt:+1",
     ] {
         assert!(
             verify_sources(&plan(source), dir.path()).is_err(),
             "accepted {source:?}"
         );
     }
+}
+
+#[test]
+fn rejects_nontext_empty_and_oversized_blobs_without_following_symlinks() {
+    let dir = fixture();
+    let git = Git::open(dir.path()).unwrap();
+    std::fs::write(dir.path().join("invalid.bin"), [0xff]).unwrap();
+    std::fs::write(dir.path().join("nul.bin"), b"start\0end\n").unwrap();
+    std::fs::write(dir.path().join("empty.txt"), "").unwrap();
+    std::fs::write(
+        dir.path().join("large.txt"),
+        vec![b'x'; 4 * 1024 * 1024 + 1],
+    )
+    .unwrap();
+    std::fs::create_dir(dir.path().join("directory")).unwrap();
+    std::fs::write(dir.path().join("directory/nested.txt"), "nested\n").unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("cited file.txt", dir.path().join("link.txt")).unwrap();
+    git.run(&["add", "--all"]).unwrap();
+    git.run(&["commit", "-qm", "source boundary fixtures"])
+        .unwrap();
+    for (source, reason) in [
+        ("invalid.bin:1", "not UTF-8"),
+        ("nul.bin:1", "binary control"),
+        ("empty.txt:1", "0 lines"),
+        ("large.txt:1", "4 MiB"),
+        ("directory:1", "regular tracked file"),
+    ] {
+        let err = verify_sources(&plan(source), dir.path()).unwrap_err();
+        assert!(err.to_string().contains(reason), "{source}: {err}");
+    }
+    #[cfg(unix)]
+    assert!(verify_sources(&plan("link.txt:1"), dir.path())
+        .unwrap_err()
+        .to_string()
+        .contains("regular tracked file"));
+}
+
+#[test]
+fn checks_every_citation_and_rejects_an_empty_source_array() {
+    let dir = fixture();
+    let mut plan = plan("cited file.txt:2");
+    plan.facts[0].sources.push("fabricated.txt:1".into());
+    assert!(verify_sources(&plan, dir.path()).is_err());
+    plan.facts[0].sources.clear();
+    assert!(verify_sources(&plan, dir.path())
+        .unwrap_err()
+        .to_string()
+        .contains("F1 has no source locations"));
 }
