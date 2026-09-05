@@ -26,7 +26,18 @@ pub struct NativeResume {
 
 /// Caller must stop its engine continuation under the repository lock before recording.
 pub fn record_failure(store: &Store, failure: &NativeFailure) -> Result<NativeDispatch> {
-    let mut pending = load(store)?
+    let mut pending = check_failure(store, failure)?;
+    // Persist the reason before changing pending. A failed write never clears ownership.
+    let name = format!("native-failure-{}.json", failure.dispatch_id);
+    write_exact(store, &name, failure)?;
+    pending.dispatch.stop_required = !failure.no_agent_created;
+    pending.dispatch.failure = Some(failure.clone());
+    save(store, &pending)?;
+    Ok(pending.dispatch)
+}
+
+pub(super) fn check_failure(store: &Store, failure: &NativeFailure) -> Result<super::Pending> {
+    let pending = load(store)?
         .ok_or_else(|| Error::Rejected("no pending native dispatch accepts failure".into()))?;
     if failure.dispatch_id != pending.dispatch.dispatch_id
         || failure.message.trim().is_empty()
@@ -42,13 +53,7 @@ pub fn record_failure(store: &Store, failure: &NativeFailure) -> Result<NativeDi
             "failure must match an unregistered dispatch exactly".into(),
         ));
     }
-    // Persist the reason before changing pending. A failed write never clears ownership.
-    let name = format!("native-failure-{}.json", failure.dispatch_id);
-    write_exact(store, &name, failure)?;
-    pending.dispatch.stop_required = !failure.no_agent_created;
-    pending.dispatch.failure = Some(failure.clone());
-    save(store, &pending)?;
-    Ok(pending.dispatch)
+    Ok(pending)
 }
 
 /// Each observed recovery permits one resume; the run request budget still bounds retries.
