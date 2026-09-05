@@ -76,9 +76,8 @@ async fn registered_result_is_durable_bound_and_consumed_once() {
     let request = dispatch(&broker).await;
     let store = Store::open(temp.path()).unwrap();
     assert!(orphan(&store).unwrap().unwrap().stop_required);
-    assert!(request
-        .brief
-        .contains("without inherited conversation history"));
+    assert!(request.reuse_agent_id.is_none());
+    assert_eq!(request.lane, hwahap::native::NativeLane::Worker);
     assert!(!request.base_head.is_empty());
     let mut completion = NativeCompletion {
         dispatch_id: request.dispatch_id.clone(),

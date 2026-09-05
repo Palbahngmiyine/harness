@@ -82,21 +82,34 @@ pub fn reusable(store: &Store, dispatch: &NativeDispatch) -> Result<Option<Strin
     Ok(Some(agent.id.clone()))
 }
 
-/// Registration follows the pending write, so a failed pool write can retry the same identity.
-pub fn register(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<()> {
+/// Check before changing pending, so a refused cross-lane identity cannot poison it.
+pub fn check_registration(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<()> {
+    checked_registration(store, dispatch, id).map(|_| ())
+}
+
+fn checked_registration(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<Pool> {
     if dispatch.pool_scope.is_empty() {
-        return Ok(());
-    } // pre-pool native requests
+        return Ok(Pool::default());
+    }
     if dispatch.lane == NativeLane::Coordinator {
         return if id == "coordinator" {
-            Ok(())
+            Ok(Pool::default())
         } else {
             Err(Error::Rejected(
                 "pooled planning and repair require the Astra coordinator".into(),
             ))
         };
     }
-    let mut pool = load(store, &dispatch.pool_scope)?;
+    if dispatch
+        .reuse_agent_id
+        .as_ref()
+        .is_some_and(|expected| expected != id)
+    {
+        return Err(Error::Rejected(
+            "reuse must retain the exact native agent identity".into(),
+        ));
+    }
+    let pool = load(store, &dispatch.pool_scope)?;
     if pool
         .agents
         .iter()
@@ -121,6 +134,19 @@ pub fn register(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<()
             "native pool identity is missing or its three-child limit was reached".into(),
         ));
     }
+    Ok(pool)
+}
+
+/// Pending registration is saved first; failed pool persistence retries that same identity.
+pub fn register(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<()> {
+    write_agent(store, dispatch, id, false)
+}
+
+fn write_agent(store: &Store, dispatch: &NativeDispatch, id: &str, stopped: bool) -> Result<()> {
+    let mut pool = checked_registration(store, dispatch, id)?;
+    if dispatch.pool_scope.is_empty() || dispatch.lane == NativeLane::Coordinator {
+        return Ok(());
+    }
     pool.agents.insert(
         dispatch.lane,
         Agent {
@@ -128,7 +154,7 @@ pub fn register(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<()
             model: dispatch.model.clone(),
             effort: dispatch.effort.clone(),
             dispatch_id: dispatch.dispatch_id.clone(),
-            stopped: false,
+            stopped,
         },
     );
     store.write_atomic(&path(store, &dispatch.pool_scope), &json(&pool)?)
@@ -142,15 +168,5 @@ pub fn stopped(store: &Store, dispatch: &NativeDispatch) -> Result<()> {
     let Some(id) = &dispatch.agent_id else {
         return Ok(());
     };
-    let mut pool = load(store, &dispatch.pool_scope)?;
-    let agent = pool.agents.get_mut(&dispatch.lane).ok_or_else(|| {
-        Error::Rejected("native pool registration is missing; retry registration first".into())
-    })?;
-    if &agent.id != id || agent.dispatch_id != dispatch.dispatch_id {
-        return Err(Error::Rejected(
-            "stop does not match the native lane's current turn".into(),
-        ));
-    }
-    agent.stopped = true;
-    store.write_atomic(&path(store, &dispatch.pool_scope), &json(&pool)?)
+    write_agent(store, dispatch, id, true)
 }

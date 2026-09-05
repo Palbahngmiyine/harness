@@ -138,9 +138,10 @@ impl Role {
     /// Total by construction: a new role cannot be added without deciding what it costs.
     pub fn profile(self) -> Profile {
         match self {
-            Role::FactFinder | Role::ColdConsumer | Role::Implementer => Profile::Economy,
+            Role::FactFinder | Role::Implementer => Profile::Economy,
             Role::PlanCritic | Role::UnitReviewer | Role::FailureDiagnosis => Profile::Critic,
-            Role::Rework
+            Role::ColdConsumer
+            | Role::Rework
             | Role::Recommender
             | Role::PlanSynthesis
             | Role::ConflictReplan
@@ -687,7 +688,7 @@ effort = "high"
     fn every_role_maps_to_the_documented_profile() {
         let expected: [(Role, Profile, &str); 11] = [
             (Role::FactFinder, Profile::Economy, "fact_finder"),
-            (Role::ColdConsumer, Profile::Economy, "cold_consumer"),
+            (Role::ColdConsumer, Profile::Deep, "cold_consumer"),
             (Role::Implementer, Profile::Economy, "implementer"),
             (Role::Rework, Profile::Deep, "rework"),
             (Role::PlanCritic, Profile::Critic, "plan_critic"),
@@ -726,9 +727,9 @@ effort = "high"
     #[test]
     fn the_retry_uses_deep_without_an_extra_diagnosis_model() {
         let count = |profile: Profile| Role::ALL.iter().filter(|r| r.profile() == profile).count();
-        assert_eq!(count(Profile::Economy), 3);
+        assert_eq!(count(Profile::Economy), 2);
         assert_eq!(count(Profile::Critic), 3);
-        assert_eq!(count(Profile::Deep), 5);
+        assert_eq!(count(Profile::Deep), 6);
         assert_eq!(
             count(Profile::Economy) + count(Profile::Critic) + count(Profile::Deep),
             Role::ALL.len()
