@@ -31,7 +31,15 @@ impl NativeSessions {
             Access::ReadOnly => "read_only",
             Access::WorkspaceWrite => "workspace_write",
         };
-        let lane = NativeLane::for_role(spec.role);
+        let lane = if wanted.model == "gpt-6-astra"
+            && matches!(
+                spec.role,
+                crate::profile::Role::FactFinder | crate::profile::Role::Implementer
+            ) {
+            NativeLane::Coordinator
+        } else {
+            NativeLane::for_role(spec.role)
+        };
         if lane == NativeLane::Coordinator && wanted.model != "gpt-6-astra" {
             return Err(Error::Rejected(
                 "native planning and repair require an Astra parent and profiles.deep.model=gpt-6-astra".into(),

@@ -182,7 +182,7 @@ impl NativeHost {
                     "no live native dispatch accepts completion".into(),
                 ));
             }
-            let config = Config::load(store.root())?;
+            let config = Config::for_run(&store)?;
             let mut sessions = NativeSessions::new(
                 store,
                 config.profiles,

@@ -80,7 +80,7 @@ impl Engine {
         let git = Git::open(repo_root)?;
         let root = git.root().to_path_buf();
         let store = Store::open(&root)?;
-        let config = Config::load(store.root())?;
+        let config = Config::for_run(&store)?;
         Ok(Engine {
             repo_root: root,
             store,

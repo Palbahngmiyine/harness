@@ -39,7 +39,8 @@ or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may 
 Only when the user explicitly requests execution without planning, send build instead of request. \
 Its user_instruction must be that user's exact authorization; specify the objective, new codex/ \
 branch, remote base branch, scoped units with observable acceptance and test commands, and full_suite. \
-This records direct BUILD authority without claiming planning reviews or a CONFIRM PLAN message. \
+Direct BUILD assigns authorship to this Astra parent and uses separate Astra Critic/Auditor children, \
+requiring two child slots. It records direct BUILD authority without claiming planning reviews or a CONFIRM PLAN message. \
 Normal requests still use the planning and confirmation flow. Never infer direct BUILD permission.
 
 Use Astra as the parent coordinator. Include the same host_session_id in every hwahap_step call: \
@@ -50,7 +51,7 @@ Inspect native spawn, follow-up, wait and interrupt capabilities before executio
 capacity with disposable children or silently substitute models.
 
 For `native_dispatch`, follow the exact lane and identity. If lane=coordinator, register \
-agent_id=coordinator and execute the brief in this Astra parent (planning or repair). Never spawn \
+agent_id=coordinator and execute the brief in this Astra parent (planning, implementation or repair). Never spawn \
 a fourth child for that lane. If reuse_agent_id is present, FIRST register that exact agent ID, \
 then send the exact brief with the native follow-up tool ONCE. Registration is durable before \
 follow-up so a lost response cannot trigger duplicate delivery. If reuse_agent_id is absent, \

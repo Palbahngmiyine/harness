@@ -186,6 +186,19 @@ pub struct Profiles {
 }
 
 impl Profiles {
+    /// Direct BUILD uses the Astra parent for authorship and two separate Astra reviewers.
+    pub fn direct_build(&self) -> Result<Self> {
+        if self.deep.model != "gpt-6-astra" {
+            return Err(Error::UnsupportedProfile(
+                "direct BUILD requires the Astra profile".into(),
+            ));
+        }
+        Ok(Self {
+            economy: self.deep.clone(),
+            critic: self.deep.clone(),
+            deep: self.deep.clone(),
+        })
+    }
     /// The policy defaults.
     pub fn defaults() -> Profiles {
         Profiles {
