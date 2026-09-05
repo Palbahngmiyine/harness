@@ -1418,6 +1418,73 @@ async fn a_draft_made_ready_externally_refuses_adjustment_before_pushing() {
     assert_eq!(git(&worktree, &["status", "--porcelain"]), "");
 }
 
+async fn assert_frozen_plan_tampering_is_refused(phase: &str) {
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    let challenge = plan_to_confirmation(&fixture, &script).await;
+    let engine = fixture.engine();
+    let mut outcome = engine
+        .step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}")))
+        .await
+        .unwrap();
+    if phase != "coding" {
+        outcome = engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(outcome.state, "final_verifying");
+    }
+    if phase == "ship" {
+        outcome = engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(outcome.state, "awaiting_adjust_or_ship");
+    }
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let mut plan = store.read_plan().unwrap().unwrap();
+    let seal = plan.frozen.clone();
+    let marker = "printf tampered > src/seal-tamper-marker";
+    plan.tests[0].command = marker.into();
+    plan.full_suite = marker.into();
+    store.write_plan(&plan).unwrap();
+    assert_eq!(store.read_plan().unwrap().unwrap().frozen, seal);
+    assert!(!plan.is_frozen().unwrap());
+    let worktree = fixture.worktree();
+    let head = fixture.head_sha(&worktree);
+    let calls = script.calls().len();
+    let publications = fixture.dir.path().join("pr-created");
+    let published = std::fs::read(&publications).unwrap_or_default();
+    if phase == "ship" {
+        let ship = challenge_in(&outcome.message, "SHIP ");
+        assert!(engine.ship(&format!("SHIP {ship}")).is_err());
+        assert!(!fixture.was_marked_ready());
+    } else {
+        let rejected = engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(rejected.state, "blocked", "{}", rejected.message);
+    }
+    assert!(
+        !worktree.join("src/seal-tamper-marker").exists(),
+        "tampered command ran"
+    );
+    assert_eq!(
+        script.calls().len(),
+        calls,
+        "an agent ran against an unsealed plan"
+    );
+    assert_eq!(fixture.head_sha(&worktree), head);
+    assert_eq!(std::fs::read(&publications).unwrap_or_default(), published);
+}
+
+#[tokio::test]
+async fn frozen_plan_tampering_is_refused_before_coding() {
+    assert_frozen_plan_tampering_is_refused("coding").await;
+}
+
+#[tokio::test]
+async fn frozen_plan_tampering_is_refused_before_final_verification() {
+    assert_frozen_plan_tampering_is_refused("final").await;
+}
+
+#[tokio::test]
+async fn frozen_plan_tampering_is_refused_before_ship() {
+    assert_frozen_plan_tampering_is_refused("ship").await;
+}
+
 #[tokio::test]
 async fn changing_an_accepted_unit_rebuilds_its_unchanged_dependents() {
     let fixture = Fixture::new();
