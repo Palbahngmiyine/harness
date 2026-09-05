@@ -103,6 +103,9 @@ checks pass, and the final review is still fresh.";
 /// Arguments to `hwahap_step`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct StepArgs {
+    /// Actual answers to the current question_batch, relayed without rewriting their text.
+    #[serde(default)]
+    pub question_response: Option<crate::dialogue::QuestionResponse>,
     /// With request, confirm and retain PLAN without starting BUILD. Default continues to BUILD.
     #[serde(default)]
     pub plan_only: bool,
@@ -164,6 +167,9 @@ pub struct ShipArgs {
 /// What every tool returns.
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct RunReport {
+    /// Next page of the current planning frontier for the host's actual user-question UI.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub question_batch: Option<crate::dialogue::QuestionBatch>,
     /// The run's stable identifier.
     pub run_id: String,
     /// `plan`, `build`, or `review`.
@@ -190,6 +196,7 @@ pub struct RunReport {
 impl From<StepOutcome> for RunReport {
     fn from(outcome: StepOutcome) -> Self {
         RunReport {
+            question_batch: None,
             run_id: outcome.run_id,
             phase: outcome.phase,
             state: outcome.state,
@@ -200,6 +207,17 @@ impl From<StepOutcome> for RunReport {
             native_dispatch: None,
             cost_evidence: None,
         }
+    }
+}
+
+impl RunReport {
+    fn attach_questions(&mut self, root: &std::path::Path) -> crate::Result<()> {
+        if self.state == "deciding" && self.next == "await_user" {
+            if let Some(plan) = crate::state::Store::open(root)?.read_plan()? {
+                self.question_batch = crate::dialogue::QuestionBatch::derive(&plan)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -267,6 +285,7 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    question_response: args.question_response,
                     plan_only: args.plan_only,
                     build_confirmed: args.build_confirmed,
                     adjust_build: args.adjust_build,
@@ -285,6 +304,7 @@ impl Hwahap {
             .await
             .map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
+        report.attach_questions(&root).map_err(to_error_data)?;
         report.cost_evidence = Some(
             crate::cost::persist(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
@@ -312,6 +332,7 @@ impl Hwahap {
         let root = root_for(&args.cwd)?;
         let outcome = self.native.status(&root).await.map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
+        report.attach_questions(&root).map_err(to_error_data)?;
         report.cost_evidence = Some(
             crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
