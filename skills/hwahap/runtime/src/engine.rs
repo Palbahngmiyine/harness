@@ -1039,6 +1039,8 @@ impl Engine {
         }
 
         let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
+        self.forge
+            .existing_draft(&worktree, &plan.base_branch, &run.branch)?;
         self.git.push(&worktree, "origin", &run.branch)?;
         let report = format!(
             "{}\n## Cost evidence\n\n```json\n{}\n```\n",

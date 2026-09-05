@@ -350,11 +350,39 @@ case "$1 ${2:-}" in
     while [ "$#" -gt 0 ]; do
       if [ "$1" = "--head" ]; then
         printf '%s\n' "$2" > "$control/pr-branch"
+        printf '%s\n' "$2" >> "$control/pr-created"
+        rm -f "$control/pr-ready"
         break
       fi
       shift
     done
     echo "https://github.com/example/repo/pull/1"
+    exit 0
+    ;;
+  "pr list")
+    head=''
+    base=''
+    shift 2
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --head) head=$2 ;;
+        --base) base=$2 ;;
+      esac
+      shift 2
+    done
+    if [ -f "$control/pr-list-json" ]; then
+      cat "$control/pr-list-json"
+    elif [ -f "$control/pr-branch" ] && [ "$(cat "$control/pr-branch")" = "$head" ]; then
+      draft=true
+      if [ -f "$control/pr-ready" ]; then draft=false; fi
+      printf '[{"url":"https://github.com/example/repo/pull/1","isDraft":%s,"headRefName":"%s","baseRefName":"%s"}]\n' "$draft" "$head" "$base"
+    else
+      echo '[]'
+    fi
+    exit 0
+    ;;
+  "pr edit")
+    echo "$3" >> "$control/pr-edited"
     exit 0
     ;;
   "pr view")

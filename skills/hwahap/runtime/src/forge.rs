@@ -47,7 +47,48 @@ impl Forge {
         self.run(cwd, &["auth", "status"]).map(|_| ())
     }
 
-    /// Opens a draft pull request and returns it.
+    /// Checks publication eligibility before pushing, and again before editing PR metadata.
+    pub fn existing_draft(&self, cwd: &Path, base: &str, head: &str) -> Result<Option<String>> {
+        reject_flag_like("base branch", base)?;
+        reject_flag_like("head branch", head)?;
+        let json = self.run(
+            cwd,
+            &[
+                "pr",
+                "list",
+                "--state",
+                "open",
+                "--base",
+                base,
+                "--head",
+                head,
+                "--json",
+                "url,isDraft,headRefName,baseRefName",
+            ],
+        )?;
+        let existing: Vec<serde_json::Value> = serde_json::from_str(&json)
+            .map_err(|e| Error::command("gh", format!("pr list returned invalid JSON: {e}")))?;
+        if !existing.is_empty() {
+            let pr = &existing[0];
+            if existing.len() != 1
+                || pr["isDraft"] != true
+                || pr["headRefName"] != head
+                || pr["baseRefName"] != base
+            {
+                return Err(Error::Rejected(
+                    "expected one matching draft PR; refusing to update another or ready PR".into(),
+                ));
+            }
+            let url = pr["url"]
+                .as_str()
+                .filter(|url| url.starts_with("https://"))
+                .ok_or_else(|| Error::command("gh", "matching draft has no valid URL"))?;
+            return Ok(Some(url.into()));
+        }
+        Ok(None)
+    }
+
+    /// Opens a draft, or updates this branch's existing draft after an adjustment.
     pub fn create_draft(
         &self,
         cwd: &Path,
@@ -56,8 +97,13 @@ impl Forge {
         title: &str,
         body: &str,
     ) -> Result<PullRequest> {
-        reject_flag_like("base branch", base)?;
-        reject_flag_like("head branch", head)?;
+        if let Some(url) = self.existing_draft(cwd, base, head)? {
+            self.run(cwd, &["pr", "edit", &url, "--title", title, "--body", body])?;
+            return Ok(PullRequest {
+                head_sha: self.head_sha(cwd, &url)?,
+                url,
+            });
+        }
         let url = self.run(
             cwd,
             &[
