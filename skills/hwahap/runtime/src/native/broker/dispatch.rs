@@ -7,7 +7,7 @@ use super::{NativeSessions, Waiting};
 use crate::canonical::Digest;
 use crate::error::{Error, Result};
 use crate::git::Git;
-use crate::native::{json, save, NativeDispatch, NativeLane, Pending};
+use crate::native::{json, save, timing, NativeDispatch, NativeLane, Pending};
 use crate::session::{
     access_for, Access, NativeReceipt, SessionOutcome, SessionReceipt, SessionSpec,
 };
@@ -32,6 +32,8 @@ impl NativeSessions {
             Access::WorkspaceWrite => "workspace_write",
         };
         let lane = NativeLane::for_role(spec.role);
+        let soft_budget_secs = timing::soft_budget(spec.role).min(self.timeout_secs);
+        let hard_timeout_secs = self.timeout_secs;
         let pool_scope = self
             .host_session_id
             .clone()
@@ -43,6 +45,9 @@ impl NativeSessions {
              Do not spawn, delegate to, or resume other agents. Do not edit Hwahap state, the host \
              checkout, or any path outside the requested working directory. Do not run the Hwahap \
              skill or tools recursively. Stop all commands before returning a final answer. \
+             Aim to finish this role within {soft_budget_secs}s; the hard deadline is {hard_timeout_secs}s. \
+             Keep investigation scoped. If blocked, report the concrete blocker in the result contract; \
+             never claim a pass or completion merely because the time budget is ending. \
              New children start without inherited parent history. Reused children keep their lane \
              and must treat this brief and current repository as authoritative. The Astra coordinator \
              performs author-side Deep roles; independent reviewers never write.\n\n{}\n\n\
@@ -71,12 +76,22 @@ impl NativeSessions {
             pool_scope,
             lane,
             reuse_agent_id: None,
+            soft_budget_secs,
+            hard_timeout_secs,
         };
         dispatch.reuse_agent_id = crate::native::pool::reusable(&self.store, &dispatch)?;
         let (sender, receiver) = oneshot::channel();
         {
             let mut guard = self.waiting.lock().map_err(super::poisoned)?;
             self.next_call()?;
+            timing::begin(
+                &self.store,
+                &dispatch_id,
+                spec.role,
+                dispatch.brief.len() as u64,
+                soft_budget_secs,
+                hard_timeout_secs,
+            )?;
             let pending = Pending {
                 dispatch,
                 completion: None,
@@ -100,7 +115,12 @@ impl NativeSessions {
         {
             Ok(Ok(completion)) => completion,
             result => {
-                self.expire()?;
+                let outcome = if result.is_err() {
+                    "deadline"
+                } else {
+                    "channel_closed"
+                };
+                self.expire(outcome)?;
                 let reason = if result.is_err() {
                     "deadline elapsed"
                 } else {
