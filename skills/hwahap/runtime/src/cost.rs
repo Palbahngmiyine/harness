@@ -9,6 +9,7 @@ use crate::{Error, Result};
 
 mod latency;
 pub mod meter;
+mod pricing;
 
 #[derive(Default, Serialize)]
 struct Counts {
@@ -186,6 +187,10 @@ fn collect(store: &Store) -> Result<(Counts, BTreeMap<String, Counts>)> {
 /// Includes every durable request, including retries and work without a completion.
 pub fn summary(store: &Store) -> Result<serde_json::Value> {
     let (total, models) = collect(store)?;
+    let measured = meter::summary(store)?;
+    // A bad optional rate card must not strand an implementation or hide token evidence.
+    let estimate = pricing::estimate(store, &measured).unwrap_or_else(|error|
+        serde_json::json!({"status":"invalid_configuration","priced_subtotal":null,"error":error.to_string()}));
     Ok(serde_json::json!({
         "scope": "retained native requests for this run; receipts are not counted again",
         "evidence": "caller-reported tokens grouped by requested model; actual model unverified",
@@ -197,7 +202,38 @@ pub fn summary(store: &Store) -> Result<serde_json::Value> {
         "parent_relay_usage": "unknown; separate from any reported coordinator dispatch usage",
         "limits": "Missing usage is unknown, not zero. Parent relay tokens are not measured. Token subtotals are reported evidence only; cached input is part of input.",
         "total": total, "by_requested_model": models,
+        "observed_session_usage": measured, "cost_estimate":estimate,
     }))
+}
+
+/// Mutating step/ship paths persist a readable snapshot; status remains read-only.
+pub fn persist(store: &Store) -> Result<serde_json::Value> {
+    let value = summary(store)?;
+    store.write_usage(
+        &serde_json::to_string_pretty(&value).map_err(|e| Error::Internal(e.to_string()))?,
+    )?;
+    Ok(value)
+}
+
+pub fn usage_command(args: &[String]) -> Result<serde_json::Value> {
+    let (action, cwd) = match args {
+        [action, cwd, ..] => (action.as_str(), cwd),
+        _ => return Err(Error::Rejected("usage: hwahap usage attach <repo> <session.jsonl> [--from-start] | sync <repo> | show <repo>".into())),
+    };
+    let git = crate::git::Git::open(std::path::Path::new(cwd))?;
+    let store = Store::open(git.root())?;
+    match (action, &args[2..]) {
+        ("attach", [path]) => {
+            meter::attach(&store, std::path::Path::new(path), false)?;
+        }
+        ("attach", [path, flag]) if flag == "--from-start" => {
+            meter::attach(&store, std::path::Path::new(path), true)?;
+        }
+        ("sync", []) => {}
+        ("show", []) => return summary(&store),
+        _ => return Err(Error::Rejected("invalid usage command arguments".into())),
+    }
+    persist(&store)
 }
 
 #[cfg(test)]

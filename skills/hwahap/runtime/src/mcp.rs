@@ -271,7 +271,7 @@ impl Hwahap {
             .map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
         report.cost_evidence = Some(
-            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+            crate::cost::persist(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
         );
         Ok(Json(report))
@@ -331,7 +331,7 @@ impl Hwahap {
             .map_err(to_error_data)?;
         let mut report = RunReport::from(outcome);
         report.cost_evidence = Some(
-            crate::cost::summary(&crate::state::Store::open(&root).map_err(to_error_data)?)
+            crate::cost::persist(&crate::state::Store::open(&root).map_err(to_error_data)?)
                 .map_err(to_error_data)?,
         );
         Ok(Json(report))

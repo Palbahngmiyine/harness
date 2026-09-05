@@ -1054,7 +1054,7 @@ impl Engine {
         let report = format!(
             "{}\n## Cost evidence\n\n```json\n{}\n```\n",
             self.report_markdown(&plan, &run),
-            crate::cost::summary(&self.store)?
+            crate::cost::persist(&self.store)?
         );
         self.store.write_report(&report)?;
         let pr = if let Some(previous) = &previous {
