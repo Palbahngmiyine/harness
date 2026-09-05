@@ -1291,6 +1291,10 @@ async fn a_new_adjustment_requirement_is_synthesized_and_only_its_unit_is_built(
         outcome.message
     );
     assert_eq!(outcome.pr_url, first.last().unwrap().pr_url);
+    for log in ["pr-created", "pr-edited"] {
+        let calls = std::fs::read_to_string(fixture.dir.path().join(log)).unwrap();
+        assert_eq!(calls.lines().count(), 1, "unexpected {log} calls: {calls}");
+    }
     let after = store.read_run().unwrap().unwrap();
     assert_eq!(after.branch, before.branch);
     assert_eq!(after.revision, 2);
@@ -1379,6 +1383,39 @@ async fn identical_requests_blocked_before_freeze_still_have_distinct_run_ids() 
     assert_eq!(archived.len(), 2);
     assert!(archived.is_subset(&ids));
     assert!(!archived.contains(&store.read_run().unwrap().unwrap().run_id));
+}
+
+#[tokio::test]
+async fn a_draft_made_ready_externally_refuses_adjustment_before_pushing() {
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    run_to_draft_pr(&fixture, &script).await;
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let mut run = store.read_run().unwrap().unwrap();
+    let remote = git(&fixture.repo, &["ls-remote", "origin", &run.branch]);
+    let worktree = fixture.worktree();
+    // Resume at final verification with an accepted local adjustment checkpoint.
+    std::fs::write(worktree.join("src/added.txt"), "adjusted\n").unwrap();
+    git(&worktree, &["add", "src/added.txt"]);
+    git(&worktree, &["commit", "-m", "accepted adjustment"]);
+    let local_head = fixture.head_sha(&worktree);
+    run.state = hwahap::state::RunState::FinalVerifying;
+    store
+        .write_run(&hwahap::clock::FixedClock::new(NOW), &run)
+        .unwrap();
+    std::fs::write(fixture.dir.path().join("pr-ready"), "1").unwrap();
+    script.extend(vec![step(Role::FinalReview, Reply::say(PASS))]);
+    match fixture.engine().step_with(&script, None, None).await {
+        Err(error) => assert!(error.to_string().contains("ready"), "{error}"),
+        Ok(outcome) => assert_eq!(outcome.state, "blocked", "{}", outcome.message),
+    }
+    assert_eq!(
+        git(&fixture.repo, &["ls-remote", "origin", &run.branch]),
+        remote
+    );
+    assert_eq!(fixture.head_sha(&worktree), local_head);
+    assert_eq!(git(&worktree, &["show", "HEAD:src/added.txt"]), "adjusted");
+    assert_eq!(git(&worktree, &["status", "--porcelain"]), "");
 }
 
 #[tokio::test]
