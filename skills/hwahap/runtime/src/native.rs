@@ -13,6 +13,8 @@ mod broker;
 pub use broker::NativeSessions;
 mod host;
 pub use host::{NativeHost, NativeInput, NativeProgress};
+mod failure;
+pub use failure::{record_failure, resume_failed, NativeFailure, NativeResume};
 
 const PENDING: &str = "native-pending.json";
 
@@ -37,6 +39,9 @@ pub struct NativeDispatch {
     pub agent_id: Option<String>,
     /// True after a deadline or process restart: stop the child before acknowledging recovery.
     pub stop_required: bool,
+    /// Host-reported spawn failure; no-child failures pause without an imaginary stop.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub failure: Option<NativeFailure>,
 }
 
 /// Persist the child identity immediately after spawn, before waiting for its answer.
@@ -95,7 +100,11 @@ pub(super) fn load(store: &Store) -> Result<Option<Pending>> {
 
 pub fn orphan(store: &Store) -> Result<Option<NativeDispatch>> {
     Ok(load(store)?.map(|pending| NativeDispatch {
-        stop_required: true,
+        stop_required: !pending
+            .dispatch
+            .failure
+            .as_ref()
+            .is_some_and(|f| f.no_agent_created),
         ..pending.dispatch
     }))
 }
@@ -104,6 +113,11 @@ pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
     let pending =
         load(store)?.ok_or_else(|| Error::Rejected("no native dispatch to stop".into()))?;
     if !ack.all_work_stopped
+        || pending
+            .dispatch
+            .failure
+            .as_ref()
+            .is_some_and(|f| f.no_agent_created)
         || ack.dispatch_id != pending.dispatch.dispatch_id
         || ack.agent_id != pending.dispatch.agent_id
     {

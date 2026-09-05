@@ -61,6 +61,7 @@ impl NativeSessions {
             brief,
             agent_id: None,
             stop_required: false,
+            failure: None,
         };
         let (sender, receiver) = oneshot::channel();
         {
