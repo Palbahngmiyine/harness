@@ -100,7 +100,12 @@ impl Engine {
                     if plan.decision(&id).is_some() {
                         Self::pending_interpretation(&mut plan, &id, &text);
                     } else {
-                        plan.open_items.retain(|o| o.id != format!("NA-{id}"));
+                        let pending = plan
+                            .open_items
+                            .iter_mut()
+                            .find(|o| o.id == format!("NA-{id}"))
+                            .expect("validated surface proposal");
+                        pending.detail.push_str(&format!("\nUnconfirmed user clarification: {text}\nChoose applicability explicitly; any requested behavior still needs a decision."));
                         plan.adjustments.push(crate::plan::Adjustment {
                             revision: plan.revision,
                             text: format!("Unconfirmed clarification for {id}: {text}"),
@@ -189,6 +194,14 @@ impl Engine {
         self.apply_decisions(&mut plan, &result.final_message)?;
         Self::capture_frontier(&mut plan)?;
         self.save_plan(&plan)?;
+        if plan.open_items.iter().any(|o| o.id.starts_with("CLARIFY-")) {
+            run.state = RunState::PlanConflict {
+                unit: "PLAN".into(),
+                detail: "The recommender did not turn your clarification into a new explicit choice. Your text remains unresolved; provide clarification to reopen PLAN.".into(),
+            };
+            self.store.write_run(&*self.clock, &run)?;
+            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+        }
         run.state = RunState::Deciding;
         self.store.write_run(&*self.clock, &run)?;
         if crate::dialogue::QuestionBatch::derive(&plan)?.is_none() {

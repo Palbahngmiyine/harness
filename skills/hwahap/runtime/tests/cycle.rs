@@ -2451,3 +2451,164 @@ async fn changed_prerequisite_reopens_previously_answered_dependent() {
     assert!(plan.decision("C2").unwrap().answer.is_none());
     assert_eq!(hwahap::frontier::derive(&plan).unwrap().ready, ["C2"]);
 }
+
+#[tokio::test]
+async fn adversarial_surface_freeform_is_not_silently_confirmable() {
+    use hwahap::dialogue::{QuestionAnswer, QuestionBatch, QuestionResponse};
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(
+                r#"{"decisions":[],"not_applicable":[{"surface":"S1","reason":"reconsider scope"}]}"#,
+            ),
+        ),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let batch = QuestionBatch::derive(&store.read_plan().unwrap().unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(batch.questions[0].id, "S1");
+    let response = QuestionResponse {
+        batch_id: batch.batch_id,
+        responses: vec![QuestionAnswer {
+            id: "S1".into(),
+            answer: "Only keep generating the file if preserving prior contents is guaranteed"
+                .into(),
+        }],
+    };
+    assert_eq!(
+        engine.answer_questions(&response).unwrap().state,
+        "refining"
+    );
+    let refined = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(refined.state, "deciding");
+    let pending = store.read_plan().unwrap().unwrap();
+    let displayed = QuestionBatch::derive(&pending).unwrap().unwrap();
+    assert_eq!(displayed.questions[0].id, "S1");
+    assert!(displayed.questions[0]
+        .question
+        .contains("preserving prior contents"));
+    assert!(!hwahap::validate::freeze_blockers(&pending)
+        .unwrap()
+        .is_empty());
+    assert!(script.prompts_for(Role::PlanSynthesis).is_empty());
+}
+
+#[tokio::test]
+async fn adversarial_review_added_question_is_available_in_ui_batch() {
+    use hwahap::dialogue::QuestionBatch;
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut followup: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    followup["decisions"] = serde_json::json!([followup["decisions"][1].clone()]);
+    followup["decisions"][0]["id"] = "C3".into();
+    followup["not_applicable"] = serde_json::json!([]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(
+            Role::ColdConsumer,
+            Reply::say(r#"{"verdict":"fail","findings":["A new explicit decision is needed"]}"#),
+        ),
+        step(Role::PlanCritic, Reply::say(PASS)),
+        step(Role::Recommender, Reply::say(followup.to_string())),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    let plan = hwahap::state::Store::open(&fixture.repo)
+        .unwrap()
+        .read_plan()
+        .unwrap()
+        .unwrap();
+    assert_eq!(hwahap::frontier::derive(&plan).unwrap().ready, ["C3"]);
+    let batch = QuestionBatch::derive(&plan).unwrap();
+    assert!(
+        batch.is_some(),
+        "review generated C3 but question UI has nothing to display"
+    );
+}
+
+#[tokio::test]
+async fn empty_interpretation_waits_for_user_without_reoffering_old_options() {
+    use hwahap::dialogue::{QuestionAnswer, QuestionBatch, QuestionResponse};
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let batch = QuestionBatch::derive(&store.read_plan().unwrap().unwrap())
+        .unwrap()
+        .unwrap();
+    engine
+        .answer_questions(&QuestionResponse {
+            batch_id: batch.batch_id,
+            responses: vec![QuestionAnswer {
+                id: "C1".into(),
+                answer: "Preserve user-written content".into(),
+            }],
+        })
+        .unwrap();
+    let result = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(result.state, "plan_conflict");
+    assert_eq!(result.next, "await_user");
+    let plan = store.read_plan().unwrap().unwrap();
+    assert!(plan.open_items.iter().any(|o| o.id == "CLARIFY-C1"));
+    assert!(QuestionBatch::derive(&plan)
+        .unwrap()
+        .unwrap()
+        .questions
+        .iter()
+        .all(|q| q.id != "C1"));
+    assert_eq!(
+        engine
+            .step_with(&script, None, Some("Keep a backup of the existing file"))
+            .await
+            .unwrap()
+            .state,
+        "inspecting"
+    );
+    assert!(store.read_plan().unwrap().unwrap().frozen.is_none());
+}

@@ -51,8 +51,9 @@ Use the asynchronous question UI if available in the current mode. Never shorten
 If the UI cannot represent every option, use a free-text question showing all full labels; if no \
 question tool is available, show that same complete page in the conversation. Relay actual answers \
 as question_response:{batch_id,responses:[{id,answer}]} with the unchanged batch ID and answer text. \
-Do not translate labels into C= directives or infer missing choices. A selected default, timeout, \
-cancel, or request-resolved event is not a submitted answer. Remain waiting until actual input arrives. \
+Do not translate labels into C= directives or infer missing choices. Merely preselecting a default, timeout, \
+cancel, or request-resolved event is not a submitted answer. Accept an actual user-submitted response \
+payload, including a submitted recommended option; otherwise remain waiting. \
 The engine pages the whole ready frontier, then rechecks implications. Free text is unconfirmed until \
 the user chooses a clarified interpretation. CONFIRM PLAN and SHIP still require the user's exact typed \
 line in user_input/confirmation; never manufacture them from a question UI response.

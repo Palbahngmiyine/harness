@@ -137,6 +137,7 @@ impl QuestionBatch {
             .filter(|id| {
                 !plan.open_items.iter().any(|o| {
                     o.id == format!("NA-{}", plan.decision(id).expect("validated").surface)
+                        || o.id == format!("CLARIFY-{id}")
                 })
             })
             .take(3)
