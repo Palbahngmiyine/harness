@@ -3,6 +3,7 @@ use crate::pr_review::{
     read_evidence, save_evidence, AttackReport, DefenseReport, ReviewProgress, ReviewStage,
 };
 use crate::session::SessionReceipt;
+mod repair;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct ReviewRecord<T> {
@@ -17,6 +18,9 @@ impl Engine {
         sessions: &dyn Sessions,
     ) -> Result<StepOutcome> {
         let plan = self.require_frozen_plan(&run)?;
+        if ReviewProgress::load(&self.store)?.is_some_and(|p| p.stage == ReviewStage::Repair) {
+            return self.repair_pr(run, sessions).await;
+        }
         let mut progress = self.require_review_progress(&run, &plan)?;
         let diff = self.git.run_in(
             &self.store.worktree_path(),
