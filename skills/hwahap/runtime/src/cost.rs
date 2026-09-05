@@ -7,6 +7,8 @@ use crate::native::{NativeCompletion, NativeDispatch, NativeFailure, NativeResum
 use crate::state::Store;
 use crate::{Error, Result};
 
+mod latency;
+
 #[derive(Default, Serialize)]
 struct Counts {
     requests: u64,
@@ -18,6 +20,8 @@ struct Counts {
     observed_recoveries: u64,
     coordinator_completions: u64,
     native_child_completions: u64,
+    reused_child_completions: u64,
+    fresh_child_completions: u64,
     coordinator_usage_reported_completions: u64,
     native_child_usage_reported_completions: u64,
     usage_reported_completions: u64,
@@ -151,6 +155,11 @@ fn collect(store: &Store) -> Result<(Counts, BTreeMap<String, Counts>)> {
                 add(&mut counts.coordinator_completions, 1)?;
             } else {
                 add(&mut counts.native_child_completions, 1)?;
+                if request.reuse_agent_id.is_some() {
+                    add(&mut counts.reused_child_completions, 1)?;
+                } else {
+                    add(&mut counts.fresh_child_completions, 1)?;
+                }
             }
             if let Some(usage) = &completion.reported_usage {
                 add(&mut counts.usage_reported_completions, 1)?;
@@ -182,6 +191,8 @@ pub fn summary(store: &Store) -> Result<serde_json::Value> {
         "coverage": "usage_reported_completions / requests; incomplete work may consume tokens",
         "total_billed_cost": "unknown",
         "native_thread_release": "unknown; completed or interrupted work does not prove a host thread was released",
+        "pool_scope": "at most three retained children for the same repository and parent task; initial capacity is host-owned",
+        "latency": latency::summary(store)?,
         "parent_relay_usage": "unknown; separate from any reported coordinator dispatch usage",
         "limits": "Missing usage is unknown, not zero. Parent relay tokens are not measured. Token subtotals are reported evidence only; cached input is part of input.",
         "total": total, "by_requested_model": models,
@@ -198,7 +209,7 @@ mod tests {
             .write_artifact(&format!("native-{kind}-{id}.json"), &value.to_string())
             .unwrap();
     }
-    fn request(store: &Store, id: &str, model: &str) {
+    pub(super) fn request(store: &Store, id: &str, model: &str) {
         put(
             store,
             "request",
