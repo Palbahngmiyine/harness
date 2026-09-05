@@ -133,7 +133,7 @@ check_pair() {
 }
 check_pair economy gpt-5.6-luna Medium
 check_pair critic gpt-5.6-terra High
-check_pair deep gpt-5.6-sol Xhigh
+check_pair deep gpt-6-astra High
 
 for banned in None Low Max Ultra; do
   if grep -qE "^\s+$banned,\s*$" "$src/profile.rs"; then
