@@ -1399,6 +1399,12 @@ impl Engine {
             }
         }
         for na in not_applicable {
+            if matches!(
+                plan.surfaces.get(&na.surface),
+                Some(SurfaceStatus::NotApplicable { .. })
+            ) {
+                continue;
+            }
             // Keep a pending proposal and its user clarification intact across refinement.
             if plan
                 .open_items

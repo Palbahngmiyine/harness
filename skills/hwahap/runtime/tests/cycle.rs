@@ -2718,3 +2718,38 @@ async fn interactive_preview_feedback_reopens_planning_and_dependent_questions()
         }
     }
 }
+
+#[tokio::test]
+async fn adversarial_repeat_excluded_surface_has_no_orphan_question() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(
+                r#"{"decisions":[],"not_applicable":[{"surface":"S2","reason":"still not relevant"}]}"#,
+            ),
+        ),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    let refined = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(refined.state, "proving");
+    let proved = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(proved.state, "awaiting_confirmation");
+    let plan = hwahap::state::Store::open(&fixture.repo)
+        .unwrap()
+        .read_plan()
+        .unwrap()
+        .unwrap();
+    assert!(!plan.open_items.iter().any(|o| o.id == "NA-S2"));
+}
