@@ -1,7 +1,7 @@
 # hwahap v3
 
-구현 요청 하나를 `PLAN 또는 명시적 BUILD → CODING → DRAFT PR → 공격·방어 → ADJUST | SHIP`으로 진행하는
-Codex 스킬과 local STDIO MCP 서버다. Rust 실행기는 계획·검증·복구를 담당하고,
+구현 요청의 기획을 완료하거나 `PLAN 또는 명시적 BUILD → CODING → DRAFT PR → 공격·방어 → ADJUST | SHIP`으로
+진행하는 Codex 스킬과 local STDIO MCP 서버다. Rust 실행기는 계획·검증·복구를 담당하고,
 호스트 Codex가 기본 하위 에이전트를 실행한다. 진행 상태와 실행 요청은 `.hwahap/`에 저장한다.
 
 v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2` 스키마는 전부 제거되었고
@@ -12,18 +12,25 @@ v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2
 
 | 단계 | 실행 주체 | 하는 일 | 사람이 하는 일 |
 |---|---|---|---|
-| PLAN | Economy(사실) + Deep(결정) | 저장소를 직접 조사하고, 결정마다 추천·근거·trade-off를 붙여 한 라운드에 전부 제시 | 답변만. 사실은 묻지 않는다 |
-| PLAN FREEZE | Rust validator + Deep Auditor + Critic | traceability·DAG·완결성 검사, 작성자와 독립된 계약 검토, 적대적 검토 | `CONFIRM PLAN <challenge>` 정확히 입력 |
+| PLAN | Economy(사실) + Deep(결정) | 선행 조건이 해결된 질문을 제시하고, 답변 뒤 새 쟁점을 찾아 다음 라운드를 구성 | 질문 UI에서 선택하거나 원문 답변 |
+| PLAN FREEZE | Rust validator + Deep Auditor + Critic | ID 연결·의존관계·필수 필드 검사, 작성자와 독립된 계약 검토 | `CONFIRM PLAN <challenge>` 정확히 입력 |
+| PLAN READY | Rust 실행기 | `plan_only:true`인 계획을 확정하고 대기 | 원할 때 확정 계획의 BUILD를 명시적으로 요청 |
 | CODING | Economy(첫 구현) + Deep(재작업) + Critic(리뷰) | unit을 순서대로 구현·검증·리뷰하고 통과한 변경을 commit | 없음. 승인 범위가 충돌하면 중단 |
 | DRAFT PR / PR REVIEW | Astra Critic + 별도 Astra Auditor | full suite 후 draft 게시, 공격 보고서·방어 판정, 확인된 결함 수정 후 새 head 재검토 | 결과 확인 |
 | ADJUST / SHIP | — | 피드백을 결정으로 환원해 revision 증가, 또는 draft를 ready로 | `SHIP <challenge>` 정확히 입력 |
 
-일반 PLAN 경로의 human gate는 `CONFIRM PLAN`과 `SHIP`이다. 둘 다 내용에 결속된 digest challenge라서, 계획이
+`request`와 `plan_only:true`로 시작하면 `CONFIRM PLAN` 이후 `plan_ready`에서 끝난다. 구현은 이후 사용자의
+명시적 BUILD 요청과 `build_confirmed:<전체 plan_digest>`로 시작한다. `plan_only` 기본값 `false`인 일반
+구현 요청은 계획 확인 뒤 구현까지 이어진다. 두 경로의 호출 예시는 [USAGE](USAGE.md)를 따른다.
+
+일반 PLAN 경로의 확인 문장은 `CONFIRM PLAN`과 `SHIP`이다. 둘 다 내용에 결속된 digest challenge라서, 계획이
 바뀌면 이전 challenge는 더 이상 맞지 않는다. 호스트 모델은 이 문장을 생성·보완·추론할 수 없다.
 
 사용자가 기획 생략을 명시하면 `hwahap_step.build`에 원문 권한, 목표, 기준·작업 브랜치,
 unit별 acceptance·경로·테스트와 full suite를 전달한다. 실행기는 이 BUILD 계약을 검증·고정하고
 바로 구현한다. 계획 답변·검토·`CONFIRM PLAN`은 만들지 않는다. `SHIP` 권한은 별도다.
+같은 계약의 구현 수정은 사용자 원문·계약 digest·unit ID를 가진 `adjust_build`로 요청한다.
+acceptance·테스트·허용 경로를 바꾸는 요청은 `user_input`으로 PLAN을 다시 연다.
 
 ## 2. 설치
 
@@ -77,7 +84,8 @@ skills/hwahap/
 |---|---|
 | `canonical` | canonical JSON과 digest. challenge가 나오는 유일한 곳 |
 | `plan` | `hwahap/v3` 계약 타입. 답변 신선도 규칙 |
-| `answer` | 사용자 답변 문법. 확인 문장을 만들어낼 수 없는 유일한 관문 |
+| `answer` | 원문 사용자 메시지와 정확한 확인 문장의 문법 |
+| `dialogue` | 계획에 결속된 질문 배치와 구조화 응답 검사 |
 | `frontier` | 지금 물을 수 있는 질문 |
 | `validate` | freeze 게이트와 unit 위상 정렬 |
 | `render` | 결정적 `plan.md` |
@@ -100,8 +108,17 @@ skills/hwahap/
 **cross-tool protocol의 단일 출처는 MCP `instructions`다.** `SKILL.md`도, 어떤 참조 문서도 같은
 규칙을 반복하지 않는다.
 
-**추천은 기본값이 아니다.** 추천은 표시되고, `C<n>=REC`가 있어야 확정된다. 추천 내용이 바뀌면 기존
-`REC` 답변은 stale이 되지만, 명시적 `ALT<m>` 답변은 그대로다. 두 개의 digest가 이 차이를 만든다.
+**추천은 사용자가 선택한다.** 질문 배치에는 대안의 실제 내용과 추천 근거를 표시한다. 구조화 응답은
+현재 계획과 질문 ID·정확한 label에 결속된다. 빈 응답·취소·시간 경과는 추천 선택이 되지 않는다.
+다른 원문은 `Clarify`로 남겨 해석을 다시 묻는다. 기존 답변의 질문·추천 신선도 검사도 유지한다.
+
+**질문 UI는 호스트 기능이다.** 호출 가능한 Codex 질문 도구와 그 제한을 확인해 배치를 전달한다.
+대안이 많으면 전체 label을 보여주는 자유입력 UI를 사용하고, UI가 없으면 전체 텍스트와 원문 응답을
+보존한다. `AskUserQuestion` 도구나 Codex 모드 전환을 만들어내지 않는다. [전달 규칙](USAGE.md#질문-ui와-원문-응답)을 따른다.
+
+**기획 완료는 기록한 계약의 완료다.** 새로운 대화형 계획은 시작 시 기록한 source commit에 결속한다.
+이미 저장된 계획은 기존 digest 계산을 유지한다. 질문·리뷰·응답 결속은 호스트가 전달한 기록에 기반하며
+사용자 신원을 암호학적으로 인증하거나 모든 중요 결정의 누락·오해가 없음을 증명하지 않는다.
 
 **LLM의 주장은 증거가 아니다.** worker의 JSON은 control metadata일 뿐이고, 테스트 통과는 호스트가
 명령을 실행해 exit status로, 변경 범위는 git diff로 판정한다. 리뷰 세션이 working tree를 건드렸으면
@@ -130,7 +147,7 @@ agent ID를 등록한다. 완료 기록은 결과 전달 전에 저장하며 같
 | Critic | `gpt-6-astra` | `high` | Critic: plan·unit 리뷰, PR 공격 |
 | Deep | `gpt-6-astra` | `high` | 부모: 추천·합성·재계획·재작업; 별도 Auditor: ColdConsumer·PR 방어 |
 
-일반 PLAN 경로는 Luna가 첫 구현을 맡고, direct BUILD는 부모 Astra가 첫 구현도 맡는다.
+PLAN을 거쳐 BUILD를 시작하면 Luna가 첫 구현을 맡고, direct BUILD는 부모 Astra가 첫 구현도 맡는다.
 실패하면 부모 Astra가 한 번 재작업하고, 다시 실패하면 근거와 함께 중단한다.
 부모는 Astra이며 추천·plan 합성·PlanConflict replan·재작업을 직접 처리한다.
 Worker·Critic·Auditor 세 자식은 같은 저장소와 같은 `host_session_id` 안에서 unit과 run을 넘어 유지한다.
@@ -170,7 +187,9 @@ PR 보고서는 검토·수정 후와 SHIP 직전에 현재 검토·사용량 �
 자동 테스트는 실제 임시 Git 저장소와 스크립트 실행 결과로 재작업·범위 이탈·계획 충돌·복구·ship
 검사를 재현한다. native 인터페이스 테스트는 요청·등록·완료·중단 확인과 사용량 누락을 검사한다.
 통제된 호스트의 [pool 테스트](runtime/tests/native_pool.rs)는 300개 작업을 생성 3회·재사용 297회로 처리했다.
-이 결과는 실제 Codex 모델을 연결한 전체 실행이나 모델별 비용 비교를 대신하지 않는다.
+질문 배치 테스트는 대안 보존·응답 결속·원문 보존과 잘못된 입력 거부를 검사한다.
+이 결과는 실제 Codex 질문 UI의 표시·전달이나 일반 PLAN부터 PR까지의 전체 모델 실행, 모델별 비용 비교를
+대신하지 않는다. 문서 변경 자체가 설치된 스킬과 MCP 바이너리를 갱신하지도 않는다.
 
 ```sh
 cargo test --manifest-path skills/hwahap/runtime/Cargo.toml --all-targets
