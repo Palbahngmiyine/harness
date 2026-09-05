@@ -69,6 +69,12 @@ impl NativeHost {
     }
 
     pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
+        if input.request.is_some() && input.user_input.is_some() {
+            return Err(Error::Rejected(
+                "request and user_input cannot be combined; send one without discarding either message"
+                    .into(),
+            ));
+        }
         let actions = usize::from(input.build.is_some())
             + usize::from(input.build_confirmed.is_some())
             + usize::from(input.adjust_build.is_some())
