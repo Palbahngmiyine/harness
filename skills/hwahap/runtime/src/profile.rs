@@ -197,8 +197,8 @@ impl Profiles {
                 effort: Effort::High,
             },
             deep: ProfileSpec {
-                model: "gpt-5.6-sol".to_string(),
-                effort: Effort::Xhigh,
+                model: "gpt-6-astra".to_string(),
+                effort: Effort::High,
             },
         }
     }
@@ -530,8 +530,8 @@ effort = "medium"
 model = "gpt-5.6-terra"
 effort = "high"
 [profiles.deep]
-model = "gpt-5.6-sol"
-effort = "xhigh"
+model = "gpt-6-astra"
+effort = "high"
 "#;
 
     fn message(err: Error) -> String {
@@ -597,8 +597,8 @@ effort = "xhigh"
             profile: Profile::Deep,
             role: Role::FinalReview,
             unit: Some("U3".to_string()),
-            model_requested: "gpt-5.6-sol".to_string(),
-            model_applied: "gpt-5.6-sol".to_string(),
+            model_requested: "gpt-6-astra".to_string(),
+            model_applied: "gpt-6-astra".to_string(),
             effort_requested: Effort::Xhigh,
             effort_applied: Effort::Xhigh,
         }
@@ -611,12 +611,12 @@ effort = "xhigh"
         assert_eq!(profiles.spec(Profile::Economy).effort, Effort::Medium);
         assert_eq!(profiles.spec(Profile::Critic).model, "gpt-5.6-terra");
         assert_eq!(profiles.spec(Profile::Critic).effort, Effort::High);
-        assert_eq!(profiles.spec(Profile::Deep).model, "gpt-5.6-sol");
-        assert_eq!(profiles.spec(Profile::Deep).effort, Effort::Xhigh);
+        assert_eq!(profiles.spec(Profile::Deep).model, "gpt-6-astra");
+        assert_eq!(profiles.spec(Profile::Deep).effort, Effort::High);
     }
 
     #[test]
-    fn each_profile_pins_a_distinct_model_and_effort() {
+    fn profiles_use_distinct_models_without_requiring_distinct_efforts() {
         let profiles = Profiles::defaults();
         let models: BTreeSet<&str> = PROFILES
             .iter()
@@ -626,8 +626,8 @@ effort = "xhigh"
         assert_eq!(models.len(), 3, "two profiles share a model: {models:?}");
         assert_eq!(
             efforts.len(),
-            3,
-            "two profiles share an effort: {efforts:?}"
+            2,
+            "Astra and Terra intentionally share high: {efforts:?}"
         );
     }
 
@@ -867,22 +867,22 @@ effort = "xhigh"
 model = "a"
 effort = "medium"
 [profiles.deep]
-model = "gpt-5.6-sol:2026-09-04"
+model = "gpt-6-astra:2026-09-04"
 effort = "high"
 "#;
         let parsed = Profiles::from_toml(config).unwrap();
         assert_eq!(parsed.spec(Profile::Economy).model, "modèl-λ.1");
         assert_eq!(parsed.spec(Profile::Economy).effort, Effort::Xhigh);
         assert_eq!(parsed.spec(Profile::Critic).model, "a");
-        assert_eq!(parsed.spec(Profile::Deep).model, "gpt-5.6-sol:2026-09-04");
+        assert_eq!(parsed.spec(Profile::Deep).model, "gpt-6-astra:2026-09-04");
         assert_eq!(Profiles::from_toml(&render(&parsed)).unwrap(), parsed);
         assert_ne!(parsed, Profiles::defaults());
     }
 
     #[test]
     fn section_order_comments_and_crlf_do_not_change_the_result() {
-        let config = "# 화합 profiles\r\n[profiles.deep]\r\nmodel = \"gpt-5.6-sol\"\r\n\
-                      effort = \"xhigh\"\r\n\r\n[profiles.economy] # cheapest\r\n\
+        let config = "# 화합 profiles\r\n[profiles.deep]\r\nmodel = \"gpt-6-astra\"\r\n\
+                      effort = \"high\"\r\n\r\n[profiles.economy] # cheapest\r\n\
                       model = \"gpt-5.6-luna\"\r\neffort = \"medium\"\r\n[profiles.critic]\r\n\
                       effort = \"high\"\r\nmodel = \"gpt-5.6-terra\"\r\n";
         assert_eq!(Profiles::from_toml(config).unwrap(), Profiles::defaults());
@@ -1237,7 +1237,7 @@ effort = "high"
 
     #[test]
     fn a_top_level_model_is_named_as_configuration_skew() {
-        let config = format!("model = \"gpt-5.6-sol\"\n{DEFAULT_CONFIG}");
+        let config = format!("model = \"gpt-6-astra\"\n{DEFAULT_CONFIG}");
         let detail = rejection(&config);
         assert_eq!(
             detail,
@@ -1261,7 +1261,7 @@ effort = "high"
     #[test]
     fn model_and_effort_in_an_unrelated_table_are_both_reported() {
         let config =
-            format!("{DEFAULT_CONFIG}[agent]\neffort = \"low\"\nmodel = \"gpt-5.6-sol\"\n");
+            format!("{DEFAULT_CONFIG}[agent]\neffort = \"low\"\nmodel = \"gpt-6-astra\"\n");
         let detail = rejection(&config);
         assert!(
             detail.starts_with("profile configuration sets agent.effort, agent.model outside"),
@@ -1342,8 +1342,8 @@ effort = "high"
         // through to serde's "unknown field `model`" would describe a typo, which is precisely the
         // reading this module exists to prevent.
         for value in [
-            "[\"gpt-5.6-sol\"]",
-            "{ id = \"gpt-5.6-sol\" }",
+            "[\"gpt-6-astra\"]",
+            "{ id = \"gpt-6-astra\" }",
             "12",
             "true",
             "1979-05-27",
@@ -1359,7 +1359,7 @@ effort = "high"
 
     #[test]
     fn a_model_table_in_an_unrelated_section_is_skew_rather_than_an_unknown_field() {
-        let config = format!("{DEFAULT_CONFIG}[agent]\nmodel = {{ id = \"gpt-5.6-sol\" }}\n");
+        let config = format!("{DEFAULT_CONFIG}[agent]\nmodel = {{ id = \"gpt-6-astra\" }}\n");
         assert!(
             rejection(&config).starts_with("profile configuration sets agent.model outside"),
             "{}",
@@ -1377,7 +1377,7 @@ effort = "high"
     fn configuration_skew_is_reported_before_every_other_complaint() {
         // One document that breaks four rules at once. Skew wins because it is the only one the
         // user cannot see by reading the section headings.
-        let config = "model = \"gpt-5.6-sol\"\n\
+        let config = "model = \"gpt-6-astra\"\n\
                       [profiles.turbo]\nmodel = \"m\"\neffort = \"low\"\n";
         let detail = rejection(config);
         assert!(
@@ -1434,7 +1434,7 @@ effort = "high"
         let parts = [
             section("economy", "gpt-5.6-luna", "medium"),
             section("critic", "gpt-5.6-terra", "high"),
-            section("deep", "gpt-5.6-sol", "xhigh"),
+            section("deep", "gpt-6-astra", "high"),
         ];
         let orders = [
             [0, 1, 2],
@@ -1461,7 +1461,7 @@ effort = "high"
         assert_ne!(base, other_model);
         let other_effort = "[profiles.economy]\nmodel = \"gpt-5.6-luna\"\neffort = \"medium\"\n\
                             [profiles.critic]\nmodel = \"gpt-5.6-terra\"\neffort = \"xhigh\"\n\
-                            [profiles.deep]\nmodel = \"gpt-5.6-sol\"\neffort = \"xhigh\"\n";
+                            [profiles.deep]\nmodel = \"gpt-6-astra\"\neffort = \"xhigh\"\n";
         assert_ne!(base, Profiles::from_toml(other_effort).unwrap());
     }
 
@@ -1470,7 +1470,7 @@ effort = "high"
         let profiles = Profiles::from_toml(DEFAULT_CONFIG).unwrap();
         assert_eq!(profiles.spec(Profile::Economy).effort, Effort::Medium);
         assert_eq!(profiles.spec(Profile::Critic).effort, Effort::High);
-        assert_eq!(profiles.spec(Profile::Deep).effort, Effort::Xhigh);
+        assert_eq!(profiles.spec(Profile::Deep).effort, Effort::High);
         assert_eq!(profiles.spec(Profile::Critic).model, "gpt-5.6-terra");
     }
 
@@ -1482,7 +1482,7 @@ effort = "high"
         }
         assert_eq!(profiles.for_role(Role::Implementer).model, "gpt-5.6-luna");
         assert_eq!(profiles.for_role(Role::UnitReviewer).model, "gpt-5.6-terra");
-        assert_eq!(profiles.for_role(Role::Recommender).model, "gpt-5.6-sol");
+        assert_eq!(profiles.for_role(Role::Recommender).model, "gpt-6-astra");
     }
 
     #[test]
@@ -1529,7 +1529,7 @@ effort = "high"
         assert_eq!(
             detail,
             "the deep profile for role final_review on U3 was not honoured: \
-             model \"gpt-5.6-sol\" was requested but \"gpt-5.6-luna\" was applied"
+             model \"gpt-6-astra\" was requested but \"gpt-5.6-luna\" was applied"
         );
     }
 
@@ -1552,7 +1552,7 @@ effort = "high"
         receipt.effort_applied = Effort::Medium;
         let detail = message(receipt.verify().unwrap_err());
         assert!(
-            detail.contains("model \"gpt-5.6-sol\" was requested but \"gpt-5.6-luna\" was applied"),
+            detail.contains("model \"gpt-6-astra\" was requested but \"gpt-5.6-luna\" was applied"),
             "{detail}"
         );
         assert!(
@@ -1598,10 +1598,10 @@ effort = "high"
     #[test]
     fn verify_is_byte_exact_about_the_model_string() {
         for applied in [
-            "gpt-5.6-sol ",
+            "gpt-6-astra ",
             "GPT-5.6-SOL",
             "gpt-5.6-so1",
-            "gpt-5.6-sol\u{200b}",
+            "gpt-6-astra\u{200b}",
         ] {
             let mut receipt = receipt();
             receipt.model_applied = applied.to_string();
@@ -1734,7 +1734,7 @@ effort = "high"
     fn a_receipt_serializes_with_snake_case_names_in_declaration_order() {
         assert_eq!(
             serde_json::to_string(&receipt()).unwrap(),
-            r#"{"profile":"deep","role":"final_review","unit":"U3","model_requested":"gpt-5.6-sol","model_applied":"gpt-5.6-sol","effort_requested":"xhigh","effort_applied":"xhigh"}"#
+            r#"{"profile":"deep","role":"final_review","unit":"U3","model_requested":"gpt-6-astra","model_applied":"gpt-6-astra","effort_requested":"xhigh","effort_applied":"xhigh"}"#
         );
     }
 

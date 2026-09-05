@@ -14,12 +14,12 @@
 
 use crate::agentresult::{ReviewResult, WorkerResult};
 use crate::plan::{Decision, Plan, Selection, Surface, Unit, SURFACES};
-use crate::proposal::{DecisionsProposal, StructureProposal};
+use crate::proposal::{DecisionsProposal, FactsProposal, StructureProposal};
 
 /// Preamble shared by every role: what Hwahap is and what the agent must not do.
 const COMMON: &str = "\
-You are one step of a Hwahap run. Hwahap froze a plan with the user and is now executing it \
-without asking the user anything further.
+You are one step of a Hwahap run. During planning, investigate and propose; do not assume approval. \
+During coding, implement the frozen contract without changing its material decisions.
 
 Rules that apply to you no matter what you were asked to do:
 - The frozen plan is the contract. Do not improve on it, extend it, or reinterpret it.
@@ -50,7 +50,9 @@ Read the repository and answer it. Cite every claim with a `path:line-range` you
 If the repository does not determine the answer, say exactly that instead of guessing — an
 unfounded fact is worse than a missing one, because the plan will be built on it.
 
-Answer in plain prose. Lead with the answer in one sentence, then the evidence."
+Your final message must be exactly this JSON object and nothing else:
+{contract}",
+        contract = FactsProposal::CONTRACT
     )
 }
 

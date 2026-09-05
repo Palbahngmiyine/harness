@@ -137,8 +137,8 @@ mod tests {
         );
         assert_eq!(config.profiles.spec(Profile::Critic).model, "gpt-5.6-terra");
         assert_eq!(config.profiles.spec(Profile::Critic).effort, Effort::High);
-        assert_eq!(config.profiles.spec(Profile::Deep).model, "gpt-5.6-sol");
-        assert_eq!(config.profiles.spec(Profile::Deep).effort, Effort::Xhigh);
+        assert_eq!(config.profiles.spec(Profile::Deep).model, "gpt-6-astra");
+        assert_eq!(config.profiles.spec(Profile::Deep).effort, Effort::High);
         config.adapter.require_pinned().unwrap();
         assert_eq!(config.test_timeout_secs, 1_800);
     }
@@ -207,7 +207,7 @@ effort = "medium"
 model = "gpt-5.6-terra"
 effort = "high"
 [profiles.deep]
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "xhigh"
 "#,
         )
@@ -223,7 +223,7 @@ effort = "low"
 model = "gpt-5.6-terra"
 effort = "high"
 [profiles.deep]
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "xhigh"
 "#,
         )
@@ -239,7 +239,7 @@ effort = "xhigh"
 
     #[test]
     fn a_model_set_outside_a_profile_is_rejected() {
-        let err = Config::parse("model = \"gpt-5.6-sol\"\n").unwrap_err();
+        let err = Config::parse("model = \"gpt-6-astra\"\n").unwrap_err();
         assert!(err.to_string().contains("not valid"), "{err}");
     }
 

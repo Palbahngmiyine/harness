@@ -17,11 +17,13 @@ pub mod forge;
 pub mod frontier;
 pub mod git;
 pub mod mcp;
+pub mod native;
 pub mod plan;
 pub mod profile;
 pub mod prompts;
 pub mod proposal;
 pub mod render;
+pub mod session;
 pub mod state;
 pub mod validate;
 
