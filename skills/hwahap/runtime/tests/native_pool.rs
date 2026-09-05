@@ -160,3 +160,181 @@ async fn three_occupied_child_slots_complete_three_hundred_jobs_without_replacem
         "every job must have durable completion evidence"
     );
 }
+
+type Job = tokio::task::JoinHandle<hwahap::error::Result<hwahap::session::SessionOutcome>>;
+
+async fn start_job(fixture: &Fixture, role: Role) -> (Arc<NativeSessions>, NativeDispatch, Job) {
+    let broker = Arc::new(
+        NativeSessions::new(
+            Store::open(&fixture.repo).unwrap(),
+            Profiles::defaults(),
+            1000,
+            30,
+        )
+        .with_host_session_id("guard-parent-task".into()),
+    );
+    let spec = SessionSpec {
+        cwd: fixture.repo.clone(),
+        role,
+        unit: None,
+        prompt: "return evidence".into(),
+    };
+    let worker = broker.clone();
+    let task = tokio::spawn(async move { worker.execute(&spec).await });
+    let request = pending(&broker).await;
+    (broker, request, task)
+}
+
+fn registration(request: &NativeDispatch, agent: &str) -> NativeRegistration {
+    NativeRegistration {
+        dispatch_id: request.dispatch_id.clone(),
+        agent_id: agent.into(),
+    }
+}
+
+fn completion(request: &NativeDispatch, agent: &str) -> NativeCompletion {
+    NativeCompletion {
+        dispatch_id: request.dispatch_id.clone(),
+        agent_id: agent.into(),
+        final_message:
+            serde_json::json!({"dispatch_id":request.dispatch_id,"result":{"done":true}})
+                .to_string(),
+        agent_stopped: true,
+        reported_usage: None,
+    }
+}
+
+async fn finish_job(broker: &NativeSessions, request: &NativeDispatch, task: Job, agent: &str) {
+    broker.register(&registration(request, agent)).unwrap();
+    broker.complete(completion(request, agent)).unwrap();
+    assert_eq!(
+        task.await.unwrap().unwrap().final_message,
+        r#"{"done":true}"#
+    );
+    broker.finish().unwrap();
+}
+
+async fn pool_fixture() -> Fixture {
+    let fixture = Fixture::new();
+    fixture
+        .engine()
+        .step(Some("Inspect this repository"), None)
+        .await
+        .unwrap();
+    fixture
+}
+
+#[tokio::test]
+async fn pool_cross_lane_registration_cannot_poison_the_pending_identity() {
+    let fixture = pool_fixture().await;
+    let (broker, worker, task) = start_job(&fixture, Role::FactFinder).await;
+    finish_job(&broker, &worker, task, "author").await;
+    let (broker, critic, task) = start_job(&fixture, Role::UnitReviewer).await;
+    let path = Store::open(&fixture.repo)
+        .unwrap()
+        .artifacts_path()
+        .join("native-pending.json");
+    let before = std::fs::read(&path).unwrap();
+    assert!(broker.register(&registration(&critic, "author")).is_err());
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    assert!(broker.dispatch().unwrap().unwrap().agent_id.is_none());
+    finish_job(&broker, &critic, task, "reviewer").await;
+}
+
+#[tokio::test]
+async fn pool_reused_child_rejects_stale_envelopes_and_unbound_plaintext() {
+    let fixture = pool_fixture().await;
+    let (broker, first, task) = start_job(&fixture, Role::FactFinder).await;
+    finish_job(&broker, &first, task, "worker").await;
+    let (broker, reused, task) = start_job(&fixture, Role::FactFinder).await;
+    assert_eq!(reused.reuse_agent_id.as_deref(), Some("worker"));
+    broker.register(&registration(&reused, "worker")).unwrap();
+    for text in [
+        r#"{"done":true}"#.into(),
+        completion(&first, "worker").final_message,
+    ] {
+        let mut stale = completion(&reused, "worker");
+        stale.final_message = text;
+        assert!(broker.complete(stale).is_err());
+        assert!(!task.is_finished());
+        let file = format!("native-completion-{}.json", reused.dispatch_id);
+        assert!(!Store::open(&fixture.repo)
+            .unwrap()
+            .artifacts_path()
+            .join(file)
+            .exists());
+    }
+    finish_job(&broker, &reused, task, "worker").await;
+}
+
+#[tokio::test]
+async fn pool_write_failures_preserve_pending_identity_and_allow_exact_recovery() {
+    use std::os::unix::fs::PermissionsExt;
+    for completing in [false, true] {
+        let fixture = pool_fixture().await;
+        let (broker, request, task) = start_job(&fixture, Role::FactFinder).await;
+        let registered = registration(&request, "worker");
+        if completing {
+            broker.register(&registered).unwrap();
+        }
+        let state = fixture.repo.join(".hwahap");
+        let permissions = std::fs::metadata(&state).unwrap().permissions();
+        std::fs::set_permissions(&state, std::fs::Permissions::from_mode(0o500)).unwrap();
+        let failed = if completing {
+            broker.complete(completion(&request, "worker"))
+        } else {
+            broker.register(&registered)
+        };
+        std::fs::set_permissions(&state, permissions).unwrap();
+        assert!(failed.is_err(), "pool persistence unexpectedly succeeded");
+        assert!(
+            !task.is_finished(),
+            "result delivered before the pool write"
+        );
+        let pending: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(state.join("artifacts/native-pending.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(pending["dispatch"]["agent_id"], "worker");
+        assert_eq!(pending["completion"].is_object(), completing);
+        finish_job(&broker, &request, task, "worker").await;
+        let (next_broker, next, next_task) = start_job(&fixture, Role::FactFinder).await;
+        assert_eq!(next.reuse_agent_id.as_deref(), Some("worker"));
+        finish_job(&next_broker, &next, next_task, "worker").await;
+    }
+}
+
+#[tokio::test]
+async fn pool_model_or_effort_changes_refuse_reuse_and_replacement() {
+    let fixture = pool_fixture().await;
+    let (broker, first, task) = start_job(&fixture, Role::FactFinder).await;
+    finish_job(&broker, &first, task, "worker").await;
+    let artifacts = Store::open(&fixture.repo).unwrap().artifacts_path();
+    let before = artifacts.read_dir().unwrap().count();
+    for (model, effort) in [("other-model", "medium"), ("gpt-5.6-luna", "high")] {
+        let config = format!("[profiles.economy]\nmodel = {model:?}\neffort = {effort:?}\n[profiles.critic]\nmodel = \"gpt-5.6-terra\"\neffort = \"high\"\n[profiles.deep]\nmodel = \"gpt-6-astra\"\neffort = \"high\"\n");
+        let broker = NativeSessions::new(
+            Store::open(&fixture.repo).unwrap(),
+            Profiles::from_toml(&config).unwrap(),
+            1000,
+            30,
+        )
+        .with_host_session_id("guard-parent-task".into());
+        let spec = SessionSpec {
+            cwd: fixture.repo.clone(),
+            role: Role::FactFinder,
+            unit: None,
+            prompt: "return evidence".into(),
+        };
+        let error = tokio::time::timeout(std::time::Duration::from_secs(1), broker.execute(&spec))
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            error.to_string().contains("model/effort changed"),
+            "{error}"
+        );
+        assert!(broker.dispatch().unwrap().is_none());
+        assert_eq!(artifacts.read_dir().unwrap().count(), before);
+    }
+}
