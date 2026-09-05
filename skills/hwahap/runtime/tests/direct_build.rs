@@ -87,3 +87,45 @@ fn invalid_build_cannot_create_a_worktree_or_execute_commands() {
         .unwrap()
         .is_none());
 }
+
+#[tokio::test]
+async fn native_direct_build_dispatches_authorship_to_the_parent_astra() {
+    let fixture = Fixture::new();
+    git(
+        &fixture.repo,
+        &["update-ref", "refs/remotes/origin/main", "HEAD"],
+    );
+    fixture.engine().start_build(&request()).unwrap();
+    let store = Store::open(&fixture.repo).unwrap();
+    let config = hwahap::config::Config::for_run(&store).unwrap();
+    for role in [Role::Implementer, Role::UnitReviewer, Role::FinalReview] {
+        assert_eq!(config.profiles.for_role(role).model, "gpt-6-astra");
+    }
+    let host = hwahap::native::NativeHost::default();
+    let root = fixture.repo.canonicalize().unwrap();
+    let dispatch = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            let progress = host
+                .advance(
+                    &root,
+                    hwahap::native::NativeInput {
+                        host_session_id: Some("direct-owner".into()),
+                        ..Default::default()
+                    },
+                )
+                .await
+                .unwrap();
+            if let Some(dispatch) = progress.dispatch {
+                break dispatch;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(dispatch.coordinator_allowed);
+    assert_eq!(dispatch.lane, hwahap::native::NativeLane::Coordinator);
+    assert_eq!(dispatch.model, "gpt-6-astra");
+    assert!(dispatch.reuse_agent_id.is_none());
+    host.shutdown().await;
+}

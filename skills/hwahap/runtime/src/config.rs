@@ -60,6 +60,17 @@ impl Default for Config {
 }
 
 impl Config {
+    /// Resolve the same execution profiles in the engine, broker, receipts and cost records.
+    pub fn for_run(store: &crate::state::Store) -> Result<Self> {
+        let mut config = Self::load(store.root())?;
+        if store
+            .read_plan()?
+            .is_some_and(|plan| plan.execution_authorization.is_some())
+        {
+            config.profiles = config.profiles.direct_build()?;
+        }
+        Ok(config)
+    }
     /// Reads `<hwahap_dir>/config.toml`, falling back to the defaults when it is absent.
     pub fn load(hwahap_dir: &Path) -> Result<Config> {
         let path = hwahap_dir.join(CONFIG_FILE);
