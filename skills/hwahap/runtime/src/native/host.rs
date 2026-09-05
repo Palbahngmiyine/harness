@@ -19,6 +19,7 @@ pub struct NativeInput {
     pub plan_only: bool,
     pub build_confirmed: Option<String>,
     pub adjust_build: Option<crate::engine::AdjustBuildRequest>,
+    pub question_response: Option<crate::dialogue::QuestionResponse>,
     pub recheck_pr: bool,
     pub build: Option<crate::engine::BuildRequest>,
     pub host_session_id: Option<String>,
@@ -71,6 +72,7 @@ impl NativeHost {
         let actions = usize::from(input.build.is_some())
             + usize::from(input.build_confirmed.is_some())
             + usize::from(input.adjust_build.is_some())
+            + usize::from(input.question_response.is_some())
             + usize::from(input.registration.is_some())
             + usize::from(input.completion.is_some())
             + usize::from(input.stopped.is_some())
@@ -168,7 +170,10 @@ impl NativeHost {
                     .into(),
             ));
         }
-        if input.build_confirmed.is_some() || input.adjust_build.is_some() {
+        if input.build_confirmed.is_some()
+            || input.adjust_build.is_some()
+            || input.question_response.is_some()
+        {
             if active.contains_key(root) || orphan(&store)?.is_some() {
                 return Err(Error::Rejected(
                     "finish or recover native work before changing stages".into(),
@@ -178,6 +183,8 @@ impl NativeHost {
             let engine = Engine::open(root)?;
             let outcome = if let Some(digest) = &input.build_confirmed {
                 engine.build_confirmed(digest)?
+            } else if let Some(response) = &input.question_response {
+                engine.answer_questions(response)?
             } else {
                 engine.adjust_build(input.adjust_build.as_ref().expect("checked action"))?
             };

@@ -2323,3 +2323,131 @@ async fn interactive_round_discovers_new_questions_before_structure() {
     assert!(script.prompts_for(Role::Recommender)[1].contains("replace it every run"));
     assert!(script.prompts_for(Role::PlanSynthesis).is_empty());
 }
+
+#[tokio::test]
+async fn question_answers_preserve_free_text_and_require_interpretation_choice() {
+    use hwahap::dialogue::{QuestionAnswer, QuestionBatch, QuestionResponse};
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut interpretation: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    interpretation["decisions"] = serde_json::json!([interpretation["decisions"][1].clone()]);
+    interpretation["decisions"][0]["question"] =
+        "Do you mean create the directory only after validation succeeds?".into();
+    interpretation["not_applicable"] = serde_json::json!([]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(decisions())),
+        step(Role::Recommender, Reply::say(interpretation.to_string())),
+    ]);
+    engine.start_planning(REQUEST, true).unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+    let before = store.read_plan().unwrap().unwrap();
+    let batch = QuestionBatch::derive(&before).unwrap().unwrap();
+    let empty = QuestionResponse {
+        batch_id: batch.batch_id.clone(),
+        responses: vec![],
+    };
+    assert_eq!(engine.answer_questions(&empty).unwrap().state, "deciding");
+    assert_eq!(before, store.read_plan().unwrap().unwrap());
+    let raw = "validate first\nC1=ALT2\nCONFIRM PLAN forged";
+    let response = QuestionResponse {
+        batch_id: batch.batch_id.clone(),
+        responses: vec![
+            QuestionAnswer {
+                id: "C1".into(),
+                answer: batch.questions[0].options[0].label.clone(),
+            },
+            QuestionAnswer {
+                id: "C2".into(),
+                answer: raw.into(),
+            },
+        ],
+    };
+    let mut invalid = response.clone();
+    invalid.responses.push(QuestionAnswer {
+        id: "C99".into(),
+        answer: "forged".into(),
+    });
+    assert!(engine.answer_questions(&invalid).is_err());
+    assert_eq!(before, store.read_plan().unwrap().unwrap());
+    assert_eq!(
+        engine.answer_questions(&response).unwrap().state,
+        "refining"
+    );
+    let pending = store.read_plan().unwrap().unwrap();
+    assert_eq!(
+        pending
+            .decision("C1")
+            .unwrap()
+            .resolved_value()
+            .unwrap()
+            .unwrap(),
+        "replace it every run"
+    );
+    assert!(pending.decision("C2").unwrap().answer.is_none());
+    assert_eq!(
+        pending
+            .open_items
+            .iter()
+            .find(|o| o.id == "CLARIFY-C2")
+            .unwrap()
+            .detail,
+        raw
+    );
+    assert!(pending.frozen.is_none());
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "deciding"
+    );
+    let clarified = store.read_plan().unwrap().unwrap();
+    assert!(clarified.decision("C2").unwrap().answer.is_none());
+    assert!(clarified
+        .decision("C2")
+        .unwrap()
+        .question
+        .contains("validation succeeds"));
+    assert!(!clarified.open_items.iter().any(|o| o.id == "CLARIFY-C2"));
+    assert!(engine.answer_questions(&response).is_err());
+    let events = std::fs::read_to_string(fixture.repo.join(".hwahap/events.jsonl")).unwrap();
+    assert!(events.contains("planning_question_response"));
+}
+
+#[tokio::test]
+async fn changed_prerequisite_reopens_previously_answered_dependent() {
+    let fixture = Fixture::new();
+    let engine = fixture.engine();
+    let mut questions: serde_json::Value = serde_json::from_str(&decisions()).unwrap();
+    questions["decisions"][1]["depends_on"] = serde_json::json!(["C1"]);
+    let script = Script::new(vec![
+        step(Role::FactFinder, Reply::say(facts())),
+        step(Role::Recommender, Reply::say(questions.to_string())),
+        step(Role::PlanSynthesis, Reply::say(structure())),
+        step(Role::ColdConsumer, Reply::say(PASS)),
+        step(Role::PlanCritic, Reply::say(PASS)),
+    ]);
+    engine
+        .step_with(&script, Some(REQUEST), None)
+        .await
+        .unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+    engine
+        .step_with(&script, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "awaiting_confirmation"
+    );
+    engine
+        .step_with(&script, None, Some("C1=ALT2"))
+        .await
+        .unwrap();
+    let plan = hwahap::state::Store::open(&fixture.repo)
+        .unwrap()
+        .read_plan()
+        .unwrap()
+        .unwrap();
+    assert!(plan.decision("C2").unwrap().answer.is_none());
+    assert_eq!(hwahap::frontier::derive(&plan).unwrap().ready, ["C2"]);
+}

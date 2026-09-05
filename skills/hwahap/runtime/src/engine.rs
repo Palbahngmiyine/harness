@@ -35,8 +35,8 @@ const MAX_ATTEMPTS: u32 = 2;
 
 mod adjust_build;
 mod build;
-mod interview;
 mod grounding;
+mod interview;
 mod pr_review;
 pub use adjust_build::AdjustBuildRequest;
 pub use build::{BuildRequest, BuildUnit};
@@ -408,6 +408,7 @@ impl Engine {
                 .await?;
             let facts = proposal::FactsProposal::parse(&facts.final_message, &plan)?;
             plan.facts.extend(facts.facts);
+            self.verify_planning_source(&plan)?;
             // A later native spawn refusal must not discard already verified repository facts.
             self.save_plan(&plan)?;
         }
@@ -487,6 +488,7 @@ impl Engine {
 
     async fn prove(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         let mut plan = self.require_plan()?;
+        self.verify_planning_source(&plan)?;
 
         if plan.units.is_empty() || plan.structure_stale {
             let structure = self
@@ -681,12 +683,12 @@ impl Engine {
             _ => None,
         });
         let Some(typed) = typed else {
+            if plan.interactive && !input.trim().is_empty() {
+                return self.adjust(run, Some(input));
+            }
             return Ok(self.report(
                 &run,
-                format!(
-                    "That is not a confirmation. To freeze the plan the user must type \
-                     exactly:\n\nCONFIRM PLAN {challenge}"
-                ),
+                format!("To freeze the plan type exactly:\n\nCONFIRM PLAN {challenge}"),
             ));
         };
 
@@ -701,6 +703,7 @@ impl Engine {
             ));
         }
 
+        self.verify_planning_source(&plan)?;
         let digest = plan.digest()?;
         if plan.structure_stale
             || digest.challenge() != challenge

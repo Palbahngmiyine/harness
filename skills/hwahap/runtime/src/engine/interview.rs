@@ -1,6 +1,28 @@
 use super::*;
 
 impl Engine {
+    pub(super) fn verify_planning_source(&self, plan: &Plan) -> Result<()> {
+        if !plan.interactive {
+            return Ok(());
+        }
+        let worktree = self.store.worktree_path();
+        let cwd = if worktree.exists() {
+            worktree.as_path()
+        } else {
+            self.repo_root.as_path()
+        };
+        if !self.git.is_clean(cwd)?
+            || plan.source_head.as_deref()
+                != Some(self.git.run_in(cwd, &["rev-parse", "HEAD"])?.as_str())
+        {
+            return Err(Error::Rejected(
+                "planning source changed; reopen PLAN and inspect the current committed source"
+                    .into(),
+            ));
+        }
+        super::grounding::verify_sources(plan, cwd)
+    }
+
     /// Apply only answers to the current displayed batch; never parse free text as directives.
     pub fn answer_questions(
         &self,
