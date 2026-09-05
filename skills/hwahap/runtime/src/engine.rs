@@ -1040,13 +1040,24 @@ impl Engine {
             crate::cost::summary(&self.store)?
         );
         self.store.write_report(&report)?;
-        let pr = self.forge.create_draft(
-            &worktree,
-            &plan.base_branch,
-            &run.branch,
-            &plan.goal.statement,
-            &report,
-        )?;
+        let pr = if let Some(previous) = &previous {
+            self.forge.update_draft(
+                &worktree,
+                &plan.base_branch,
+                &run.branch,
+                &previous.binding.pr_url,
+                &plan.goal.statement,
+                &report,
+            )?
+        } else {
+            self.forge.create_draft(
+                &worktree,
+                &plan.base_branch,
+                &run.branch,
+                &plan.goal.statement,
+                &report,
+            )?
+        };
 
         let mut progress = crate::pr_review::ReviewProgress {
             binding: crate::pr_review::ReviewBinding {

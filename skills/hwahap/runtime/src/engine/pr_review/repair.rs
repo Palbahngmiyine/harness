@@ -179,10 +179,19 @@ impl Engine {
         if remote != prepared.commit {
             self.git.push(&worktree, "origin", &run.branch)?;
         }
-        if self.forge.head_sha(&worktree, &p.binding.pr_url)? != prepared.commit {
-            return Err(Error::BoundaryViolation(
-                "pushed PR head did not match verified repair".into(),
-            ));
+        for observation in 0..4 {
+            let observed = self.forge.head_sha(&worktree, &p.binding.pr_url)?;
+            if observed == prepared.commit {
+                break;
+            }
+            // Only the known old head may lag. Never accept or wait through an unknown head.
+            if observed != prepared.base || observation == 3 {
+                return Err(Error::BoundaryViolation(format!(
+                    "pushed PR head {observed} did not match verified repair {}",
+                    prepared.commit
+                )));
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
         p.binding.head = prepared.commit;
         p.round = p

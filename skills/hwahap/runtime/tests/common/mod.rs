@@ -441,6 +441,9 @@ case "$1 ${2:-}" in
     else
       echo '[]'
     fi
+    if [ -f "$control/pr-list-after-read" ]; then
+      mv "$control/pr-list-after-read" "$control/pr-list-json"
+    fi
     exit 0
     ;;
   "pr edit")
@@ -456,6 +459,14 @@ case "$1 ${2:-}" in
           # The run branch, not HEAD: the real `gh` resolves a pull request by URL, so the answer
           # must not depend on which directory Hwahap happened to call from.
           pr_head=$(git --git-dir="$control/remote.git" rev-parse --verify "refs/heads/$(cat "$control/pr-branch")") || exit 1
+          if [ -f "$control/pr-lag-head" ] && [ "$pr_head" != "$(cat "$control/pr-lag-head")" ]; then
+            remaining=$(cat "$control/pr-lag-left")
+            if [ "$remaining" -gt 0 ]; then
+              echo "$((remaining - 1))" > "$control/pr-lag-left"
+              pr_head=$(cat "$control/pr-lag-head")
+              if [ -f "$control/pr-lag-value" ]; then pr_head=$(cat "$control/pr-lag-value"); fi
+            fi
+          fi
           printf '{"headRefOid":"%s"}\n' "$pr_head"
         fi
         ;;

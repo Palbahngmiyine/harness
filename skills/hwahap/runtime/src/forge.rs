@@ -121,6 +121,33 @@ impl Forge {
         Ok(PullRequest { url, head_sha })
     }
 
+    /// Update only the recorded draft; never discover or create a replacement during recheck.
+    pub fn update_draft(
+        &self,
+        cwd: &Path,
+        base: &str,
+        head: &str,
+        url: &str,
+        title: &str,
+        body: &str,
+    ) -> Result<PullRequest> {
+        if self.existing_draft(cwd, base, head)?.as_deref() != Some(url) {
+            return Err(Error::BoundaryViolation(
+                "recorded draft changed before update".into(),
+            ));
+        }
+        self.run(cwd, &["pr", "edit", url, "--title", title, "--body", body])?;
+        if self.existing_draft(cwd, base, head)?.as_deref() != Some(url) {
+            return Err(Error::BoundaryViolation(
+                "recorded draft changed during update".into(),
+            ));
+        }
+        Ok(PullRequest {
+            url: url.into(),
+            head_sha: self.head_sha(cwd, url)?,
+        })
+    }
+
     /// The commit the pull request currently points at.
     pub fn head_sha(&self, cwd: &Path, pr: &str) -> Result<String> {
         let json = self.run(cwd, &["pr", "view", pr, "--json", "headRefOid"])?;

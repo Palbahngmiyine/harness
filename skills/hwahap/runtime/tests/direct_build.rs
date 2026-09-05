@@ -59,17 +59,25 @@ fn review_policy_requires_two_astra_lanes_and_keeps_authorship_separate() {
 
 #[tokio::test]
 async fn direct_build_reaches_a_real_commit_and_draft_without_planning() {
-    exercise_repair(false, false).await;
+    exercise_repair(false, false, 3).await;
 }
 #[tokio::test]
 async fn exhausted_repair_keeps_the_draft_and_budget() {
-    exercise_repair(true, false).await;
+    exercise_repair(true, false, 0).await;
 }
 #[tokio::test]
 async fn same_native_reviewer_cannot_approve_both_pr_teams() {
-    exercise_repair(false, true).await;
+    exercise_repair(false, true, 0).await;
 }
-async fn exercise_repair(exhausted: bool, same_agent: bool) {
+#[tokio::test]
+async fn persistent_pr_head_lag_is_bounded_and_keeps_the_draft() {
+    exercise_repair(false, false, 4).await;
+}
+#[tokio::test]
+async fn unexpected_pr_head_is_rejected_without_waiting_for_convergence() {
+    exercise_repair(false, false, 5).await;
+}
+async fn exercise_repair(exhausted: bool, same_agent: bool, lag: u32) {
     let fixture = Fixture::new();
     git(
         &fixture.repo,
@@ -153,6 +161,21 @@ async fn exercise_repair(exhausted: bool, same_agent: bool) {
         );
         return;
     }
+    if lag > 0 {
+        std::fs::write(fixture.dir.path().join("pr-lag-head"), &binding.head).unwrap();
+        std::fs::write(
+            fixture.dir.path().join("pr-lag-left"),
+            if lag == 5 {
+                "3".into()
+            } else {
+                lag.to_string()
+            },
+        )
+        .unwrap();
+        if lag == 5 {
+            std::fs::write(fixture.dir.path().join("pr-lag-value"), "unexpected-head").unwrap();
+        }
+    }
     let fix = Script::new(vec![step(
         Role::Rework,
         Reply::write(
@@ -161,6 +184,20 @@ async fn exercise_repair(exhausted: bool, same_agent: bool) {
         ),
     )]);
     let repaired = engine.step_with(&fix, None, None).await.unwrap();
+    if lag > 0 {
+        assert_eq!(
+            std::fs::read_to_string(fixture.dir.path().join("pr-lag-left"))
+                .unwrap()
+                .trim(),
+            if lag == 5 { "2" } else { "0" }
+        );
+    }
+    if lag >= 4 {
+        assert_eq!(repaired.state, "blocked");
+        assert_eq!(repaired.pr_url.as_ref(), Some(&binding.pr_url));
+        assert_eq!(fix.remaining(), 0);
+        return;
+    }
     assert_eq!(repaired.state, "pr_review", "{}", repaired.message);
     let next = hwahap::pr_review::ReviewProgress::load(&store)
         .unwrap()
@@ -377,7 +414,13 @@ async fn tampered_direct_contract_stops_before_any_worker_or_command() {
 
 #[tokio::test]
 async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failure() {
-    for failure in ["closed", "replacement", "suite"] {
+    for failure in [
+        "closed",
+        "replacement",
+        "suite",
+        "closed_late",
+        "replacement_late",
+    ] {
         let f = Fixture::new();
         git(&f.repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
         let fail_file = f.dir.path().join("fail-recheck");
@@ -417,10 +460,15 @@ async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failur
         // Legacy pinned runtimes recorded the URL only in the run state.
         std::fs::remove_file(store.artifacts_path().join("pr-review.json")).unwrap();
         assert_eq!(engine.recheck_pr().unwrap().pr_url.as_ref(), Some(&url));
+        let control = if failure.ends_with("_late") {
+            "pr-list-after-read"
+        } else {
+            "pr-list-json"
+        };
         match failure {
-            "closed" => std::fs::write(f.dir.path().join("pr-list-json"), "[]").unwrap(),
-            "replacement" => std::fs::write(
-                f.dir.path().join("pr-list-json"),
+            "closed" | "closed_late" => std::fs::write(f.dir.path().join(control), "[]").unwrap(),
+            "replacement" | "replacement_late" => std::fs::write(
+                f.dir.path().join(control),
                 serde_json::json!([{"url":"https://github.com/example/repo/pull/2","isDraft":true,
                 "headRefName":input.branch,"baseRefName":"main"}])
                 .to_string(),
@@ -434,6 +482,7 @@ async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failur
             .unwrap();
         assert_eq!(blocked.state, "blocked", "{failure}: {}", blocked.message);
         assert_eq!(blocked.pr_url.as_ref(), Some(&url));
+        assert!(!f.dir.path().join("pr-edited").exists());
         assert_eq!(
             std::fs::read_to_string(f.dir.path().join("pr-created"))
                 .unwrap()
