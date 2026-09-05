@@ -1,82 +1,29 @@
-# 검증된 플랫폼 사실
+# Native 실행의 플랫폼 근거와 검증 범위
 
-Hwahap v3의 구조는 아래 사실 위에 서 있다. 전부 2026-09-04에 실제 실행으로 확인했고, 기억이나 문서
-요약이 아니라 소스 위치와 관측 결과를 근거로 적었다. 어댑터나 SDK를 올릴 때는 이 파일을 다시 검증하고
-날짜와 버전을 갱신한다.
+2026-09-05의 현재 소스와 자동 테스트를 기준으로 작성했다. 실제 호스트의 도구 제공 여부와
+모델 적용·권한·청구 사용량은 각각 확인해야 하며, 요청 기록만으로 검증됐다고 판단하지 않는다.
 
-| 대상 | 버전 | 확인 방법 |
-|---|---|---|
-| rustc / cargo | 1.98.1 (CI와 동일) | `rustc --version` |
-| `agent-client-protocol` | 2.0.0 | crates.io, vendored source |
-| `agent-client-protocol-schema` | 1.5.0 | 위 크레이트의 의존성 |
-| `rmcp` | 3.2.0 (features `server`, `transport-io`, `macros`) | crates.io, vendored source |
-| `@agentclientprotocol/codex-acp` | 1.7.0 | `codex-acp --version` |
-| `codex` CLI | 0.152.1 | `codex --help` |
-| 협상된 MCP protocol version | `2025-11-25` | initialize 응답 실측 |
-| 협상된 ACP protocol version | v1 (stable) | initialize 응답 실측 |
+## 1. Codex 기본 하위 에이전트
 
-## 1. ACP: model과 effort는 프로토콜 필드가 아니다
+[OpenAI 공식 문서](https://learn.chatgpt.com/docs/agent-configuration/subagents)는 Codex가
+하위 에이전트 생성·대기·중단을 관리하고, 하위 에이전트가 부모의 현재 권한 정책을 상속한다고 설명한다.
+Hwahap은 호스트에 노출된 native 도구를 사용하며 MCP 서버 자체가 모델 세션을 시작하지 않는다.
 
-ACP v1 스키마에는 `session/set_model`도, `ModelId`도, 어떤 응답에도 `models` 필드도 없다. 두
-크레이트 전체를 grep한 결과가 0건이다. model과 reasoning effort는 **session config option**이고,
-어댑터가 무엇을 제공하는지에 전적으로 달려 있다.
+현재 호스트의 `spawn_agent` 호출에는 `task_name`, `message`, `fork_turns`, `model`,
+`reasoning_effort`가 있다. 별도 `cwd`·`sandbox` 인수는 없다. Hwahap은 `fork_turns=none`과
+요청된 모델·effort를 전달하도록 요구하며 절대 작업 경로와 접근 범위는 지시에 포함한다.
+따라서 read-only 지침과 Git 사후 검사는 OS 격리의 증거가 아니다. 공식 문서의 custom agent
+설정 기능도 이 구현이 개별 spawn의 샌드박스를 검증했다는 뜻은 아니다.
 
-`codex-acp` 1.7.0의 `session/new`가 돌려주는 config option은 정확히 5개다.
+실행 증거는 [native 모듈](runtime/src/native.rs)과
+[MCP instructions](runtime/src/mcp.rs)에 정의되어 있다.
+요청 모델은 실제 적용 모델과 구분하며, 도구가 없는 호스트에서는 실행 한계를 보고한다.
+호스트가 Astra인 경우에도 `Recommender`·`PlanSynthesis`만 coordinator 처리가 허용된다.
+최종 리뷰와 그 밖의 독립 역할은 새 하위 에이전트가 수행한다.
 
-```
-mode               (category: mode)               select, 기본 "agent"
-collaboration_mode (category: Other("collaboration_mode")) select
-model              (category: model)              select, 값은 effort 접미사 없는 base id
-reasoning_effort   (category: thought_level)      select
-fast-mode          (category: model_config)       client capability에 따라 boolean 또는 select
-```
-
-`model` 값에는 `gpt-5.6-luna`, `gpt-5.6-terra`, `gpt-5.6-sol`이 모두 있고 `reasoning_effort` 값에는
-`low, medium, high, xhigh, max` (+ 일부 모델의 `ultra`)가 있다. 즉 세 profile 모두 적용 가능하다.
-
-### 1.1 순서가 중요하다 — 실측으로 확인된 함정
-
-`reasoning_effort`의 값 목록은 **선택된 모델에 따라 달라진다.** `gpt-5.6-sol`에서는 6개
-(`low..ultra`)지만, `set_config_option`으로 `gpt-5.4-mini`로 바꾸면 4개(`low..xhigh`)로 줄어든다.
-
-따라서 `session/new` 응답 한 장으로 model과 effort를 함께 검증하는 순서는 **틀렸다.** 기본 모델
-기준으로 존재하는 effort를 통과시킨 뒤 어댑터가 거부하게 된다. `acp.rs`는 이렇게 한다.
-
-```
-session/new
-  → model 옵션이 원하는 값을 제공하는지 확인
-  → set_config_option(model)          ← 응답이 갱신된 전체 옵션 집합을 echo 한다
-  → 그 응답에서 effort 옵션을 다시 확인   ← 여기서 처음 effort를 검증한다
-  → set_config_option(reasoning_effort)
-  → echo된 currentValue로 적용 결과 확인
-  → 여기까지 통과해야 session/prompt
-```
-
-하나라도 어긋나면 `blocked: unsupported_profile`이다. `high`로 내려가지 않는다.
-
-### 1.2 오류 모양
-
-- 잘못된 config 값과 잘못된 config id 모두 `-32602 "Invalid params"`, `data` 없음.
-- (스키마 밖) `session/set_model`의 알 수 없는 모델은 `-32603`에 `data.details` 포함.
-
-Hwahap은 스펙에 있는 `set_config_option` 경로만 쓴다. `session/set_model`은 한 번에 둘 다 설정할 수
-있지만 `{}`만 돌려주므로 적용 결과를 읽어 확인할 수 없다. 확인할 수 없는 경로는 fail-closed 정책과
-맞지 않는다.
-
-### 1.3 그 밖에 확인한 것
-
-- 전송은 NDJSON이다. LSP `Content-Length` 프레이밍이 아니다. 번들에 있는 `Content-Length` 코드는
-  어댑터가 내부적으로 쓰는 Codex app-server용이다.
-- `session/new` 직후 요청하지 않은 `session/update`(`available_commands_update`) 알림이 비동기로
-  도착한다. 클라이언트는 이를 견뎌야 한다.
-- 어댑터가 `session/new`에 스키마 밖 `models` 객체를 함께 돌려주지만, `NewSessionResponse`에는 그
-  필드가 없고 catch-all도 없어 serde가 조용히 버린다. 모델 목록은 `configOptions`로만 도달 가능하다.
-- `AcpAgent`는 자식을 자기 프로세스 그룹(`process_group(0)`)에서 띄우고 drop 시 그룹 전체를 SIGKILL
-  한다. `npx` 래퍼를 거쳐도 고아 프로세스가 남지 않는 근거다.
-- ClientCapabilities를 기본값(fs·terminal 전부 false)으로 광고하면 SDK가 `fs/*`와 `terminal/*`을
-  method-not-found로 알아서 거절한다. Hwahap이 핸들러를 쓰지 않는 이유다.
-- `session/close`는 `AgentCapabilities.session_capabilities.close`로 게이트된다.
-- `Responder::respond`는 `#[must_use] Result`이고, 그것이 request 핸들러의 반환값이다.
+공식 문서는 플랫폼 기능의 근거이며, 이 저장소의 기본 프로필은
+[profile.rs](runtime/src/profile.rs)가 정의한다. Deep은 `gpt-6-astra` / `high`,
+Economy는 Luna / `medium`, Critic은 Terra / `high`다.
 
 ## 2. rmcp: 세 가지 함정
 
