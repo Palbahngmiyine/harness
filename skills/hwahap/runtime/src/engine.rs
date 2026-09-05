@@ -458,41 +458,38 @@ impl Engine {
         let markdown = render::plan_markdown(&plan)?;
         let reviewed = plan.review_digest()?;
 
-        let cold = self
-            .ask(
-                sessions,
-                Role::ColdConsumer,
-                None,
-                prompts::cold_consumer(&markdown),
-            )
-            .await?;
-        let cold = ReviewResult::parse(&cold.final_message)?;
-        plan.reviews.cold_consumer = Some(PlanReview {
-            plan_digest: reviewed.clone(),
-            ts: self.clock.now(),
-            passed: cold.verdict == Verdict::Pass,
-            findings: cold.findings.clone(),
-        });
-
-        let critic = self
-            .ask(
-                sessions,
-                Role::PlanCritic,
-                None,
-                prompts::plan_critic(&markdown),
-            )
-            .await?;
-        let critic = ReviewResult::parse(&critic.final_message)?;
-        plan.reviews.critic = Some(PlanReview {
-            plan_digest: reviewed,
-            ts: self.clock.now(),
-            passed: critic.verdict == Verdict::Pass,
-            findings: critic.findings.clone(),
-        });
-        self.save_plan(&plan)?;
-
-        let mut findings = cold.findings;
-        findings.extend(critic.findings);
+        let mut findings = Vec::new();
+        for (role, prompt) in [
+            (Role::ColdConsumer, prompts::cold_consumer(&markdown)),
+            (Role::PlanCritic, prompts::plan_critic(&markdown)),
+        ] {
+            let saved = match role {
+                Role::ColdConsumer => &plan.reviews.cold_consumer,
+                _ => &plan.reviews.critic,
+            };
+            let review = match saved.as_ref().filter(|r| r.plan_digest == reviewed) {
+                Some(review) => review.clone(),
+                None => {
+                    let outcome = self.ask(sessions, role, None, prompt).await?;
+                    let result = ReviewResult::parse(&outcome.final_message)?;
+                    let review = PlanReview {
+                        plan_digest: reviewed.clone(),
+                        ts: self.clock.now(),
+                        passed: result.verdict == Verdict::Pass,
+                        findings: result.findings,
+                    };
+                    match role {
+                        Role::ColdConsumer => plan.reviews.cold_consumer = Some(review.clone()),
+                        _ => plan.reviews.critic = Some(review.clone()),
+                    }
+                    // Checkpoint each completed role before the next session can interrupt.
+                    // Failed reviews are evidence too: their findings still route to Decide.
+                    self.save_plan(&plan)?;
+                    review
+                }
+            };
+            findings.extend(review.findings);
+        }
         if !findings.is_empty() {
             // A finding is not closed by rewording: it becomes another question for the user, so
             // the plan goes back to Decide with the findings driving the next round.
