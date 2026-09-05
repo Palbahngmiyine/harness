@@ -10,7 +10,9 @@
 //!   session *config options* the agent defines. So Hwahap reads the advertised options, refuses to
 //!   proceed unless the exact model and the exact effort are offered, sets them, and re-reads the
 //!   echoed state to confirm. There is no downgrade path: a missing `xhigh` is
-//!   `blocked: unsupported_profile`, never a silent `high`.
+//!   `blocked: unsupported_profile`, never a silent `high`. An agent that then announces a
+//!   different model or effort mid-turn ends the run the same way, because the receipt exists to
+//!   make a downgrade visible and cannot do that while the answer it describes is kept.
 //! - **A read-only role cannot be talked into writing.** Hwahap advertises no filesystem and no
 //!   terminal capability, so the SDK answers those requests with method-not-found on its own, and
 //!   the permission handler rejects every request made during a read-only session. The host still
@@ -30,7 +32,7 @@ use agent_client_protocol::schema::v1::{
     SessionNotification, SessionUpdate, SetSessionConfigOptionRequest, StopReason, TextContent,
 };
 use agent_client_protocol::schema::ProtocolVersion;
-use agent_client_protocol::{AcpAgent, AcpAgentConfig, Agent, Client, ConnectionTo};
+use agent_client_protocol::{AcpAgent, AcpAgentConfig, Agent, Client, ConnectTo, ConnectionTo};
 
 use crate::error::{Error, Result};
 use crate::profile::{Effort, Profiles, Receipt, Role};
@@ -90,18 +92,50 @@ impl Adapter {
         self
     }
 
-    /// Rejects an adapter pinned to a floating version.
+    /// Rejects an adapter whose version is resolved when it is launched.
     ///
-    /// `@latest` in the argv means a rerun of the same frozen plan can meet a different agent.
+    /// A version resolved at launch means a rerun of the same frozen plan can meet a different
+    /// agent. npm resolves everything that is not an exact version that way — a missing version and
+    /// a dist tag both mean "whatever is newest", and every range operator means "whatever fits" —
+    /// so this is an allowlist of one shape rather than a denylist of the spellings seen so far.
     pub fn require_pinned(&self) -> Result<()> {
-        if self.args.iter().any(|a| a.contains("@latest")) {
-            return Err(Error::Rejected(format!(
-                "the ACP adapter must be pinned to an exact version, but its arguments contain \
-                 \"@latest\": {:?}",
-                self.args
-            )));
+        for spec in self.package_specifiers() {
+            if !is_exact_version_spec(spec) {
+                return Err(Error::Rejected(format!(
+                    "the ACP adapter must be pinned to an exact version, but {spec:?} lets npm \
+                     choose one at launch: {:?}",
+                    self.args
+                )));
+            }
         }
         Ok(())
+    }
+
+    /// The arguments that name an npm package to fetch.
+    ///
+    /// Two shapes are recognised and nothing else is guessed at: the first non-option argument of
+    /// an npm runner, which is where the runner takes its package, and a scoped `@scope/name`
+    /// argument anywhere, which nothing but an npm specifier looks like. Arguments the adapter
+    /// itself consumes are left alone — a value that happens to read like a package name is not one.
+    fn package_specifiers(&self) -> Vec<&str> {
+        let mut runner_package_seen = !matches!(
+            self.command.file_stem().and_then(|stem| stem.to_str()),
+            Some("npx" | "bunx" | "pnpx")
+        );
+        let mut specifiers = Vec::new();
+        for arg in &self.args {
+            // A filesystem path is pinned by being a path, and an option is not a package.
+            if arg.starts_with('-') || arg.starts_with('.') || arg.starts_with('/') {
+                continue;
+            }
+            if !runner_package_seen {
+                runner_package_seen = true;
+                specifiers.push(arg.as_str());
+            } else if arg.starts_with('@') {
+                specifiers.push(arg.as_str());
+            }
+        }
+        specifiers
     }
 
     fn to_config(&self) -> AcpAgentConfig {
@@ -114,6 +148,33 @@ impl Adapter {
         }
         config
     }
+}
+
+/// Whether an npm specifier names one exact published version.
+///
+/// The version is everything after the last `@` that is not the leading `@` of a scope. No `@` at
+/// all is the `latest` dist tag spelled by omission, which is why it is rejected here rather than
+/// waved through as "no version to check".
+fn is_exact_version_spec(spec: &str) -> bool {
+    match spec.rfind('@') {
+        Some(at) if at > 0 => is_exact_version(&spec[at + 1..]),
+        _ => false,
+    }
+}
+
+/// Whether a version is one release rather than a tag or a range.
+///
+/// A prerelease or build suffix still names one release, so only the numeric core has to be exact.
+fn is_exact_version(version: &str) -> bool {
+    let core = match version.find(['-', '+']) {
+        Some(suffix) => &version[..suffix],
+        None => version,
+    };
+    let mut parts = core.split('.');
+    let numbered = [parts.next(), parts.next(), parts.next()].into_iter().all(
+        |part| matches!(part, Some(p) if !p.is_empty() && p.bytes().all(|b| b.is_ascii_digit())),
+    );
+    numbered && parts.next().is_none()
 }
 
 /// One prompt to one fresh session.
@@ -153,8 +214,30 @@ pub struct PermissionRecord {
 struct Shared {
     /// Chunks per session, in arrival order, as `(message_id, text)`.
     transcripts: HashMap<String, Vec<(Option<String>, String)>>,
+    /// The sessions Hwahap currently has open. A session id absent here is one it did not open or
+    /// has already finished, and notifications naming it belong to no outcome.
     access: HashMap<String, Access>,
     permissions: HashMap<String, Vec<PermissionRecord>>,
+    /// The verified profile per session, present only once the agent has echoed it back.
+    pinned: HashMap<String, Pinned>,
+}
+
+/// The profile a session was proved to be running, and the first departure the agent announced.
+///
+/// The pin is recorded after the echo is verified and before the prompt is sent, so the unsolicited
+/// config update an adapter emits right after `session/new` describes a session that has no pin yet
+/// and is therefore not a departure from anything.
+struct Pinned {
+    model: String,
+    effort: String,
+    violation: Option<String>,
+}
+
+/// What a finished session leaves behind in [`Shared`].
+struct Drained {
+    chunks: Vec<(Option<String>, String)>,
+    permissions: Vec<PermissionRecord>,
+    violation: Option<String>,
 }
 
 /// A live connection to the one adapter process.
@@ -175,13 +258,25 @@ where
     F: AsyncFnOnce(AgentLink) -> Result<R>,
 {
     adapter.require_pinned()?;
+    link_over(AcpAgent::new(adapter.to_config()), profiles, body).await
+}
+
+/// Runs `body` against an already-chosen transport.
+///
+/// The adapter process is one transport among several the SDK accepts. Naming the transport here
+/// rather than inside [`with_link`] is what lets the wire behaviour this module is responsible for —
+/// the profile echo, the notification window, the shutdown round trip — be exercised against a
+/// scripted agent in process, with no adapter to install and no timing to guess at.
+async fn link_over<T, F, R>(transport: T, profiles: &Profiles, body: F) -> Result<R>
+where
+    T: ConnectTo<Client> + 'static,
+    F: AsyncFnOnce(AgentLink) -> Result<R>,
+{
     let shared = Arc::new(Mutex::new(Shared::default()));
     let profiles = profiles.clone();
 
     let notify_shared = shared.clone();
     let permission_shared = shared.clone();
-
-    let transport = AcpAgent::new(adapter.to_config());
 
     let outcome = Client
         .builder()
@@ -301,20 +396,38 @@ impl AgentLink {
             Ok(offered) => self.prompt_session(spec, &session_id, &key, offered).await,
             Err(e) => Err(e),
         };
+        // The turn is over when `session/prompt` answers, so that is when what the turn produced is
+        // taken. Draining after the `session/close` round trip would let a chunk streamed during
+        // shutdown — after the agent said `end_turn` — become the answer Hwahap parses.
+        let drained = self.drain(&key);
         self.close_session(&session_id).await;
-        let mut state = self.lock()?;
-        state.access.remove(&key);
-        let permissions = state.permissions.remove(&key).unwrap_or_default();
-        let chunks = state.transcripts.remove(&key).unwrap_or_default();
-        drop(state);
 
         let (stop_reason, receipt) = result?;
+        let Drained {
+            chunks,
+            permissions,
+            violation,
+        } = drained?;
+        if let Some(violation) = violation {
+            return Err(Error::UnsupportedProfile(violation));
+        }
         Ok(SessionOutcome {
             final_message: final_message(&chunks),
             transcript: chunks.iter().map(|(_, text)| text.as_str()).collect(),
             receipt,
             stop_reason,
             permissions,
+        })
+    }
+
+    /// Closes a session's books: nothing recorded after this belongs to it.
+    fn drain(&self, key: &str) -> Result<Drained> {
+        let mut state = self.lock()?;
+        state.access.remove(key);
+        Ok(Drained {
+            chunks: state.transcripts.remove(key).unwrap_or_default(),
+            permissions: state.permissions.remove(key).unwrap_or_default(),
+            violation: state.pinned.remove(key).and_then(|pinned| pinned.violation),
         })
     }
 
@@ -326,6 +439,19 @@ impl AgentLink {
         offered: Vec<SessionConfigOption>,
     ) -> Result<(String, Receipt)> {
         let receipt = self.apply_profile(spec, session_id, offered).await?;
+        {
+            // Pinned only now: from here the agent has told Hwahap what it is running, so any
+            // config update it announces during the turn is a change to something proved.
+            let mut state = self.lock()?;
+            state.pinned.insert(
+                key.to_string(),
+                Pinned {
+                    model: receipt.model_applied.clone(),
+                    effort: receipt.effort_applied.as_str().to_string(),
+                    violation: None,
+                },
+            );
+        }
 
         let reply = self
             .cx
@@ -535,24 +661,85 @@ fn stop_reason_name(reason: &StopReason) -> String {
 }
 
 fn record_notification(shared: &Arc<Mutex<Shared>>, notification: &SessionNotification) {
-    let SessionUpdate::AgentMessageChunk(ContentChunk {
-        content: ContentBlock::Text(TextContent { text, .. }),
-        message_id,
-        ..
-    }) = &notification.update
-    else {
-        // Thoughts, tool calls, plans and mode changes are not the control channel. They are the
-        // agent talking to itself, and Hwahap judges by git and exit status instead.
-        return;
-    };
     let Ok(mut state) = shared.lock() else {
         return;
     };
-    state
-        .transcripts
-        .entry(notification.session_id.0.to_string())
-        .or_default()
-        .push((message_id.as_ref().map(ToString::to_string), text.clone()));
+    let key = notification.session_id.0.to_string();
+    if !state.access.contains_key(&key) {
+        // A session Hwahap does not have open: an id it never created, or one whose books are
+        // already closed. Neither belongs to any outcome, and recording them would grow the maps
+        // for the length of the run. The agent cannot stream an answer before it is prompted, so
+        // nothing an outcome needs can arrive before `run_session` records the session.
+        return;
+    }
+
+    match &notification.update {
+        SessionUpdate::AgentMessageChunk(ContentChunk {
+            content: ContentBlock::Text(TextContent { text, .. }),
+            message_id,
+            ..
+        }) => {
+            state
+                .transcripts
+                .entry(key)
+                .or_default()
+                .push((message_id.as_ref().map(ToString::to_string), text.clone()));
+        }
+        SessionUpdate::ConfigOptionUpdate(update) => {
+            // The one notification that bears on an invariant: it reports the session's whole
+            // config, so an agent that switches model or effort mid-turn says so here. Git and exit
+            // status cannot catch this — they say nothing about which model ran.
+            if let Some(pinned) = state.pinned.get_mut(&key) {
+                let departure = announced_departure(&update.config_options, pinned);
+                if pinned.violation.is_none() {
+                    pinned.violation = departure;
+                }
+            }
+        }
+        // The agent talking to itself, or about surfaces Hwahap does not drive: reasoning, tool
+        // calls, plans, slash commands, modes, titles and token usage. Hwahap judges by git and
+        // exit status instead. A non-text chunk lands here too — there is no JSON in an image.
+        SessionUpdate::AgentMessageChunk(_)
+        | SessionUpdate::UserMessageChunk(_)
+        | SessionUpdate::AgentThoughtChunk(_)
+        | SessionUpdate::ToolCall(_)
+        | SessionUpdate::ToolCallUpdate(_)
+        | SessionUpdate::Plan(_)
+        | SessionUpdate::AvailableCommandsUpdate(_)
+        | SessionUpdate::CurrentModeUpdate(_)
+        | SessionUpdate::SessionInfoUpdate(_)
+        | SessionUpdate::UsageUpdate(_) => {}
+        // `SessionUpdate` is `#[non_exhaustive]`, so a variant added to the protocol lands here.
+        // It is ignored until someone reads it and decides it is ignorable, which is why the
+        // variants above are named rather than swept up by this arm.
+        _ => {}
+    }
+}
+
+/// The mid-turn departure from `pinned` that a config update announces, if it announces one.
+///
+/// Only a value that can be read counts: a category the update leaves out, or reports in a shape
+/// with no readable current value, says nothing about what the turn is running on.
+fn announced_departure(options: &[SessionConfigOption], pinned: &Pinned) -> Option<String> {
+    for (category, expected) in [
+        (SessionConfigOptionCategory::Model, pinned.model.as_str()),
+        (
+            SessionConfigOptionCategory::ThoughtLevel,
+            pinned.effort.as_str(),
+        ),
+    ] {
+        match current_value(options, category.clone()) {
+            Ok(announced) if announced != expected => {
+                return Some(format!(
+                    "the agent announced mid-turn that the session's {} is now {announced:?}, but \
+                     the run was pinned to {expected:?} and had verified it",
+                    category_name(&category)
+                ));
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 fn decide_permission(
@@ -575,11 +762,10 @@ fn decide_permission(
     };
 
     if let Ok(mut state) = shared.lock() {
-        state
-            .permissions
-            .entry(key)
-            .or_default()
-            .push(PermissionRecord {
+        // Only a session Hwahap has open has an evidence trail to add to; a request naming any
+        // other id is answered and forgotten rather than filed under a key nobody reads.
+        if let Some(records) = state.permissions.get_mut(&key) {
+            records.push(PermissionRecord {
                 tool: request
                     .tool_call
                     .fields
@@ -588,6 +774,7 @@ fn decide_permission(
                     .unwrap_or_else(|| request.tool_call.tool_call_id.0.to_string()),
                 granted: matches!(access, Access::WorkspaceWrite) && chosen.is_some(),
             });
+        }
     }
 
     match chosen {

@@ -56,7 +56,11 @@ impl WorkerResult {
     /// Parses a worker's final message.
     pub fn parse(final_message: &str) -> Result<WorkerResult> {
         let result: WorkerResult = parse_strict(final_message, Self::CONTRACT)?;
-        match (result.status, result.conflict.as_deref()) {
+        // Trimmed, because a run of spaces names no plan detail either. The conflict is the one
+        // thing the user is shown as the reason the frozen plan stopped, and the engine falls back
+        // to the summary only when the field is absent — a blank string would defeat that fallback
+        // and stop the run with an empty reason.
+        match (result.status, result.conflict.as_deref().map(str::trim)) {
             (WorkerStatus::PlanConflict, None | Some("")) => Err(violation(
                 "status is plan_conflict but conflict is empty; name the plan detail that cannot hold",
                 Self::CONTRACT,
@@ -81,16 +85,21 @@ impl ReviewResult {
 
     /// Parses a reviewer's final message.
     pub fn parse(final_message: &str) -> Result<ReviewResult> {
-        let result: ReviewResult = parse_strict(final_message, Self::CONTRACT)?;
-        if result.verdict == Verdict::Fail && result.findings.iter().all(|f| f.trim().is_empty()) {
-            return Err(violation(
-                "verdict is fail with no findings; a rejection the worker cannot act on is not a review",
-                Self::CONTRACT,
-            ));
-        }
+        let mut result: ReviewResult = parse_strict(final_message, Self::CONTRACT)?;
+        // Checked before the blanks are dropped: a pass that carries anything at all in `findings`
+        // is a reviewer contradicting itself, whatever the entries hold.
         if result.verdict == Verdict::Pass && !result.findings.is_empty() {
             return Err(violation(
                 "verdict is pass with findings; raise them as fail or drop them",
+                Self::CONTRACT,
+            ));
+        }
+        // A blank finding is not a finding: it would reach the rework prompt as an empty bullet the
+        // worker cannot act on, and it would hide a rejection that named nothing at all.
+        result.findings.retain(|f| !f.trim().is_empty());
+        if result.verdict == Verdict::Fail && result.findings.is_empty() {
+            return Err(violation(
+                "verdict is fail with no findings; a rejection the worker cannot act on is not a review",
                 Self::CONTRACT,
             ));
         }
@@ -177,6 +186,26 @@ mod tests {
             assert!(err.contains("conflict is empty"), "{err}");
             assert!(err.contains("plan_conflict"), "{err}");
         }
+    }
+
+    #[test]
+    fn a_plan_conflict_whose_conflict_is_only_whitespace_is_rejected() {
+        for conflict in ["   ", "\n", "\t \n"] {
+            let message = serde_json::json!({
+                "status": "plan_conflict", "summary": "cannot build", "conflict": conflict
+            })
+            .to_string();
+            let err = message_of(WorkerResult::parse(&message).unwrap_err());
+            assert!(err.contains("conflict is empty"), "{conflict:?} -> {err}");
+        }
+    }
+
+    #[test]
+    fn a_blank_finding_never_reaches_the_rework_prompt() {
+        let result =
+            ReviewResult::parse(r#"{"verdict":"fail","findings":["","  ","U3 has no test"]}"#)
+                .unwrap();
+        assert_eq!(result.findings, vec!["U3 has no test"]);
     }
 
     #[test]

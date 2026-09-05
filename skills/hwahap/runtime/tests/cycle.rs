@@ -801,10 +801,25 @@ async fn a_session_whose_applied_model_differs_from_the_requested_one_stops_the_
         .step_with(&script, Some(REQUEST), None)
         .await
         .unwrap();
-    let err = engine.step_with(&script, None, None).await.unwrap_err();
-    let message = err.to_string();
-    assert!(message.starts_with("unsupported_profile: "), "{message}");
-    assert!(message.contains("gpt-5.4-mini"), "{message}");
+
+    // The run stops, and stopping is written down: an error that merely escaped as a protocol
+    // failure would leave the host with no `next` and the run resumable into the same impossibility.
+    let outcome = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(outcome.next, "blocked", "{}", outcome.message);
+    assert_eq!(outcome.state, "blocked");
+    assert!(
+        outcome.message.starts_with("unsupported_profile: "),
+        "{}",
+        outcome.message
+    );
+    assert!(
+        outcome.message.contains("gpt-5.4-mini"),
+        "{}",
+        outcome.message
+    );
+
+    // And it survives a restart rather than being re-attempted.
+    assert_eq!(fixture.engine().status().unwrap().state, "blocked");
 }
 
 #[tokio::test]
@@ -864,8 +879,10 @@ async fn feedback_on_the_pull_request_reopens_planning_at_the_next_revision() {
         .await
         .unwrap();
 
-    assert_eq!(adjusted.state, "deciding", "{}", adjusted.message);
-    assert_eq!(adjusted.next, "await_user");
+    // Planning is re-entered at Inspecting, not Deciding: the adjustment has to reach the
+    // Recommender, and Deciding would find a full frontier and ask nothing new.
+    assert_eq!(adjusted.state, "inspecting", "{}", adjusted.message);
+    assert_eq!(adjusted.next, "continue");
     assert!(
         adjusted
             .message
@@ -960,4 +977,307 @@ async fn an_empty_request_is_refused() {
             .to_string();
         assert!(err.contains("request is empty"), "{empty:?} -> {err}");
     }
+}
+
+// ------------------------------------------------- regressions from the adversarial review
+//
+// Each of these was proven by an independent reviewer as a test that failed on the code as
+// shipped, and upheld by a second agent whose job was to refute it. They are grouped here so the
+// defect each one guards stays visible.
+
+#[tokio::test]
+async fn a_reviewer_that_rewrites_a_file_it_reviewed_has_its_verdict_discarded() {
+    // The guard used to compare the set of changed path *names*. A reviewer rewriting a file the
+    // implementer already changed leaves that set identical, so its verdict was kept and its text
+    // was committed as the unit's work.
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps();
+    steps[6] = step(
+        Role::UnitReviewer,
+        Reply::write(&[("src/added.txt", "the reviewer wrote this\n")], PASS),
+    );
+    steps.insert(7, step(Role::Rework, build_u1()));
+    steps.insert(8, step(Role::UnitReviewer, Reply::say(PASS)));
+    let script = Script::new(steps);
+
+    let outcomes = run_to_draft_pr(&fixture, &script).await;
+    assert_eq!(
+        outcomes.last().expect("outcome").state,
+        "awaiting_adjust_or_ship"
+    );
+
+    let rework = script.prompts_for(Role::Rework);
+    assert_eq!(rework.len(), 1, "the tree-changing reviewer was believed");
+    assert!(
+        rework[0].contains("changed the working tree"),
+        "{}",
+        rework[0]
+    );
+
+    let committed = git(&fixture.worktree(), &["show", "HEAD~1:src/added.txt"]);
+    assert_eq!(
+        committed, "generated",
+        "the reviewer's edit was committed as the unit's work"
+    );
+}
+
+#[tokio::test]
+async fn an_adjustment_is_written_into_the_plan_and_reaches_the_next_planner() {
+    // It used to be echoed back and dropped: no agent ever saw it, nothing was rebuilt, and the
+    // next cycle offered the identical pull request to ship.
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    run_to_draft_pr(&fixture, &script).await;
+    let engine = fixture.engine();
+
+    engine
+        .step_with(
+            &script,
+            None,
+            Some("the documentation must mention --dry-run"),
+        )
+        .await
+        .unwrap();
+
+    let plan: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.repo.join(".hwahap/plan.json")).unwrap(),
+    )
+    .unwrap();
+    let adjustments = plan["adjustments"].as_array().expect("adjustments");
+    assert_eq!(adjustments.len(), 1, "{plan:#}");
+    assert_eq!(
+        adjustments[0]["text"], "the documentation must mention --dry-run",
+        "the feedback was not recorded"
+    );
+    assert_eq!(adjustments[0]["revision"], 2);
+
+    // And the planner is handed it on the next round.
+    script.extend(vec![step(Role::Recommender, Reply::say(decisions()))]);
+    let _ = engine.step_with(&script, None, None).await;
+    let asked = script.prompts_for(Role::Recommender);
+    assert!(
+        asked.iter().any(|p| p.contains("--dry-run")),
+        "no Recommender prompt carried the adjustment: {asked:#?}"
+    );
+}
+
+#[tokio::test]
+async fn an_answer_given_at_the_ship_gate_is_recorded_rather_than_treated_as_prose() {
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    run_to_draft_pr(&fixture, &script).await;
+
+    fixture
+        .engine()
+        .step_with(&script, None, Some("C1=ALT2\nand say why in the docs"))
+        .await
+        .unwrap();
+
+    let plan: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.repo.join(".hwahap/plan.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(plan["decisions"][0]["answer"]["text"], "C1=ALT2");
+    assert_eq!(
+        plan["adjustments"][0]["text"], "and say why in the docs",
+        "the prose beside the answer was lost"
+    );
+}
+
+#[tokio::test]
+async fn a_plan_conflict_can_be_answered_instead_of_stranding_the_run() {
+    // PlanConflict used to have no transition out of it at all: answers were ignored, a new
+    // request was refused, and the only exit was deleting .hwahap by hand.
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps();
+    steps.truncate(5);
+    steps.push(step(
+        Role::Implementer,
+        Reply::say(
+            r#"{"status":"plan_conflict","summary":"cannot","conflict":"C1 assumes a sync API"}"#,
+        ),
+    ));
+    let script = Script::new(steps);
+
+    let challenge = plan_to_confirmation(&fixture, &script).await;
+    let engine = fixture.engine();
+    engine
+        .step_with(&script, None, Some(&format!("CONFIRM PLAN {challenge}")))
+        .await
+        .unwrap();
+    let conflicted = engine.step_with(&script, None, None).await.unwrap();
+    assert_eq!(conflicted.state, "plan_conflict");
+
+    let answered = engine
+        .step_with(&script, None, Some("C1=ALT2\nthe API is async"))
+        .await
+        .unwrap();
+    assert_eq!(answered.state, "inspecting", "{}", answered.message);
+
+    let plan: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.repo.join(".hwahap/plan.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(plan["decisions"][0]["answer"]["text"], "C1=ALT2");
+    assert_eq!(plan["revision"], 2);
+    assert!(
+        plan["frozen"].is_null(),
+        "the conflicting plan is still frozen"
+    );
+}
+
+#[tokio::test]
+async fn a_second_run_in_the_same_repository_can_be_frozen() {
+    // Nothing ever removed the run worktree, so `add_worktree` refused the path and every retry of
+    // the second run failed identically.
+    let fixture = Fixture::new();
+    let first = Script::new(happy_path_steps());
+    let outcomes = run_to_draft_pr(&fixture, &first).await;
+    let challenge = challenge_in(&outcomes.last().expect("outcome").message, "SHIP ");
+    fixture.engine().ship(&format!("SHIP {challenge}")).unwrap();
+
+    let second = Script::new(happy_path_steps());
+    let engine = fixture.engine();
+    engine
+        .step_with(&second, Some("Rename the widget module"), None)
+        .await
+        .unwrap();
+    engine.step_with(&second, None, None).await.unwrap();
+    engine
+        .step_with(&second, None, Some(&all_answers()))
+        .await
+        .unwrap();
+    let proved = engine.step_with(&second, None, None).await.unwrap();
+    let challenge = challenge_in(&proved.message, "CONFIRM PLAN ");
+
+    let frozen = engine
+        .step_with(&second, None, Some(&format!("CONFIRM PLAN {challenge}")))
+        .await
+        .expect("the second run must be freezable");
+    assert_eq!(frozen.state, "coding", "{}", frozen.message);
+}
+
+#[tokio::test]
+async fn an_answer_sent_with_a_confirmation_wins_and_the_confirmation_is_refused() {
+    // Both arrive in one message when a user changes their mind and confirms in one breath. The
+    // challenge describes the plan as it was a moment ago, so honouring it would freeze the very
+    // content the user just replaced.
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps();
+    steps.truncate(5);
+    steps.push(step(Role::ColdConsumer, Reply::say(PASS)));
+    steps.push(step(Role::PlanCritic, Reply::say(PASS)));
+    let script = Script::new(steps);
+
+    let challenge = plan_to_confirmation(&fixture, &script).await;
+    let engine = fixture.engine();
+    let outcome = engine
+        .step_with(
+            &script,
+            None,
+            Some(&format!("C1=ALT2\nCONFIRM PLAN {challenge}")),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(outcome.state, "deciding", "{}", outcome.message);
+    assert!(!fixture.worktree().exists(), "the plan was frozen anyway");
+
+    let plan: serde_json::Value = serde_json::from_str(
+        &std::fs::read_to_string(fixture.repo.join(".hwahap/plan.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(plan["decisions"][0]["answer"]["text"], "C1=ALT2");
+    assert!(plan["frozen"].is_null());
+}
+
+#[tokio::test]
+async fn rec_is_refused_on_a_decision_that_recommends_nothing() {
+    // C2 carries `no_recommendation`. Recorded blindly, `C2=REC` counted as answered, resolved to
+    // nothing, and froze a plan whose unit briefs never mentioned the decision.
+    let fixture = Fixture::new();
+    let mut steps = happy_path_steps();
+    steps.truncate(2);
+    let script = Script::new(steps);
+    let engine = fixture.engine();
+
+    engine
+        .step_with(&script, Some(REQUEST), None)
+        .await
+        .unwrap();
+    engine.step_with(&script, None, None).await.unwrap();
+
+    let err = engine
+        .step_with(&script, None, Some("C2=REC"))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("no recommendation to take"), "{err}");
+    assert!(err.contains("C2=OTHER"), "{err}");
+}
+
+#[tokio::test]
+async fn a_subdirectory_addresses_the_same_run_rather_than_starting_a_second_one() {
+    // The store used to be rooted at whatever path the caller passed, so a host whose user sat in
+    // a package directory silently started a second run in one repository.
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    fixture
+        .engine()
+        .step_with(&script, Some(REQUEST), None)
+        .await
+        .unwrap();
+
+    let nested = hwahap::engine::Engine::open(&fixture.repo.join("src"))
+        .unwrap()
+        .with_parts(
+            Box::new(hwahap::clock::FixedClock::new(NOW)),
+            hwahap::forge::Forge::with_program(fixture.gh.to_str().unwrap()),
+        );
+    assert_eq!(nested.status().unwrap().state, "inspecting");
+    assert!(!fixture.repo.join("src/.hwahap").exists());
+}
+
+#[tokio::test]
+async fn status_on_an_untouched_repository_writes_nothing_at_all() {
+    // The tool is annotated read-only and its description says it changes nothing.
+    let fixture = Fixture::new();
+    let before = git(
+        &fixture.repo,
+        &["status", "--porcelain", "--untracked-files=all"],
+    );
+    assert_eq!(fixture.engine().status().unwrap().state, "no_run");
+    assert!(
+        !fixture.repo.join(".hwahap").exists(),
+        ".hwahap was created"
+    );
+    assert_eq!(
+        git(
+            &fixture.repo,
+            &["status", "--porcelain", "--untracked-files=all"]
+        ),
+        before
+    );
+}
+
+#[tokio::test]
+async fn every_session_leaves_its_own_receipt() {
+    // Receipts used to be named from the role and the clock, so two sessions of one role inside a
+    // second overwrote each other and the profile evidence for the run was incomplete.
+    let fixture = Fixture::new();
+    let script = Script::new(happy_path_steps());
+    run_to_draft_pr(&fixture, &script).await;
+
+    let receipts = std::fs::read_dir(fixture.repo.join(".hwahap/artifacts"))
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|name| name.starts_with("receipt-"))
+        .count();
+    assert_eq!(
+        receipts,
+        script.calls().len(),
+        "one receipt per session, and there were {} sessions",
+        script.calls().len()
+    );
 }

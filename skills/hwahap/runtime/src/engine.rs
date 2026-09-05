@@ -65,21 +65,30 @@ pub struct Engine {
     forge: Forge,
     config: Config,
     clock: Box<dyn Clock>,
+    /// How many agent sessions this engine has run, so receipts get distinct names.
+    sessions_run: std::sync::atomic::AtomicU32,
 }
 
 impl Engine {
     /// Opens the engine for a repository, creating `.hwahap/` if needed.
+    ///
+    /// The run is identified by the git work tree, not by the path the caller happened to pass.
+    /// A host whose user is sitting in a package subdirectory addresses the same repository, and
+    /// rooting the store at the raw argument would give that subdirectory a second `.hwahap/` and
+    /// therefore a second active run in one repository — the one thing Hwahap says it never allows.
     pub fn open(repo_root: &Path) -> Result<Engine> {
         let git = Git::open(repo_root)?;
-        let store = Store::open(repo_root)?;
+        let root = git.root().to_path_buf();
+        let store = Store::open(&root)?;
         let config = Config::load(store.root())?;
         Ok(Engine {
-            repo_root: repo_root.to_path_buf(),
+            repo_root: root,
             store,
             git,
             forge: Forge::default(),
             config,
             clock: Box::new(SystemClock),
+            sessions_run: std::sync::atomic::AtomicU32::new(0),
         })
     }
 
@@ -119,8 +128,34 @@ impl Engine {
     ) -> Result<StepOutcome> {
         match self.resolve(request)? {
             Resolved::Started(outcome) => Ok(outcome),
-            Resolved::Advance(run) if run.state.needs_sessions() => self.with_sessions(run).await,
-            Resolved::Advance(run) => self.advance(run, user_input),
+            Resolved::Advance(run) if run.state.needs_sessions() => {
+                let resumable = run.clone();
+                self.block_if_terminal(resumable, self.with_sessions(run).await)
+            }
+            Resolved::Advance(run) => {
+                let resumable = run.clone();
+                self.block_if_terminal(resumable, self.advance(run, user_input))
+            }
+        }
+    }
+
+    /// Turns an error the run cannot recover from into a persisted `blocked` state.
+    ///
+    /// Without this an unsupported profile leaves as a protocol error: the host sees an opaque
+    /// internal failure with no `next`, the run's stored state is untouched, and the very next call
+    /// tries the same impossible thing again. The promise is that the run *stops*, and stopping is
+    /// something that has to be written down.
+    fn block_if_terminal(&self, mut run: Run, outcome: Result<StepOutcome>) -> Result<StepOutcome> {
+        match outcome {
+            Err(e) if e.is_terminal_for_run() => {
+                let reason = e.to_string();
+                run.state = RunState::Blocked {
+                    reason: reason.clone(),
+                };
+                self.store.write_run(&*self.clock, &run)?;
+                Ok(self.report(&run, reason))
+            }
+            other => other,
         }
     }
 
@@ -136,8 +171,14 @@ impl Engine {
     ) -> Result<StepOutcome> {
         match self.resolve(request)? {
             Resolved::Started(outcome) => Ok(outcome),
-            Resolved::Advance(run) if run.state.needs_sessions() => self.drive(run, sessions).await,
-            Resolved::Advance(run) => self.advance(run, user_input),
+            Resolved::Advance(run) if run.state.needs_sessions() => {
+                let resumable = run.clone();
+                self.block_if_terminal(resumable, self.drive(run, sessions).await)
+            }
+            Resolved::Advance(run) => {
+                let resumable = run.clone();
+                self.block_if_terminal(resumable, self.advance(run, user_input))
+            }
         }
     }
 
@@ -152,8 +193,10 @@ impl Engine {
             )),
             (Some(run), Some(request)) if run.state.is_terminal() => {
                 // A finished run does not block the next one, but it is not silently overwritten:
-                // the previous run's files are archived first.
+                // the previous run's files are archived first. Its worktree goes too — nothing else
+                // ever removes it, and the next run cannot create one at a path that still exists.
                 self.store.archive(&*self.clock)?;
+                self.git.remove_worktree(&self.store.worktree_path())?;
                 Ok(Resolved::Started(self.start(request)?))
             }
             (Some(run), Some(_)) => Err(Error::Rejected(format!(
@@ -253,6 +296,7 @@ impl Engine {
             revision: 1,
             state: RunState::Inspecting,
             accepted_units: Vec::new(),
+            accepted_fingerprints: Default::default(),
             plan_digest: None,
             branch: String::new(),
             reviewed_head: None,
@@ -273,7 +317,8 @@ impl Engine {
                 self.freeze(run, &challenge, user_input)
             }
             RunState::AwaitingAdjustOrShip { .. } => self.adjust(run, user_input),
-            RunState::Shipped { .. } | RunState::Blocked { .. } | RunState::PlanConflict { .. } => {
+            RunState::PlanConflict { .. } => self.resolve_conflict(run, user_input),
+            RunState::Shipped { .. } | RunState::Blocked { .. } => {
                 let plan = self.store.read_plan()?;
                 let message = self.describe(&run, plan.as_ref())?;
                 Ok(self.report(&run, message))
@@ -311,20 +356,24 @@ impl Engine {
     async fn inspect(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         let mut plan = self.require_plan()?;
 
-        let facts = self
-            .ask(
-                sessions,
-                Role::FactFinder,
-                None,
-                prompts::fact_finder(&format!(
-                    "Everything a planner needs to know about this repository before designing: \
-                     {}",
-                    plan.goal.statement
-                )),
-            )
-            .await?;
-        let facts = proposal::FactsProposal::parse(&facts.final_message, &plan)?;
-        plan.facts.extend(facts.facts);
+        // Facts are established once. An adjustment re-enters here to get its questions asked, and
+        // re-reading the repository would only pile duplicate facts onto the plan.
+        if plan.facts.is_empty() {
+            let facts = self
+                .ask(
+                    sessions,
+                    Role::FactFinder,
+                    None,
+                    prompts::fact_finder(&format!(
+                        "Everything a planner needs to know about this repository before \
+                         designing: {}",
+                        plan.goal.statement
+                    )),
+                )
+                .await?;
+            let facts = proposal::FactsProposal::parse(&facts.final_message, &plan)?;
+            plan.facts.extend(facts.facts);
+        }
 
         let decisions = self
             .ask(
@@ -457,20 +506,38 @@ impl Engine {
                     prompts::decisions(&plan, &findings),
                 )
                 .await?;
+            let before = plan.decisions.len();
             self.apply_decisions(&mut plan, &more.final_message)?;
+            let listed = findings
+                .iter()
+                .map(|f| format!("- {f}"))
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            if plan.decisions.len() == before {
+                // The findings reduced to nothing the user can answer. Going back to Deciding would
+                // find an empty frontier, return here, and burn three sessions again on every pass;
+                // the run has to stop and say what it could not turn into a question.
+                self.save_plan(&plan)?;
+                run.state = RunState::Blocked {
+                    reason: format!(
+                        "the plan review raised {} finding(s) that could not be turned into a \
+                         decision for you to answer:\n{listed}",
+                        findings.len()
+                    ),
+                };
+                self.store.write_run(&*self.clock, &run)?;
+                return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+            }
+
             self.save_plan(&plan)?;
             run.state = RunState::Deciding;
             self.store.write_run(&*self.clock, &run)?;
             return Ok(self.report(
                 &run,
                 format!(
-                    "The plan review raised {} finding(s), so there are more decisions to make:\n\n{}",
-                    findings.len(),
-                    findings
-                        .iter()
-                        .map(|f| format!("- {f}"))
-                        .collect::<Vec<_>>()
-                        .join("\n")
+                    "The plan review raised {} finding(s), so there are more decisions to make:\n\n{listed}",
+                    findings.len()
                 ),
             ));
         }
@@ -524,28 +591,45 @@ impl Engine {
         };
 
         let parsed = parse_message(input);
+
+        // Answers are read before the confirmation, and win over it. A message holding both is a
+        // user who changed their mind and confirmed in one breath: the challenge they typed
+        // describes the plan as it was a moment ago, so honouring it would freeze the very content
+        // they just replaced. Nothing here may be silently dropped either way.
+        if parsed
+            .directives
+            .iter()
+            .any(|d| matches!(d, Directive::Decision { .. } | Directive::Surface { .. }))
+        {
+            let also_confirmed = parsed
+                .directives
+                .iter()
+                .any(|d| matches!(d, Directive::ConfirmPlan { .. }));
+            self.record_answers(&mut plan, &parsed.directives)?;
+            self.save_plan(&plan)?;
+            run.state = RunState::Deciding;
+            self.store.write_run(&*self.clock, &run)?;
+            return Ok(self.report(
+                &run,
+                if also_confirmed {
+                    "That message both changed an answer and confirmed the plan. The answer was \
+                     recorded and the confirmation was not: it named the plan as it stood before \
+                     the change. Hwahap is re-deriving the remaining questions and will print a \
+                     new challenge."
+                        .to_string()
+                } else {
+                    "That changed an answer, so the plan is no longer the one you were about to \
+                     confirm. Hwahap is re-deriving the remaining questions."
+                        .to_string()
+                },
+            ));
+        }
+
         let typed = parsed.directives.iter().find_map(|d| match d {
             Directive::ConfirmPlan { challenge } => Some(challenge.clone()),
             _ => None,
         });
         let Some(typed) = typed else {
-            // Answers can still arrive here: the user may have changed their mind while reading.
-            if parsed
-                .directives
-                .iter()
-                .any(|d| matches!(d, Directive::Decision { .. } | Directive::Surface { .. }))
-            {
-                self.record_answers(&mut plan, &parsed.directives)?;
-                self.save_plan(&plan)?;
-                run.state = RunState::Deciding;
-                self.store.write_run(&*self.clock, &run)?;
-                return Ok(self.report(
-                    &run,
-                    "That changed an answer, so the plan is no longer the one you were about to \
-                     confirm. Hwahap is re-deriving the remaining questions."
-                        .into(),
-                ));
-            }
             return Ok(self.report(
                 &run,
                 format!(
@@ -587,6 +671,15 @@ impl Engine {
                 .add_worktree(&worktree, &branch, &plan.base_branch)?;
         }
 
+        // Anything accepted against a plan detail this revision changed is no longer accepted.
+        // Keeping it would let an adjustment ship the branch unchanged; dropping everything would
+        // rebuild work the user never questioned. The fingerprint is what tells the two apart.
+        let invalidated = self.invalidated_units(&plan, &run)?;
+        run.accepted_units.retain(|id| !invalidated.contains(id));
+        for id in &invalidated {
+            run.accepted_fingerprints.remove(id);
+        }
+
         let order = validate::unit_order(&plan)?;
         let first = order
             .first()
@@ -603,12 +696,32 @@ impl Engine {
         Ok(self.report(
             &run,
             format!(
-                "Plan frozen. Hwahap is building {} unit(s) on `{}` and will report when the draft \
-                 pull request is ready.",
+                "Plan frozen. Hwahap is building {} of {} unit(s) on `{}` and will report when the \
+                 draft pull request is ready.",
+                order.len() - run.accepted_units.len(),
                 order.len(),
                 run.branch
             ),
         ))
+    }
+
+    /// Accepted units whose plan detail has moved since they were accepted.
+    fn invalidated_units(&self, plan: &Plan, run: &Run) -> Result<Vec<String>> {
+        let mut invalidated = Vec::new();
+        for id in &run.accepted_units {
+            let still_valid = match (run.accepted_fingerprints.get(id), plan.unit(id)) {
+                // The unit itself is gone from the plan, so nothing it built is wanted.
+                (_, None) => false,
+                (Some(recorded), Some(_)) => *recorded == plan.unit_fingerprint(id)?,
+                // Accepted before fingerprints were recorded: assume it must be rebuilt rather than
+                // assume it is still right.
+                (None, Some(_)) => false,
+            };
+            if !still_valid {
+                invalidated.push(id.clone());
+            }
+        }
+        Ok(invalidated)
     }
 
     // ------------------------------------------------------------------ coding
@@ -618,26 +731,42 @@ impl Engine {
         let worktree = self.store.worktree_path();
         let order = validate::unit_order(&plan)?;
 
-        for unit_id in order {
-            if run.accepted_units.contains(&unit_id) {
+        for (position, unit_id) in order.iter().enumerate() {
+            if run.accepted_units.contains(unit_id) {
                 continue;
             }
             let unit = plan
-                .unit(&unit_id)
+                .unit(unit_id)
                 .ok_or_else(|| Error::Internal(format!("unit {unit_id} vanished from the plan")))?;
+            let probe = unit.probe;
 
             match self.build_unit(&plan, unit, &worktree, sessions).await? {
                 UnitOutcome::Accepted => {
+                    // A probe is a reversible experiment that settles a question; its output is an
+                    // answer, not a change to ship. Committing it would push code into the pull
+                    // request that no acceptance criterion asked for and no test has to cover.
+                    if probe {
+                        let checkpoint = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
+                        self.git.reset_hard(&worktree, &checkpoint)?;
+                    }
+                    run.accepted_fingerprints
+                        .insert(unit_id.clone(), plan.unit_fingerprint(unit_id)?);
                     run.accepted_units.push(unit_id.clone());
-                    run.state = RunState::Coding {
-                        unit: unit_id,
-                        attempt: 1,
+                    // Name what is being built next, not what was just finished: `status` reports
+                    // this state and a user reading it should not be told a finished unit is
+                    // underway.
+                    run.state = match order.get(position + 1) {
+                        Some(next) => RunState::Coding {
+                            unit: next.clone(),
+                            attempt: 1,
+                        },
+                        None => RunState::FinalVerifying,
                     };
                     self.store.write_run(&*self.clock, &run)?;
                 }
                 UnitOutcome::Conflict(detail) => {
                     run.state = RunState::PlanConflict {
-                        unit: unit_id,
+                        unit: unit_id.clone(),
                         detail: detail.clone(),
                     };
                     self.store.write_run(&*self.clock, &run)?;
@@ -697,56 +826,65 @@ impl Engine {
                 &outcome.transcript,
             )?;
 
-            let result = match WorkerResult::parse(&outcome.final_message) {
-                Ok(result) => result,
+            // A malformed result is a rejection like any other, and it must reach the diagnosis
+            // below rather than jumping past it — an attempt that never parses is exactly the
+            // repeated failure the diagnosis exists to explain.
+            let parsed = WorkerResult::parse(&outcome.final_message);
+            let mut rejected: Option<Vec<String>> = None;
+            let result = match parsed {
+                Ok(result) => Some(result),
                 Err(e) => {
-                    findings = vec![e.to_string()];
-                    continue;
+                    rejected = Some(vec![e.to_string()]);
+                    None
                 }
             };
 
-            match result.status {
-                WorkerStatus::PlanConflict => {
-                    let changed = self.git.changed_paths(worktree)?;
-                    if !changed.is_empty() {
-                        // A conflict that also wrote code is not a conflict report; it is an
-                        // unreviewed change, and it goes back the way any other rejection does.
-                        findings = vec![format!(
+            if let Some(result) = result {
+                match result.status {
+                    WorkerStatus::PlanConflict => {
+                        let changed = self.git.changed_paths(worktree)?;
+                        if !changed.is_empty() {
+                            // A conflict that also wrote code is not a conflict report; it is an
+                            // unreviewed change, and it goes back the way any other rejection does.
+                            rejected = Some(vec![format!(
                             "you reported a plan conflict but changed {changed:?}; a plan conflict \
                              must leave the working tree untouched"
-                        )];
-                        continue;
-                    }
-                    return Ok(UnitOutcome::Conflict(
-                        result.conflict.unwrap_or(result.summary),
-                    ));
-                }
-                WorkerStatus::Failed => {
-                    findings = vec![format!(
-                        "the previous attempt reported failure: {}",
-                        result.summary
-                    )];
-                }
-                WorkerStatus::Completed => {
-                    match self.verify_unit(plan, unit, worktree, sessions).await? {
-                        Ok(()) => {
-                            let sha = self.git.commit_all(
-                                worktree,
-                                &format!(
-                                    "hwahap({}): {}\n\nplan-digest: {}\nunit: {}",
-                                    unit.id,
-                                    unit.title,
-                                    plan.digest()?,
-                                    unit.id
-                                ),
-                            )?;
-                            let _ = sha;
-                            return Ok(UnitOutcome::Accepted);
+                        )]);
+                        } else {
+                            return Ok(UnitOutcome::Conflict(
+                                result.conflict.unwrap_or(result.summary),
+                            ));
                         }
-                        Err(rejected) => findings = rejected,
+                    }
+                    WorkerStatus::Failed => {
+                        rejected = Some(vec![format!(
+                            "the previous attempt reported failure: {}",
+                            result.summary
+                        )]);
+                    }
+                    WorkerStatus::Completed => {
+                        match self.verify_unit(plan, unit, worktree, sessions).await? {
+                            Ok(()) => {
+                                let sha = self.git.commit_all(
+                                    worktree,
+                                    &format!(
+                                        "hwahap({}): {}\n\nplan-digest: {}\nunit: {}",
+                                        unit.id,
+                                        unit.title,
+                                        plan.digest()?,
+                                        unit.id
+                                    ),
+                                )?;
+                                let _ = sha;
+                                return Ok(UnitOutcome::Accepted);
+                            }
+                            Err(reasons) => rejected = Some(reasons),
+                        }
                     }
                 }
             }
+
+            findings = rejected.unwrap_or_default();
 
             if attempt == MAX_ATTEMPTS - 1 {
                 let diagnosis = self
@@ -820,8 +958,13 @@ impl Engine {
         // because a permission callback that is never invoked proves nothing.
         // Stage first: a unit's new files are untracked, and `git diff HEAD` does not show
         // untracked content. A reviewer handed an empty diff would pass everything.
+        //
+        // The before/after guard is a tree object, not a list of path names. A reviewer that
+        // rewrites a file the implementer already changed leaves the set of changed *paths*
+        // identical, so a name comparison keeps its verdict and commits the reviewer's text as the
+        // unit's work. A tree id covers content, mode and deletion in one value.
         self.git.run_in(worktree, &["add", "-A"])?;
-        let before = self.git.changed_paths(worktree)?;
+        let before = self.git.run_in(worktree, &["write-tree"])?;
         let diff = self.git.run_in(worktree, &["diff", "--cached", "HEAD"])?;
         let review = self
             .ask(
@@ -831,7 +974,8 @@ impl Engine {
                 prompts::unit_reviewer(plan, unit, &tail(&diff, 200_000)),
             )
             .await?;
-        let after = self.git.changed_paths(worktree)?;
+        self.git.run_in(worktree, &["add", "-A"])?;
+        let after = self.git.run_in(worktree, &["write-tree"])?;
         if before != after {
             return Ok(Err(vec![
                 "the review session changed the working tree, so its verdict was discarded"
@@ -922,24 +1066,96 @@ impl Engine {
             return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
         }
 
-        // An adjustment re-opens PLAN at the same revision's successor. Accepted units stay
-        // accepted; the freeze gate decides which of them the new answers invalidate.
+        // An adjustment re-opens PLAN at the next revision. The feedback is *written into the
+        // plan*, not merely echoed: the next Recommender round reads it from there. Echoing it and
+        // dropping it is how a cycle re-freezes, finds every unit already accepted, rebuilds
+        // nothing, and offers the user the identical pull request to ship.
         let mut plan = plan;
+        let parsed = parse_message(input);
+        // Unrecognized lines are not errors here: at this gate prose *is* the message, and a user
+        // who answers a decision and explains why in the next breath has said two useful things.
+        // Only answering the same thing twice is genuinely ambiguous.
+        if !parsed.conflicts.is_empty() {
+            return Ok(self.report(
+                &run,
+                format!(
+                    "These were answered more than once in the same message, so Hwahap recorded \
+                     none of them: {}. Send one answer each.",
+                    parsed.conflicts.join(", ")
+                ),
+            ));
+        }
+        self.record_answers(&mut plan, &parsed.directives)?;
+
+        let prose = free_text(input, &parsed.directives);
         plan.revision += 1;
+        if !prose.is_empty() {
+            plan.adjustments.push(crate::plan::Adjustment {
+                revision: plan.revision,
+                text: prose.clone(),
+                ts: self.clock.now(),
+            });
+        }
         plan.frozen = None;
         plan.reviews = crate::plan::PlanReviews::default();
         self.save_plan(&plan)?;
 
         run.revision = plan.revision;
-        run.state = RunState::Deciding;
+        run.state = RunState::Inspecting;
         self.store.write_run(&*self.clock, &run)?;
         Ok(self.report(
             &run,
             format!(
-                "Hwahap will fold this into the plan as revision {}:\n\n{}\n\nIt will ask about \
-                 anything that changes a decision you already made.",
+                "Hwahap recorded this as revision {} and will plan against it:\n\n{}\n\nIt will \
+                 ask about anything that changes a decision you already made, and rebuild only the \
+                 units the change actually affects.",
                 plan.revision,
-                input.trim()
+                if prose.is_empty() {
+                    "(the answers you gave)".to_string()
+                } else {
+                    prose
+                }
+            ),
+        ))
+    }
+
+    /// Lets the user answer their way out of a plan conflict.
+    ///
+    /// Without this the state is a trap: the worker reported that the frozen plan cannot hold, the
+    /// message says "answer the affected decisions again", and nothing in the engine reads an
+    /// answer in this state or lets a new request replace the run. The only exit was deleting
+    /// `.hwahap` by hand and losing the plan and the journal with it.
+    fn resolve_conflict(&self, mut run: Run, user_input: Option<&str>) -> Result<StepOutcome> {
+        let mut plan = self.require_plan()?;
+        let Some(input) = user_input.map(str::trim).filter(|i| !i.is_empty()) else {
+            return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+        };
+
+        let parsed = parse_message(input);
+        self.record_answers(&mut plan, &parsed.directives)?;
+
+        let prose = free_text(input, &parsed.directives);
+        plan.revision += 1;
+        if !prose.is_empty() {
+            plan.adjustments.push(crate::plan::Adjustment {
+                revision: plan.revision,
+                text: prose,
+                ts: self.clock.now(),
+            });
+        }
+        plan.frozen = None;
+        plan.reviews = crate::plan::PlanReviews::default();
+        self.save_plan(&plan)?;
+
+        run.revision = plan.revision;
+        run.state = RunState::Inspecting;
+        self.store.write_run(&*self.clock, &run)?;
+        Ok(self.report(
+            &run,
+            format!(
+                "Hwahap reopened the plan as revision {}. Accepted units are kept; the ones the \
+                 conflict changes will be built again.",
+                plan.revision
             ),
         ))
     }
@@ -974,12 +1190,15 @@ impl Engine {
         };
         let outcome = sessions.run(&spec).await?;
         outcome.receipt.verify()?;
+        // Numbered, not timestamped: two sessions of the same role inside one second are ordinary,
+        // and a name built from the clock would let the second overwrite the first. The profile
+        // evidence for a run has to be complete or it proves nothing.
+        let sequence = self
+            .sessions_run
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
         self.store.write_artifact(
-            &format!(
-                "receipt-{}-{}.json",
-                role.as_str(),
-                self.clock.now().replace(':', "-")
-            ),
+            &format!("receipt-{sequence:04}-{}.json", role.as_str()),
             &serde_json::to_string_pretty(&outcome.receipt)
                 .map_err(|e| Error::Internal(e.to_string()))?,
         )?;
@@ -1018,6 +1237,17 @@ impl Engine {
                         if !decision.alternatives.iter().any(|a| &a.id == alt) {
                             return Err(Error::Rejected(format!("{id} has no alternative {alt}")));
                         }
+                    }
+                    // "Take the recommendation" is only an answer where there is one to take.
+                    // Recorded blindly it counts as answered, resolves to nothing, and freezes a
+                    // plan whose unit briefs never mention the decision at all.
+                    if matches!(selection, Selection::Recommendation)
+                        && decision.recommendation.recommended_alternative().is_none()
+                    {
+                        return Err(Error::Rejected(format!(
+                            "{id} has no recommendation to take, so {id}=REC answers nothing. \
+                             Choose one of its alternatives, or answer {id}=OTHER: <value>."
+                        )));
                     }
                     let identity = decision.identity_digest()?;
                     let recommendation = matches!(selection, Selection::Recommendation)
@@ -1080,18 +1310,30 @@ impl Engine {
     async fn run_command(&self, cwd: &Path, command: &str) -> Result<CommandOutput> {
         // Run through a shell because the plan's commands are written the way a person writes
         // them, with pipes and flags. The command comes from a frozen plan the user confirmed.
-        let child = tokio::process::Command::new("sh")
+        let mut builder = tokio::process::Command::new("sh");
+        builder
             .arg("-c")
             .arg(command)
             .current_dir(cwd)
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped())
+            // Kill the shell if this future is ever dropped — a cancelled step must not leave a
+            // test suite running against the worktree it is about to reset.
+            .kill_on_drop(true);
+        // Its own process group, so a timeout can end everything the command started rather than
+        // only the shell that started it. `sh -c 'sleep 300; ...'` leaves the sleep behind
+        // otherwise, and that orphan goes on writing into the worktree Hwahap has already moved on
+        // from — which makes the diff and the changed-path check describe a tree nobody built.
+        #[cfg(unix)]
+        builder.process_group(0);
+
+        let child = builder
             .spawn()
             .map_err(|e| Error::command(command, e.to_string()))?;
+        let pid = child.id();
 
         let timeout = std::time::Duration::from_secs(self.config.test_timeout_secs);
-        let finished = tokio::time::timeout(timeout, child.wait_with_output()).await;
-        match finished {
+        match tokio::time::timeout(timeout, child.wait_with_output()).await {
             Ok(Ok(output)) => Ok(CommandOutput {
                 success: output.status.success(),
                 combined: format!(
@@ -1101,13 +1343,18 @@ impl Engine {
                 ),
             }),
             Ok(Err(e)) => Err(Error::command(command, e.to_string())),
-            Err(_) => Ok(CommandOutput {
-                success: false,
-                combined: format!(
-                    "the command did not finish within {}s and was treated as a failure",
-                    self.config.test_timeout_secs
-                ),
-            }),
+            Err(_) => {
+                if let Some(pid) = pid {
+                    kill_process_group(pid);
+                }
+                Ok(CommandOutput {
+                    success: false,
+                    combined: format!(
+                        "the command did not finish within {}s and was killed",
+                        self.config.test_timeout_secs
+                    ),
+                })
+            }
         }
     }
 
@@ -1185,6 +1432,28 @@ impl Engine {
     }
 }
 
+/// Kills the process group led by `pid`, best effort.
+///
+/// Best effort because there is nothing useful to do when it fails: the group may already be gone,
+/// which is the outcome we wanted anyway. What matters is that the attempt is made before Hwahap
+/// resets the worktree out from under whatever was still running in it.
+#[cfg(unix)]
+fn kill_process_group(pid: u32) -> bool {
+    // SAFETY: `killpg` takes a process group id and a signal and touches no memory. The group was
+    // created by `process_group(0)` on the child Hwahap spawned, so the id is the child's own pid
+    // and cannot name an unrelated group that Hwahap did not create.
+    unsafe { libc::killpg(pid as libc::pid_t, libc::SIGKILL) == 0 }
+}
+
+/// Without process groups there is nothing portable to kill here.
+///
+/// Hwahap runs a plan's commands through `sh -c` and is unix-only for that reason; see
+/// PLATFORM.md §4. `kill_on_drop` still ends the shell itself when the future is dropped.
+#[cfg(not(unix))]
+fn kill_process_group(_pid: u32) -> bool {
+    false
+}
+
 enum Resolved {
     Started(StepOutcome),
     Advance(Run),
@@ -1211,7 +1480,34 @@ fn describe_selection(selection: &Selection) -> String {
     }
 }
 
+/// The lines of a message that were not directives, joined back together.
+///
+/// A user answering `C1=ALT2` and explaining why in the next breath said two things, and both are
+/// worth keeping: the answer is recorded against the decision, and the explanation is what the next
+/// planning round reads.
+fn free_text(input: &str, directives: &[Directive]) -> String {
+    if directives.is_empty() {
+        return input.trim().to_string();
+    }
+    input
+        .lines()
+        .filter(|line| {
+            let line = line.trim();
+            !line.is_empty() && parse_message(line).directives.is_empty()
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .trim()
+        .to_string()
+}
+
 /// A stable, filesystem-safe run identifier derived from the date and the request.
+///
+/// The slug is only the first few words, so it is readable but not unique: "add a dry-run flag to
+/// apply" and "add a dry-run flag to delete" share it. The identifier also names the branch, and
+/// two runs sharing a branch means the second silently builds on the first's commits — so a digest
+/// of the whole request is appended. It is derived, not random: the same request on the same day is
+/// still the same run.
 fn goal_id(now: &str, request: &str) -> String {
     let date: String = now.chars().take(10).collect();
     let slug: String = request
@@ -1224,10 +1520,16 @@ fn goal_id(now: &str, request: &str) -> String {
         .take(5)
         .collect::<Vec<_>>()
         .join("-");
+    let fingerprint: String = Digest::of_bytes(request.trim().as_bytes())
+        .as_str()
+        .trim_start_matches("sha256:")
+        .chars()
+        .take(8)
+        .collect();
     if slug.is_empty() {
-        date
+        format!("{date}-{fingerprint}")
     } else {
-        format!("{date}-{slug}")
+        format!("{date}-{slug}-{fingerprint}")
     }
 }
 
@@ -1258,29 +1560,116 @@ impl Next {
 mod tests {
     use super::*;
 
+    /// PROOF: a command that outruns its timeout keeps running after `run_command` returns.
+    ///
+    /// `tokio::process::Command` defaults to `kill_on_drop(false)`, so dropping the
+    /// `wait_with_output()` future on timeout drops the `Child` without signalling it. The shell
+    /// and everything it spawned survive — still holding, and still writing into, the run worktree
+    /// that Hwahap is about to reset for the next attempt.
+    #[tokio::test]
+    async fn a_timed_out_command_is_killed_rather_than_orphaned() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = dir.path();
+        for args in [
+            vec!["init", "-b", "main", "--quiet"],
+            vec!["config", "user.email", "t@example.invalid"],
+            vec!["config", "user.name", "t"],
+        ] {
+            std::process::Command::new("git")
+                .args(&args)
+                .current_dir(repo)
+                .output()
+                .unwrap();
+        }
+        std::fs::write(repo.join("seed"), "x").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "i", "--quiet"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        let mut engine = Engine::open(repo).unwrap();
+        engine.config.test_timeout_secs = 1;
+
+        let marker = repo.join("marker-written-after-the-timeout");
+        let command = format!("sleep 3; touch {}", marker.display());
+
+        let outcome = engine.run_command(repo, &command).await.unwrap();
+        assert!(
+            !outcome.success,
+            "the timeout must be reported as a failure"
+        );
+        assert!(!marker.exists(), "the command cannot have finished yet");
+
+        // Well past the command's own 3s runtime.
+        tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+
+        assert!(
+            !marker.exists(),
+            "the timed-out command kept running and wrote {} after Hwahap had already \
+             given up on it and moved on",
+            marker.display()
+        );
+    }
+
+    /// The eight-hex tail every goal id carries, split off so the readable part can be asserted.
+    fn without_fingerprint(id: &str) -> &str {
+        let (head, tail) = id
+            .rsplit_once('-')
+            .expect("every goal id has a fingerprint");
+        assert_eq!(tail.len(), 8, "{id}");
+        assert!(tail.bytes().all(|b| b.is_ascii_hexdigit()), "{id}");
+        head
+    }
+
     #[test]
     fn a_goal_id_is_dated_slugged_and_filesystem_safe() {
         assert_eq!(
-            goal_id("2026-09-04T10:00:00Z", "Add a dry-run flag to apply"),
+            without_fingerprint(&goal_id(
+                "2026-09-04T10:00:00Z",
+                "Add a dry-run flag to apply"
+            )),
             "2026-09-04-add-a-dry-run-flag"
         );
         assert_eq!(
-            goal_id("2026-09-04T10:00:00Z", "  Fix   the   BUG  "),
+            without_fingerprint(&goal_id("2026-09-04T10:00:00Z", "  Fix   the   BUG  ")),
             "2026-09-04-fix-the-bug"
         );
     }
 
     #[test]
     fn a_goal_id_survives_a_request_with_no_usable_characters() {
-        assert_eq!(goal_id("2026-09-04T10:00:00Z", "!!! ???"), "2026-09-04");
-        assert_eq!(goal_id("2026-09-04T10:00:00Z", ""), "2026-09-04");
+        assert_eq!(
+            without_fingerprint(&goal_id("2026-09-04T10:00:00Z", "!!! ???")),
+            "2026-09-04"
+        );
+        assert_eq!(
+            without_fingerprint(&goal_id("2026-09-04T10:00:00Z", "")),
+            "2026-09-04"
+        );
     }
 
     #[test]
     fn a_goal_id_keeps_unicode_word_characters() {
         let id = goal_id("2026-09-04T10:00:00Z", "드라이런 기능 추가");
-        assert_eq!(id, "2026-09-04-드라이런-기능-추가");
+        assert_eq!(without_fingerprint(&id), "2026-09-04-드라이런-기능-추가");
         assert!(!id.contains(' '));
+    }
+
+    #[test]
+    fn two_requests_sharing_their_opening_words_get_different_ids() {
+        // The slug keeps only the first five words, and the id names the branch. Without the
+        // fingerprint these two would share a branch and the second run would build on the first's
+        // commits.
+        let first = goal_id("2026-09-04T10:00:00Z", "add a dry-run flag to apply");
+        let second = goal_id("2026-09-04T10:00:00Z", "add a dry-run flag to delete");
+        assert_eq!(without_fingerprint(&first), without_fingerprint(&second));
+        assert_ne!(first, second);
     }
 
     #[test]
