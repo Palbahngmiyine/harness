@@ -38,8 +38,8 @@ or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may 
 
 Use Astra as the parent coordinator. Include the same host_session_id in every hwahap_step call: \
 the current parent task ID, or one UUID created once for this parent if the host exposes no ID. \
-Never copy another task's identity. The pool retains at most three children across units and runs \
-for this parent: Luna worker, Terra critic, Astra auditor. Authors never become reviewers. \
+Never copy another task's identity. In this repository the pool retains at most three children \
+across units and runs for this parent: Luna worker, Terra critic, Astra auditor. Authors never become reviewers. \
 Inspect native spawn, follow-up, wait and interrupt capabilities before execution; do not probe \
 capacity with disposable children or silently substitute models.
 
@@ -58,7 +58,7 @@ expires; never sleep for 360 seconds or hold one blocking wait through the deadl
 engine alone is validating, poll after one second. Return completion only after the child turn \
 and its commands stop, relaying its exact final text with dispatch_id, agent_id, agent_stopped:true \
 and reported_usage:null unless real tool counters exist. The brief requires a dispatch_id/result \
-JSON envelope; reused replies without the current ID are rejected. Keep completed pool children \
+JSON envelope; reused and coordinator replies without the current ID are rejected. Keep completed pool children \
 for later follow-up turns. Do not close them after each result; interruption is not thread release. \
 Requested model/access and reported tokens are not independent applied-model, sandbox or billing proof.
 
@@ -66,7 +66,8 @@ Report a refused spawn or unavailable capability through dispatch_failure with t
 Use no_agent_created:true only when no child exists and no follow-up was attempted. For uncertain \
 creation or any failed follow-up, use false. Never retry a delivery after an ambiguous response. \
 For `native_stop`, stop the registered child (or the reuse_agent_id, or the exact hwahap_<dispatch_id> \
-child if unregistered) and all its commands, then send the exact stopped acknowledgment. Never \
+child if unregistered) and all its commands, then include its discovered agent ID in the stopped \
+acknowledgment so recovery retains that child. Use a null ID only after confirming no child exists. Never \
 acknowledge an uncertain stop. Missing retained agents are a blocker, not permission to reuse \
 a different lane or create replacements.
 
