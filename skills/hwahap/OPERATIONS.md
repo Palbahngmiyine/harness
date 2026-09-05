@@ -238,7 +238,10 @@ Hwahap 자체처럼 큰 기능을 새로 만드는 경우 다음과 같이 단�
 보통 이전 PR을 별도로 merge하고, 대상 checkout을 갱신한 뒤 기준 브랜치와 commit을 확인해서 시작한다.
 merge 전 브랜치에 의존하는 구성이 필요하면 그 기반을 명시적으로 선택하고 검토한다. Hwahap이 자동으로
 이전 PR의 head를 다음 run의 기반으로 삼거나 stacked PR을 관리한다고 가정하지 않는다.
-일반 `request`는 종료된 run을 archive하고 새로 시작한다. direct `build`는 기존 run과 다른 요청을 거부하므로
+일반 `request`는 종료된 run의 소유 작업 트리를 확인하고 새로 시작한다. 미커밋 변경이나 ignored 파일이
+남아 있으면 기존 run을 archive하거나 파일을 삭제하지 않고 거부한다. 남은 파일을 사용자가 검토·보존·정리한
+후 재개하거나 새 checkout을 사용한다. 자동 생성 cache도 사용자 파일과 구분해 삭제하지 않는다.
+작업 트리가 안전하게 제거된 뒤 기존 run을 archive한다. direct `build`는 기존 run과 다른 요청을 거부하므로
 새 checkout에서 시작한다. 기존 run의 accepted 기록을 새 run이 이어받지는 않는다.
 
 ## 6. 중단 상태별 대응

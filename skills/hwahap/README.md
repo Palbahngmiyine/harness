@@ -1,7 +1,8 @@
 # hwahap v3
 
-구현 요청의 기획을 완료하거나 `PLAN 또는 명시적 BUILD → CODING → DRAFT PR → 공격·방어 → ADJUST | SHIP`으로
-진행하는 Codex 스킬과 local STDIO MCP 서버다. Rust 실행기는 계획·검증·복구를 담당하고,
+기본적으로 `PLAN → BUILD → ADJUST → SHIPPING`을 진행하며 PLAN과 BUILD를 따로 사용할 수 있는
+Codex 스킬과 local STDIO MCP 서버다. BUILD는 구현·검증·draft PR 검토를 포함하고,
+ADJUST에서 계약 변경은 PLAN으로, 계약 내 구현 수정은 BUILD로 돌아간다. Rust 실행기는 계획·검증·복구를 담당하고,
 호스트 Codex가 기본 하위 에이전트를 실행한다. 진행 상태와 실행 요청은 `.hwahap/`에 저장한다.
 
 v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2` 스키마는 전부 제거되었고
@@ -17,7 +18,7 @@ v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2
 | PLAN READY | Rust 실행기 | `plan_only:true`인 계획을 확정하고 대기 | 원할 때 확정 계획의 BUILD를 명시적으로 요청 |
 | CODING | Economy(첫 구현) + Deep(재작업) + Critic(리뷰) | unit을 순서대로 구현·검증·리뷰하고 통과한 변경을 commit | 없음. 승인 범위가 충돌하면 중단 |
 | DRAFT PR / PR REVIEW | Astra Critic + 별도 Astra Auditor | full suite 후 draft 게시, 공격 보고서·방어 판정, 확인된 결함 수정 후 새 head 재검토 | 결과 확인 |
-| ADJUST / SHIP | — | 피드백을 결정으로 환원해 revision 증가, 또는 draft를 ready로 | `SHIP <challenge>` 정확히 입력 |
+| ADJUST / SHIP | — | 계약 변경은 PLAN 재확인, 계약 내 수정은 BUILD 재검증, 완료된 draft는 ready로 | 변경 의도 전달 또는 `SHIP <challenge>` 정확히 입력 |
 
 `request`와 `plan_only:true`로 시작하면 `CONFIRM PLAN` 이후 `plan_ready`에서 끝난다. 구현은 이후 사용자의
 명시적 BUILD 요청과 `build_confirmed:<전체 plan_digest>`로 시작한다. `plan_only` 기본값 `false`인 일반
