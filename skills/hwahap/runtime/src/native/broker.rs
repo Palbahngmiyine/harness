@@ -21,6 +21,7 @@ pub struct NativeSessions {
     pub(super) max_calls: u64,
     pub(super) timeout_secs: u64,
     pub(super) waiting: Mutex<Option<Waiting>>,
+    pub(super) host_session_id: Option<String>,
 }
 
 impl NativeSessions {
@@ -31,7 +32,13 @@ impl NativeSessions {
             max_calls,
             timeout_secs,
             waiting: Mutex::new(None),
+            host_session_id: None,
         }
+    }
+
+    pub fn with_host_session_id(mut self, id: String) -> Self {
+        self.host_session_id = Some(id);
+        self
     }
 
     pub fn dispatch(&self) -> Result<Option<NativeDispatch>> {
@@ -64,6 +71,10 @@ impl NativeSessions {
                 "registration does not match an active dispatch".into(),
             ));
         }
+        super::pool::check_registration(&self.store, dispatch, &registration.agent_id)?;
+        if waiting.pending.completion.is_some() {
+            return Ok(());
+        }
         match &dispatch.agent_id {
             Some(id) if id != &registration.agent_id => {
                 return Err(Error::Rejected(
@@ -74,7 +85,12 @@ impl NativeSessions {
             Some(_) => {}
             None => dispatch.agent_id = Some(registration.agent_id.clone()),
         }
-        save(&self.store, &waiting.pending)
+        save(&self.store, &waiting.pending)?;
+        super::pool::register(
+            &self.store,
+            &waiting.pending.dispatch,
+            &registration.agent_id,
+        )
     }
 
     /// Durable recording precedes delivery. Identical retries do not deliver twice.
@@ -105,6 +121,7 @@ impl NativeSessions {
                 "completion does not match the registered native dispatch".into(),
             ));
         }
+        super::reply::result(&completion, dispatch.reuse_agent_id.is_some())?;
         if let Some(previous) = &waiting.pending.completion {
             if previous != &completion {
                 return Err(Error::Rejected(
@@ -121,6 +138,7 @@ impl NativeSessions {
         )?;
         waiting.pending.completion = Some(completion.clone());
         save(&self.store, &waiting.pending)?;
+        super::pool::stopped(&self.store, &waiting.pending.dispatch)?;
         let sender = waiting
             .sender
             .take()

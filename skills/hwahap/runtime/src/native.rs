@@ -17,6 +17,7 @@ mod failure;
 pub use failure::{record_failure, resume_failed, NativeFailure, NativeResume};
 mod pool;
 pub use pool::NativeLane;
+mod reply;
 
 const PENDING: &str = "native-pending.json";
 
@@ -142,6 +143,7 @@ pub fn acknowledge_stopped(store: &Store, ack: &NativeStopped) -> Result<()> {
         &format!("native-stopped-{}.json", ack.dispatch_id),
         &json(ack)?,
     )?;
+    pool::stopped(store, &pending.dispatch)?;
     clear(store)
 }
 

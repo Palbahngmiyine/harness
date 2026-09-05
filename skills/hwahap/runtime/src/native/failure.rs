@@ -41,7 +41,8 @@ pub(super) fn check_failure(store: &Store, failure: &NativeFailure) -> Result<su
         .ok_or_else(|| Error::Rejected("no pending native dispatch accepts failure".into()))?;
     if failure.dispatch_id != pending.dispatch.dispatch_id
         || failure.message.trim().is_empty()
-        || pending.dispatch.agent_id.is_some()
+        || (failure.no_agent_created
+            && (pending.dispatch.agent_id.is_some() || pending.dispatch.reuse_agent_id.is_some()))
         || pending.completion.is_some()
         || pending
             .dispatch
@@ -50,7 +51,7 @@ pub(super) fn check_failure(store: &Store, failure: &NativeFailure) -> Result<su
             .is_some_and(|saved| saved != failure)
     {
         return Err(Error::Rejected(
-            "failure must match an unregistered dispatch exactly".into(),
+            "failure must match the dispatch; an existing child requires stop recovery".into(),
         ));
     }
     Ok(pending)
@@ -147,7 +148,8 @@ pub(super) fn reconcile(store: &Store, pending: &mut super::Pending) -> Result<(
     let failure: NativeFailure = read(&path)?;
     if &failure.dispatch_id != id
         || failure.message.trim().is_empty()
-        || pending.dispatch.agent_id.is_some()
+        || (failure.no_agent_created
+            && (pending.dispatch.agent_id.is_some() || pending.dispatch.reuse_agent_id.is_some()))
         || pending.completion.is_some()
         || pending
             .dispatch

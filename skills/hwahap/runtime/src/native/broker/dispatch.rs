@@ -7,8 +7,7 @@ use super::{NativeSessions, Waiting};
 use crate::canonical::Digest;
 use crate::error::{Error, Result};
 use crate::git::Git;
-use crate::native::{json, save, NativeDispatch, Pending};
-use crate::profile::Role;
+use crate::native::{json, save, NativeDispatch, NativeLane, Pending};
 use crate::session::{
     access_for, Access, NativeReceipt, SessionOutcome, SessionReceipt, SessionSpec,
 };
@@ -32,6 +31,11 @@ impl NativeSessions {
             Access::ReadOnly => "read_only",
             Access::WorkspaceWrite => "workspace_write",
         };
+        let lane = NativeLane::for_role(spec.role);
+        let pool_scope = self
+            .host_session_id
+            .clone()
+            .unwrap_or_else(|| run.run_id.clone());
         let brief =
             format!(
             "Hwahap dispatch {dispatch_id}. You are a native worker for role {}. Work only in the absolute directory {}. \
@@ -39,11 +43,14 @@ impl NativeSessions {
              Do not spawn, delegate to, or resume other agents. Do not edit Hwahap state, the host \
              checkout, or any path outside the requested working directory. Do not run the Hwahap \
              skill or tools recursively. Stop all commands before returning a final answer. \
-             Native children must start without inherited conversation history. An explicitly \
-             allowed Astra coordinator may use its existing context only for this planning role.\n\n{}",
+             New children start without inherited parent history. Reused children keep their lane \
+             and must treat this brief and current repository as authoritative. The Astra coordinator \
+             performs author-side Deep roles; independent reviewers never write.\n\n{}\n\n\
+             Native transport: wrap the result object above as {{\"dispatch_id\":\"{dispatch_id}\",\"result\":<result object>}}. \
+             Return that single JSON envelope, not a prior turn's answer.",
             spec.role.as_str(), spec.cwd.display(), access, spec.prompt
         );
-        let dispatch = NativeDispatch {
+        let mut dispatch = NativeDispatch {
             dispatch_id: dispatch_id.clone(),
             run_id: run.run_id,
             role: spec.role.as_str().into(),
@@ -53,8 +60,7 @@ impl NativeSessions {
             effort: wanted.effort.as_str().into(),
             cwd: spec.cwd.to_string_lossy().into_owned(),
             access: access.into(),
-            coordinator_allowed: wanted.model == "gpt-6-astra"
-                && matches!(spec.role, Role::Recommender | Role::PlanSynthesis),
+            coordinator_allowed: wanted.model == "gpt-6-astra" && lane == NativeLane::Coordinator,
             prompt_digest: Digest::of_bytes(brief.as_bytes()).to_string(),
             plan_digest: run.plan_digest.map(|digest| digest.to_string()),
             base_head,
@@ -62,10 +68,11 @@ impl NativeSessions {
             agent_id: None,
             stop_required: false,
             failure: None,
-            pool_scope: String::new(),
-            lane: crate::native::NativeLane::Worker,
+            pool_scope,
+            lane,
             reuse_agent_id: None,
         };
+        dispatch.reuse_agent_id = crate::native::pool::reusable(&self.store, &dispatch)?;
         let (sender, receiver) = oneshot::channel();
         {
             let mut guard = self.waiting.lock().map_err(super::poisoned)?;
@@ -102,9 +109,9 @@ impl NativeSessions {
                 return Err(Error::Rejected(format!("native {reason}; stop the child and its commands before acknowledging recovery")));
             }
         };
-        let final_message = completion.final_message;
+        let final_message = crate::native::reply::result(&completion, false)?;
         Ok(SessionOutcome {
-            transcript: final_message.clone(),
+            transcript: completion.final_message.clone(),
             final_message,
             receipt: SessionReceipt::Native(NativeReceipt {
                 dispatch_id,
