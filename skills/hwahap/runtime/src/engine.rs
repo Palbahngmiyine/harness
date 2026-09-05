@@ -212,11 +212,27 @@ impl Engine {
                     .into(),
             )),
             (Some(run), Some(request)) if run.state.is_terminal() => {
+                let worktree = self.store.worktree_path();
+                match worktree.symlink_metadata() {
+                    Ok(_) => {
+                        let branch = if run.branch.is_empty() {
+                            format!("hwahap/{}", run.goal_id)
+                        } else {
+                            run.branch.clone()
+                        };
+                        self.check_plan_worktree(&branch, None)?;
+                        // Even non-force removal deletes ignored files; observe them explicitly.
+                        if !self.git.stdout_of(&worktree, &["ls-files", "--others", "--directory", "--no-empty-directory", "-z"])?.is_empty() {
+                            return Err(Error::Rejected("the previous worktree contains untracked or ignored files; review and preserve or clean up those files, then retry or use a new checkout".into()));
+                        }
+                        self.git.run(&["worktree", "remove", worktree.to_str().ok_or_else(|| Error::Rejected("non-UTF8 worktree".into()))?])?;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(error) => return Err(Error::io(&worktree, error)),
+                }
                 // A finished run does not block the next one, but it is not silently overwritten:
-                // the previous run's files are archived first. Its worktree goes too — nothing else
-                // ever removes it, and the next run cannot create one at a path that still exists.
+                // only retire its state after the owned worktree was safely removed.
                 self.store.archive(&*self.clock)?;
-                self.git.remove_worktree(&self.store.worktree_path())?;
                 Ok(Resolved::Started(self.start(request, plan_only, interactive)?))
             }
             (Some(run), Some(_)) => Err(Error::Rejected(format!(
@@ -246,6 +262,14 @@ impl Engine {
         };
 
         let parsed = parse_message(confirmation);
+        if let Some(rejection) = parsed.rejection_message() {
+            return Err(Error::Rejected(rejection));
+        }
+        if parsed.directives.len() != 1 {
+            return Err(Error::Rejected(
+                "SHIP must be the only directive in the confirmation message".into(),
+            ));
+        }
         let typed = parsed.directives.iter().find_map(|d| match d {
             Directive::Ship { challenge } => Some(challenge.clone()),
             _ => None,
