@@ -36,44 +36,46 @@ without asking the user; `await_user` means show `message` and wait; `completed`
 show `message` and stop. Pass the user's reply verbatim in `user_input`. Never compose, complete, \
 or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may type one.
 
-For `native_dispatch`, use the returned native_dispatch exactly. If coordinator_allowed is true \
-and you are already Astra, register agent_id `coordinator` and perform only that planning role. \
-Otherwise spawn exactly one fresh Codex native sub-agent with task_name=hwahap_<dispatch_id>, \
-fork_turns=none, the specified model \
-and effort, and the exact brief. Never silently substitute models or inherit conversation history. \
-Before spawning, inspect available spawn/wait and close/release capabilities and known capacity. \
-Do not probe capacity by spawning disposable agents. If spawn is refused or native tools are \
-unavailable, immediately send dispatch_failure={dispatch_id,message,no_agent_created:true} with \
-the actual host error; use true ONLY when no child was created or no spawn was attempted. \
-If creation is uncertain (for example a lost response), send no_agent_created:false instead. \
-Never repeat spawn on the same dispatch after an error, fabricate results, or launch an ACP/CLI replacement. \
-Immediately call hwahap_step with registration={dispatch_id,agent_id}. \
-Do not spawn a second child for a dispatch with an agent_id. For `native_wait` with agent_id \
-`coordinator`, perform that planning role in this Astra session and send completion; do not wait \
-for a child named coordinator. Otherwise wait on the registered \
-child, or poll hwahap_step after one second when no child is pending. Once the child has stopped and \
-its commands have ended, pass its exact final text via completion={dispatch_id,agent_id,final_message,\
-agent_stopped:true,reported_usage:null}. After completion is durably acknowledged, close/release \
-that exact Hwahap-owned child when the host exposes such a tool, before the next spawn. A completed \
-or interrupted turn is not evidence of thread release. If release is unavailable, report it as \
-unknown; never stop unrelated agents or reuse an implementation agent as an independent reviewer. \
-Report token usage only if native tools actually expose it; \
-never estimate or ask the child to invent counters. Model/effort and read-only access are host \
-requests, not independently verified sandbox or applied-model evidence.
+Use Astra as the parent coordinator. Include the same host_session_id in every hwahap_step call: \
+the current parent task ID, or one UUID created once for this parent if the host exposes no ID. \
+Never copy another task's identity. The pool retains at most three children across units and runs \
+for this parent: Luna worker, Terra critic, Astra auditor. Authors never become reviewers. \
+Inspect native spawn, follow-up, wait and interrupt capabilities before execution; do not probe \
+capacity with disposable children or silently substitute models.
 
-For `native_paused`, show the failure and stop polling/spawning. Preserve this run. After observing \
-an actual host recovery (such as confirmed release of an owned thread or restored native tools), \
-send resume={dispatch_id,recovery_evidence} once. Each distinct recovery observation permits one \
-resume; elapsed time, a Done label, or rewording old evidence is not recovery. There are zero \
-automatic retries; fresh dispatches still consume native_max_calls. Recovery is operational, \
-not a new plan approval. If the host cannot recover within scope, report the external blocker. \
-Do not change global thread limits or close unrelated tasks to bypass it.
+For `native_dispatch`, follow the exact lane and identity. If lane=coordinator, register \
+agent_id=coordinator and execute the brief in this Astra parent (planning or repair). Never spawn \
+a fourth child for that lane. If reuse_agent_id is present, FIRST register that exact agent ID, \
+then send the exact brief with the native follow-up tool ONCE. Registration is durable before \
+follow-up so a lost response cannot trigger duplicate delivery. If reuse_agent_id is absent, \
+spawn one child with task_name=hwahap_<dispatch_id>, fork_turns=none, requested model/effort and \
+exact brief, then register its returned ID immediately. Never replace a retained child by spawning \
+another, change its model, or use it in another lane.
 
-For `native_stop`, stop the named child (or your own coordinator task) and all its commands before sending \
-stopped={dispatch_id,agent_id,all_work_stopped:true}. If no agent_id was registered, locate and stop \
-any child you may have spawned for this exact dispatch. Never acknowledge an uncertain stop. \
-Hwahap owns code edits, test execution, commits and PRs. Outside a dispatch, do not edit files, \
-run tests, spawn agents or create branches/PRs. Final reviews always require an independent child.
+For `native_wait`, coordinator means perform the assigned work here, not wait for a child. \
+Otherwise use event-driven native waits of at most 30 seconds and check hwahap_step after a wait \
+expires; never sleep for 360 seconds or hold one blocking wait through the deadline. When the \
+engine alone is validating, poll after one second. Return completion only after the child turn \
+and its commands stop, relaying its exact final text with dispatch_id, agent_id, agent_stopped:true \
+and reported_usage:null unless real tool counters exist. The brief requires a dispatch_id/result \
+JSON envelope; reused replies without the current ID are rejected. Keep completed pool children \
+for later follow-up turns. Do not close them after each result; interruption is not thread release. \
+Requested model/access and reported tokens are not independent applied-model, sandbox or billing proof.
+
+Report a refused spawn or unavailable capability through dispatch_failure with the exact error. \
+Use no_agent_created:true only when no child exists and no follow-up was attempted. For uncertain \
+creation or any failed follow-up, use false. Never retry a delivery after an ambiguous response. \
+For `native_stop`, stop the registered child (or the reuse_agent_id, or the exact hwahap_<dispatch_id> \
+child if unregistered) and all its commands, then send the exact stopped acknowledgment. Never \
+acknowledge an uncertain stop. Missing retained agents are a blocker, not permission to reuse \
+a different lane or create replacements.
+
+For `native_paused`, show the failure and stop polling/spawning. Preserve this run. Resume once \
+with dispatch_id and new observed host recovery evidence; elapsed time or reworded old evidence \
+is not recovery. New dispatches still spend native_max_calls. Do not change global thread limits, \
+close unrelated tasks, fabricate results or launch an ACP/CLI replacement. Hwahap owns code edits, \
+tests, commits and PRs; outside the exact dispatch, do not perform that work independently. \
+The auditor is always a separate child that never participates in implementation.
 
 There are two human gates and no others. `CONFIRM PLAN <challenge>` freezes the plan; after that, a \
 normal cycle asks the user nothing until it finishes. `SHIP <challenge>` marks the finished draft \
@@ -89,6 +91,8 @@ checks pass, and the final review is still fresh.";
 pub struct StepArgs {
     /// Absolute path to the repository Hwahap should work in.
     pub cwd: String,
+    /// Stable identity of this parent Codex task. Reuse the same value on every step and run.
+    pub host_session_id: String,
     /// The user's implementation request. Supply it only when starting a new run.
     #[serde(default)]
     pub request: Option<String>,
@@ -234,6 +238,7 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    host_session_id: Some(args.host_session_id),
                     request: args.request,
                     user_input: args.user_input,
                     registration: args.registration,

@@ -142,7 +142,10 @@ fn the_step_tool_requires_only_the_repository_path() {
         .iter()
         .filter_map(|v| v.as_str().map(str::to_string))
         .collect();
-    assert_eq!(required, vec!["cwd".to_string()]);
+    assert_eq!(
+        required,
+        vec!["cwd".to_string(), "host_session_id".to_string()]
+    );
 
     let properties = schema["properties"].as_object().expect("properties");
     assert!(properties.contains_key("request"));

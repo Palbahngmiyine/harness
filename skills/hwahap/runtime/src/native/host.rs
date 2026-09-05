@@ -16,6 +16,7 @@ use crate::state::Store;
 
 #[derive(Default)]
 pub struct NativeInput {
+    pub host_session_id: Option<String>,
     pub request: Option<String>,
     pub user_input: Option<String>,
     pub registration: Option<NativeRegistration>,
@@ -74,6 +75,27 @@ impl NativeHost {
         }
         let mut active = self.active.lock().await;
         let store = Store::open(root)?;
+        if let Some(scope) = &input.host_session_id {
+            if scope.trim().is_empty() || scope.len() > 128 {
+                return Err(Error::Rejected("host_session_id must be a stable, nonempty parent task identifier (at most 128 bytes)".into()));
+            }
+        }
+        let expected_scope = input
+            .host_session_id
+            .clone()
+            .or(store.read_run()?.map(|run| run.run_id));
+        if active
+            .get(root)
+            .is_some_and(|running| running.broker.host_session_id != input.host_session_id)
+            || orphan(&store)?.is_some_and(|dispatch| {
+                !dispatch.pool_scope.is_empty() && Some(dispatch.pool_scope) != expected_scope
+            })
+        {
+            return Err(Error::Rejected(
+                "native work belongs to another parent task; do not reuse or stop its agents"
+                    .into(),
+            ));
+        }
         if let Some(failure) = &input.dispatch_failure {
             super::failure::check_failure(&store, failure)?;
             let lock = if let Some(mut running) = active.remove(root) {
@@ -157,12 +179,16 @@ impl NativeHost {
                 ));
             }
             let config = Config::load(store.root())?;
-            let broker = Arc::new(NativeSessions::new(
+            let mut sessions = NativeSessions::new(
                 store,
                 config.profiles,
                 config.native_max_calls,
                 config.native_timeout_secs,
-            ));
+            );
+            if let Some(scope) = input.host_session_id {
+                sessions = sessions.with_host_session_id(scope);
+            }
+            let broker = Arc::new(sessions);
             let engine = Engine::open(root)?;
             let sessions = broker.clone();
             let task_lock = lock.clone();
