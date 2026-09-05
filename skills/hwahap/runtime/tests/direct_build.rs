@@ -508,3 +508,159 @@ async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failur
         }
     }
 }
+
+async fn prepared_for_adversarial_repair(f: &Fixture, full_suite: String) {
+    git(&f.repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+    let mut input = request();
+    input.full_suite = full_suite;
+    f.engine().start_build(&input).unwrap();
+    let script = Script::new(vec![
+        step(
+            Role::Implementer,
+            Reply::write(
+                &[("feature.txt", "ready")],
+                r#"{"status":"completed","summary":"feature","conflict":null}"#,
+            ),
+        ),
+        step(
+            Role::UnitReviewer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+    ]);
+    assert_eq!(
+        f.engine()
+            .step_with(&script, None, None)
+            .await
+            .unwrap()
+            .state,
+        "final_verifying"
+    );
+    assert_eq!(
+        f.engine()
+            .step_with(&script, None, None)
+            .await
+            .unwrap()
+            .state,
+        "pr_review"
+    );
+    let store = Store::open(&f.repo).unwrap();
+    let binding = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap()
+        .binding;
+    let finding = serde_json::json!({"id":"A1","file":"feature.txt","line":1,"condition":"Read line","expected":"newline","observed":"no newline","evidence":["inspected bytes"]});
+    let reviews = Script::new(vec![
+        step(Role::UnitReviewer, Reply::say(serde_json::json!({"binding":binding,"security":security_review(),"findings":[finding],"evidence":["bytes checked"]}).to_string())),
+        step(Role::FinalReview, Reply::say(serde_json::json!({"binding":binding,"security":security_review(),"assessments":[{"finding_id":"A1","judgment":"confirmed","evidence":["independently read bytes"]}],"additional_findings":[],"evidence":["bytes compared"]}).to_string())),
+    ]);
+    assert_eq!(
+        f.engine()
+            .step_with(&reviews, None, None)
+            .await
+            .unwrap()
+            .state,
+        "pr_review"
+    );
+    assert_eq!(
+        hwahap::pr_review::ReviewProgress::load(&store)
+            .unwrap()
+            .unwrap()
+            .stage,
+        hwahap::pr_review::ReviewStage::Repair
+    );
+}
+
+#[tokio::test]
+async fn repair_rechecks_frozen_units_and_preserves_failures_for_retry() {
+    let f = Fixture::new();
+    prepared_for_adversarial_repair(&f, "test -f feature.txt".into()).await;
+    let repair = |contents: &str| {
+        Script::new(vec![step(
+            Role::Rework,
+            Reply::write(
+                &[("feature.txt", contents)],
+                r#"{"status":"completed","summary":"repair","conflict":null}"#,
+            ),
+        )])
+    };
+    let bad = repair("broken\n");
+    let failed = f.engine().step_with(&bad, None, None).await.unwrap();
+    assert_eq!(failed.state, "pr_review");
+    assert!(failed.message.contains("check failed"));
+    assert_eq!(
+        std::fs::read_to_string(f.worktree().join("feature.txt")).unwrap(),
+        "ready"
+    );
+    let store = Store::open(&f.repo).unwrap();
+    let progress = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(progress.repairs, 1);
+    let evidence = std::fs::read_to_string(store.artifacts_path().join(format!(
+        "{}-failed-1.json",
+        progress.artifact("repair").unwrap()
+    )))
+    .unwrap();
+    assert!(evidence.contains("broken"));
+    assert!(evidence.contains("cat feature.txt"));
+    assert!(bad.calls()[0].prompt.contains("cat feature.txt"));
+    assert!(f.engine().ship("SHIP invalid").is_err());
+    let good = repair("ready\n");
+    let result = f.engine().step_with(&good, None, None).await.unwrap();
+    assert_eq!(result.state, "pr_review");
+    let next = hwahap::pr_review::ReviewProgress::load(&store)
+        .unwrap()
+        .unwrap();
+    assert_eq!(next.round, 2);
+    assert_eq!(next.repairs, 2);
+    assert!(good.calls()[0].prompt.contains("previous repair failed"));
+    let reviews = Script::new(vec![
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
+    assert_eq!(
+        f.engine()
+            .step_with(&reviews, None, None)
+            .await
+            .unwrap()
+            .state,
+        "awaiting_adjust_or_ship"
+    );
+}
+
+#[tokio::test]
+async fn transient_repair_suite_failure_can_retry_without_losing_the_draft() {
+    let f = Fixture::new();
+    let failure = f.dir.path().join("suite-fails");
+    prepared_for_adversarial_repair(
+        &f,
+        format!("test -f feature.txt && test ! -e '{}'", failure.display()),
+    )
+    .await;
+    std::fs::write(&failure, "transient failure").unwrap();
+    let fix = || {
+        Script::new(vec![step(
+            Role::Rework,
+            Reply::write(
+                &[("feature.txt", "ready\n")],
+                r#"{"status":"completed","summary":"Repaired line","conflict":null}"#,
+            ),
+        )])
+    };
+    let failed = f.engine().step_with(&fix(), None, None).await.unwrap();
+    assert_eq!(failed.state, "pr_review");
+    assert_eq!(failed.next, "continue");
+    std::fs::remove_file(&failure).unwrap();
+    let retried = f.engine().step_with(&fix(), None, None).await.unwrap();
+    assert_eq!(retried.state, "pr_review");
+    assert_eq!(retried.pr_url, failed.pr_url);
+    let progress = hwahap::pr_review::ReviewProgress::load(&Store::open(&f.repo).unwrap())
+        .unwrap()
+        .unwrap();
+    assert_eq!(progress.round, 2);
+    assert_eq!(progress.repairs, 2);
+    assert_eq!(
+        std::fs::read_to_string(f.worktree().join("feature.txt")).unwrap(),
+        "ready\n"
+    );
+}

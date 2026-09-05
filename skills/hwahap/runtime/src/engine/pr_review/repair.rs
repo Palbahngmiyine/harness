@@ -52,6 +52,10 @@ impl Engine {
                         "PR repair budget exhausted; draft and evidence retained".into(),
                     ));
                 }
+                let previous_failure = read_evidence::<serde_json::Value>(
+                    &self.store,
+                    &format!("{key}-failed-{}.json", p.repairs),
+                )?;
                 p.repairs = p
                     .repairs
                     .checked_add(1)
@@ -65,18 +69,30 @@ impl Engine {
                     depends_on: vec![],
                     probe: false,
                 };
-                let details: Vec<String> = findings
+                let mut details: Vec<String> = findings
                     .iter()
                     .map(|f| serde_json::to_string(f).expect("finding serialization"))
                     .collect();
-                let outcome = self
-                    .ask(
-                        sessions,
-                        Role::Rework,
-                        None,
-                        prompts::implementer(&plan, &unit, &details),
-                    )
-                    .await?;
+                if let Some(failure) = previous_failure {
+                    details.push(format!("The previous repair failed `{}`: {}. Its full patch and results are retained at {}",
+                        failure["command"], failure["output"],
+                        self.store.artifacts_path().join(format!("{key}-failed-{}.json", p.repairs - 1)).display()));
+                }
+                // Repairs may change every non-probe unit: retain each frozen test obligation.
+                let commands: std::collections::BTreeSet<String> = plan
+                    .units
+                    .iter()
+                    .filter(|u| !u.probe)
+                    .flat_map(|u| plan.tests_for(&u.id))
+                    .map(|t| t.command.clone())
+                    .chain(std::iter::once(plan.full_suite.clone()))
+                    .collect();
+                let prompt = format!(
+                    "{}\nRequired repair checks (the host runs each before publication):\n{}",
+                    prompts::implementer(&plan, &unit, &details),
+                    serde_json::to_string(&commands).expect("command serialization")
+                );
+                let outcome = self.ask(sessions, Role::Rework, None, prompt).await?;
                 let result = WorkerResult::parse(&outcome.final_message)?;
                 if result.status != WorkerStatus::Completed {
                     return Err(Error::BoundaryViolation(format!(
@@ -91,12 +107,28 @@ impl Engine {
                     ));
                 }
                 let before = self.git.fingerprint(&worktree)?;
-                let suite = self.run_command(&worktree, &plan.full_suite).await?;
-                if !suite.success || self.git.fingerprint(&worktree)? != before {
-                    return Err(Error::BoundaryViolation(format!(
-                        "PR repair suite failed or changed files: {}",
-                        tail(&suite.combined, 4_000)
-                    )));
+                for command in commands {
+                    let check = self.run_command(&worktree, &command).await?;
+                    if self.git.fingerprint(&worktree)? != before {
+                        return Err(Error::BoundaryViolation(
+                            "PR repair check changed files".into(),
+                        ));
+                    }
+                    if !check.success {
+                        self.git.run_in(&worktree, &["add", "-A"])?;
+                        let patch = self
+                            .git
+                            .run_in(&worktree, &["diff", "--cached", "--binary", "HEAD"])?;
+                        save_evidence(
+                            &self.store,
+                            &format!("{key}-failed-{}.json", p.repairs),
+                            &serde_json::json!({"binding":p.binding,"attempt":p.repairs,
+                                "command":command,"output":check.combined,"patch":patch}),
+                        )?;
+                        // Only discard this owned attempt after durable reproduction evidence exists.
+                        self.git.reset_hard(&worktree, &p.binding.head)?;
+                        return Ok(self.report(&run, format!("PR repair check failed: `{command}`. Evidence retained; retrying within the remaining repair budget.")));
+                    }
                 }
                 self.git.run_in(&worktree, &["add", "-A"])?;
                 let tree = self.git.run_in(&worktree, &["write-tree"])?;
