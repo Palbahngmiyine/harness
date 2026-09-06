@@ -159,40 +159,13 @@ impl NativeHost {
                         "approved plan belongs to another parent task".into(),
                     ));
                 }
-                // Recover ownership from older pinned runtimes without allocating another pool.
-                if store.artifacts_path().exists() {
-                    for entry in std::fs::read_dir(store.artifacts_path())
-                        .map_err(|e| Error::io(store.artifacts_path(), e))?
-                    {
-                        let path = entry
-                            .map_err(|e| Error::io(store.artifacts_path(), e))?
-                            .path();
-                        if path
-                            .file_name()
-                            .is_some_and(|n| n.to_string_lossy().starts_with("native-request-"))
-                        {
-                            let bytes = std::fs::read(&path).map_err(|e| Error::io(&path, e))?;
-                            let dispatch: NativeDispatch = serde_json::from_slice(&bytes)
-                                .map_err(|e| Error::Corrupt(e.to_string()))?;
-                            if dispatch.run_id == run.run_id
-                                && Some(&dispatch.pool_scope) != expected_scope.as_ref()
-                            {
-                                return Err(Error::Rejected(
-                                    "native work belongs to another parent task".into(),
-                                ));
-                            }
-                        }
-                    }
-                }
                 crate::pr_review::save_evidence(&store, "native-owner.json", &wanted)?;
             }
         }
         if active
             .get(root)
             .is_some_and(|running| running.broker.host_session_id != input.host_session_id)
-            || orphan(&store)?.is_some_and(|dispatch| {
-                !dispatch.pool_scope.is_empty() && Some(dispatch.pool_scope) != expected_scope
-            })
+            || orphan(&store)?.is_some_and(|dispatch| Some(dispatch.pool_scope) != expected_scope)
         {
             return Err(Error::Rejected(
                 "native work belongs to another parent task; do not reuse or stop its agents"

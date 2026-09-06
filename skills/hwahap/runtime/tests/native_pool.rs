@@ -115,11 +115,8 @@ async fn three_occupied_child_slots_complete_three_hundred_jobs_without_replacem
                 })
                 .unwrap();
             let result = serde_json::json!({"unit":unit,"role":label,"verdict":"pass"});
-            let final_message = if request.reuse_agent_id.is_some() {
-                serde_json::json!({"dispatch_id":request.dispatch_id,"result":result}).to_string()
-            } else {
-                result.to_string() // Fresh children retain compatibility with the original wire format.
-            };
+            let final_message =
+                serde_json::json!({"dispatch_id":request.dispatch_id,"result":result}).to_string();
             broker
                 .complete(NativeCompletion {
                     dispatch_id: request.dispatch_id,

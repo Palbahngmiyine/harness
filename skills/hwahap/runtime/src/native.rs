@@ -24,6 +24,7 @@ const PENDING: &str = "native-pending.json";
 
 /// One exact request for a retained child or the parent coordinator.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NativeDispatch {
     pub dispatch_id: String,
     pub run_id: String,
@@ -44,19 +45,13 @@ pub struct NativeDispatch {
     /// True after a deadline or process restart: stop the child before acknowledging recovery.
     pub stop_required: bool,
     /// Host-reported spawn failure; no-child failures pause without an imaginary stop.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub failure: Option<NativeFailure>,
     /// Stable parent task identity; pool ownership never crosses this boundary.
-    #[serde(default)]
     pub pool_scope: String,
-    #[serde(default)]
     pub lane: NativeLane,
     /// Register this identity before sending exactly one follow-up turn.
-    #[serde(default)]
     pub reuse_agent_id: Option<String>,
-    #[serde(default)]
     pub soft_budget_secs: u64,
-    #[serde(default)]
     pub hard_timeout_secs: u64,
 }
 
