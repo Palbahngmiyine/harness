@@ -54,6 +54,11 @@ Hwahap 자체를 수정하는 작업은 검증한 Hwahap commit과 실행 바이
 `plan_only`를 생략하거나 `false`로 시작한 일반 구현 요청은 기존처럼 계획 확인 후 BUILD까지 이어진다.
 이 값은 Hwahap 작업 범위이며 Codex collaboration mode를 변경하지 않는다.
 
+Codex에서 전체 계획에 대한 실제 `PLEASE IMPLEMENT THIS PLAN:` 요청을 이미 받았다면
+[승인 계획 전달](USAGE.md#codex에서-승인한-계획-넘기기)의 `approved_plan`을 사용한다. 누락된 실행 계약을
+원문과 연결해 구조화하고 독립 검토한다. 승인 자체를 다시 받거나 과거 인터뷰·확인 문장을 생성하지 않는다.
+기존 미실행 초안은 정확한 digest로 지정하고 이전 원문·결정을 journal에 보존한다.
+
 기획 생략을 명시한 요청에는 `request` 대신 `build`를 보낸다. 필요한 필드는 다음과 같다.
 
 - `user_instruction`: 사용자의 생략·구현 권한 원문. 확인 문장을 대신 생성하지 않는다.
@@ -248,8 +253,10 @@ merge 전 브랜치에 의존하는 구성이 필요하면 그 기반을 명시�
 
 | 상태 | 의미 | 다음 행동 |
 |---|---|---|
-| `plan_ready` | 계획만 요청한 run의 계약 확인이 완료됨 | 그대로 계획 결과를 전달한다. 명시적 구현 요청을 받은 뒤 전체 digest를 `build_confirmed`로 전달한다. |
-| `plan_conflict` (`PlanConflict`) | 계약 밖 구현 변경이 필요하거나 자유입력 해석을 완성하지 못함 | 원문·충돌을 읽고 사용자 답·수정 요구를 전달해 PLAN을 다시 연다. direct BUILD에서도 사용자 입력을 기다리며, 자동 구현 재개 없이 재검토·재확인을 거친다. |
+| `plan_ready/continue` | Codex 승인 계획의 검토는 끝났고 BUILD 시작이 중단됨 | 기존 권한으로 계속한다. 인증·source 등 실패 원인을 해결하고 재호출한다. 승인 원문을 다시 요구하지 않는다. |
+| `plan_ready/await_user` | 계획만 요청한 run의 계약 확인이 완료됨 | 그대로 계획 결과를 전달한다. 명시적 구현 요청을 받은 뒤 전체 digest를 `build_confirmed`로 전달한다. |
+| 승인 import의 미고정 `plan_conflict/repair_translation` | 승인 원문과 실행 명세 사이 변환 결함 | `approved_plan`으로 명세를 수정하고 현재 초안 digest를 지정한다. 승인을 유지하며, 실제 새 선택만 사용자에게 묻는다. |
+| 그 외 `plan_conflict` (`PlanConflict`) | 계약 밖 구현 변경이 필요하거나 자유입력 해석을 완성하지 못함 | 원문·충돌을 읽고 사용자 답·수정 요구를 전달해 PLAN을 다시 연다. direct BUILD에서도 사용자 입력을 기다리며, 자동 구현 재개 없이 재검토·재확인을 거친다. |
 | `blocked` | 반복 실패·검증 실패·지원 불가 등으로 해당 실행이 멈춤 | 원인·테스트·Git 상태·증거를 확인한다. 해결되지 않은 원인으로 같은 호출을 반복하지 않는다. 원인 해결과 남은 실행의 종료 확인 후 새 요청은 별도 run·승인으로 시작한다. |
 | `native_paused` | 호스트가 자식 생성이 없었다고 확인한 spawn 실패·native 도구 부재를 저장함 | 실패를 알리고 자동 재시도·polling·새 요청을 멈춘다. 기존 run을 유지하고 새 호스트 회복 근거를 관찰했을 때만 명시적으로 재개한다. |
 | `native_stop` | 자식 생성 여부가 불명확하거나 단절·timeout으로 종료 확인이 필요함 | 같은 dispatch를 다시 spawn하지 않는다. 정확한 에이전트와 남은 명령을 찾아 중단·확인한 뒤 해당 dispatch를 확인 처리한다. 종료가 불명확하면 복구하지 않는다. |

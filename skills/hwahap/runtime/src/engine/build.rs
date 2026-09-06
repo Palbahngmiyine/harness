@@ -7,7 +7,7 @@ use crate::{validate, Error, Result};
 #[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct BuildRequest {
-    /// User's exact instruction authorizing execution without planning; never infer this consent.
+    /// User's exact execution instruction; approved imports additionally bind and review the full plan.
     pub user_instruction: String,
     pub objective: String,
     /// Remote target branch, for example main.

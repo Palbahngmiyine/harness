@@ -112,6 +112,7 @@ async fn rejected_translation_retains_approval_without_creating_a_worktree() {
     ]);
     let result = engine.step_with(&script, None, None).await.unwrap();
     assert_eq!(result.state, "plan_conflict");
+    assert_eq!(result.next, "repair_translation");
     let plan = Store::open(&f.repo).unwrap().read_plan().unwrap().unwrap();
     assert_eq!(plan.approved_plan.as_ref(), Some(&input.approval));
     assert!(plan.frozen.is_none());
@@ -126,6 +127,10 @@ async fn import_parent_survives_missing_owner_and_run_snapshots() {
     f.engine()
         .register_approved_plan_for_parent(&input, Some("original-parent"))
         .unwrap();
+    assert!(f
+        .engine()
+        .register_approved_plan_for_parent(&input, Some("different-parent"))
+        .is_err());
     let store = Store::open(&f.repo).unwrap();
     // Crash after journaling approval but before the run/owner snapshots are written.
     std::fs::remove_file(f.repo.join(".hwahap/run.json")).unwrap();
@@ -234,4 +239,77 @@ async fn interrupted_build_start_resumes_without_another_approval_or_duplicate_r
         engine.register_approved_plan(&input).unwrap().state,
         "coding"
     );
+}
+
+#[tokio::test]
+async fn approved_import_reaches_draft_but_ship_still_requires_exact_confirmation() {
+    let f = Fixture::new();
+    let input = request(&f);
+    let engine = f.engine();
+    engine.register_approved_plan(&input).unwrap();
+    let script = Script::new(vec![
+        step(
+            Role::ColdConsumer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(
+            Role::PlanCritic,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(
+            Role::Implementer,
+            Reply::write(
+                &[("feature.txt", "ready")],
+                r#"{"status":"completed","summary":"Created feature","conflict":null}"#,
+            ),
+        ),
+        step(
+            Role::UnitReviewer,
+            Reply::say(r#"{"verdict":"pass","findings":[]}"#),
+        ),
+        step(Role::UnitReviewer, Reply::PrAttack),
+        step(Role::FinalReview, Reply::pr_defense()),
+    ]);
+    for expected in [
+        "coding",
+        "final_verifying",
+        "pr_review",
+        "awaiting_adjust_or_ship",
+    ] {
+        let out = engine.step_with(&script, None, None).await.unwrap();
+        assert_eq!(out.state, expected, "{}", out.message);
+    }
+    assert_eq!(script.remaining(), 0);
+    assert_eq!(
+        std::fs::read_to_string(f.worktree().join("feature.txt")).unwrap(),
+        "ready"
+    );
+    assert!(!f.was_marked_ready());
+    let store = Store::open(&f.repo).unwrap();
+    let run = store.read_run().unwrap().unwrap();
+    let hwahap::state::RunState::AwaitingAdjustOrShip { challenge, .. } = run.state else {
+        panic!("not ready for SHIP")
+    };
+    assert!(engine.ship("좋아요").is_err());
+    assert!(engine.ship(&input.approval.implementation_request).is_err());
+    assert!(!f.was_marked_ready());
+    engine.ship(&format!("SHIP {challenge}")).unwrap();
+    assert!(f.was_marked_ready());
+}
+
+#[test]
+fn stale_source_and_changed_execution_contract_cannot_reuse_an_import() {
+    let f = Fixture::new();
+    let mut input = request(&f);
+    let engine = f.engine();
+    git(&f.repo, &["commit", "--allow-empty", "-m", "new source"]);
+    assert!(engine.register_approved_plan(&input).is_err());
+    assert!(Store::open(&f.repo).unwrap().read_plan().unwrap().is_none());
+    input.approval.source_head = git(&f.repo, &["rev-parse", "HEAD"]);
+    engine.register_approved_plan(&input).unwrap();
+    let store = Store::open(&f.repo).unwrap();
+    let plan = store.read_plan().unwrap().unwrap();
+    input.contract.units[0].paths = vec!["src/".into()];
+    assert!(engine.register_approved_plan(&input).is_err());
+    assert_eq!(store.read_plan().unwrap().unwrap(), plan);
 }

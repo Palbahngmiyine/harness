@@ -23,6 +23,14 @@ impl Engine {
                 .rev()
                 .find(|e| e.kind == "approved_plan_snapshot")
             {
+                if event.data["pool_scope"]
+                    .as_str()
+                    .is_some_and(|saved| saved != pool_scope.unwrap_or(&run.run_id))
+                {
+                    return Err(Error::Rejected(
+                        "approved plan belongs to another parent task".into(),
+                    ));
+                }
                 if event.data["request"] == serde_json::json!(input) {
                     let saved: Plan = serde_json::from_value(event.data["plan"].clone())
                         .map_err(|e| Error::Corrupt(e.to_string()))?;

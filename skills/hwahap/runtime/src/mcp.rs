@@ -32,9 +32,23 @@ use crate::native::{
 pub const INSTRUCTIONS: &str = "\
 Hwahap turns an implementation request into a confirmed plan and then builds it autonomously. Call \
 hwahap_step and follow its `next` field: `continue` means call hwahap_step again immediately \
-without asking the user; `await_user` means show `message` and wait; `completed` and `blocked` mean \
+without asking the user; `repair_translation` means repair and resubmit approved_plan as described below; \
+`await_user` means show `message` and wait; `completed` and `blocked` mean \
 show `message` and stop. Pass the user's reply verbatim in `user_input`. Never compose, complete, \
 or infer a CONFIRM PLAN or SHIP line on the user's behalf — only the user may type one.
+
+When the user already submitted PLEASE IMPLEMENT THIS PLAN: followed by the entire approved Codex \
+plan, use approved_plan instead of restarting request or asking for CONFIRM PLAN again. Relay the exact \
+implementation_request and trimmed approved markdown, its SHA-256 markdown_digest, inspected source_head, \
+and a complete executable contract (BuildRequest). This is approved-plan translation, not skipped planning. \
+For an existing unexecuted draft include replaces_plan_digest equal to its full current digest; preserve \
+its original history. Never replace executing/frozen work. The engine journals approval separately, reviews \
+the entire translation independently, then proceeds into BUILD without another approval. Host-relayed text \
+is not independent authentication. A review defect preserves approval: repair only the translation and \
+resubmit approved_plan with the new current draft digest; generic user_input cannot discard that approval. \
+Ask only for genuinely new material choices, never the same approval. Do not fabricate an approval message \
+from agreement or a proposed plan alone. SHIP remains separate. Unsupported old runtimes require a verified \
+upgrade; never silently send this field to a runtime whose tool schema omits it.
 
 For PLAN alone, start with request and plan_only:true. Confirmation saves plan_ready without \
 implementation or GitHub authentication. Default plan_only:false continues from confirmed PLAN to BUILD. \
@@ -63,7 +77,7 @@ Its user_instruction must be that user's exact authorization; specify the object
 branch, remote base branch, scoped units with observable acceptance and test commands, and full_suite. \
 Direct BUILD assigns authorship to this Astra parent and uses separate Astra Critic/Auditor children, \
 requiring two child slots. It records direct BUILD authority without claiming planning reviews or a CONFIRM PLAN message. \
-Normal requests still use the planning and confirmation flow. Never infer direct BUILD permission. \
+Requests without an already-approved Codex plan still use the planning and confirmation flow. Never infer direct BUILD permission. \
 Every BUILD publishes a draft before independent Astra attack and defense. Confirmed findings go to \
 parent repair; both teams review the changed commit. Use recheck_pr:true alone to revalidate this \
 run's existing draft after a runtime upgrade; it preserves the contract and retry budget.
@@ -113,8 +127,9 @@ local token observation in .hwahap/usage.json; see USAGE.md. Attach parent and r
 before their first work in this run. Missing counters remain unknown; never invent reported_usage. \
 The auditor is always a separate child that never participates in implementation.
 
-There are two human gates and no others. `CONFIRM PLAN <challenge>` freezes the plan; after that, a \
-normal cycle asks the user nothing until it finishes. `SHIP <challenge>` marks the finished draft \
+For ordinary PLAN, `CONFIRM PLAN <challenge>` freezes the plan. An approved Codex plan import \
+retains its actual implementation request instead; never fabricate that CONFIRM PLAN line. After \
+valid approval, continue within scope without duplicate BUILD approval. `SHIP <challenge>` marks the finished draft \
 pull request ready for review. Both challenges are printed by Hwahap and are bound to exact \
 content, so a challenge that does not match is rejected rather than corrected.
 
@@ -201,7 +216,7 @@ pub struct RunReport {
     pub phase: String,
     /// The engine state, for diagnostics.
     pub state: String,
-    /// `continue`, `await_user`, `completed`, `blocked`, or a `native_*` protocol action.
+    /// `continue`, `repair_translation`, `await_user`, `completed`, `blocked`, or a `native_*` action.
     pub next: String,
     /// The text to show the user.
     pub message: String,
