@@ -446,6 +446,9 @@ pub struct Frozen {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Plan {
     pub schema: String,
+    /// An explicitly approved Codex plan, distinct from interview answers and typed confirmation.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_plan: Option<crate::approval::PlanApproval>,
     /// Stop after confirmation; BUILD is a separate explicit action.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plan_only: bool,
@@ -522,6 +525,7 @@ impl Plan {
     ) -> Self {
         Plan {
             schema: SCHEMA.to_string(),
+            approved_plan: None,
             plan_only: false,
             interactive: false,
             question_frontier: Vec::new(),
