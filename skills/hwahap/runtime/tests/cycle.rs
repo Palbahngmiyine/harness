@@ -136,7 +136,7 @@ const DONE: &str = r#"{"status":"completed","summary":"did the unit"}"#;
 #[tokio::test]
 async fn repeated_failure_gets_one_astra_repair_and_no_separate_diagnosis() {
     let fixture = Fixture::new();
-    let mut steps = happy_path_steps()[..5].to_vec();
+    let mut steps = happy_path_steps()[..6].to_vec();
     let failed = r#"{"status":"failed","summary":"reproducible failure"}"#;
     steps.push(step(Role::Implementer, Reply::say(failed)));
     steps.push(step(Role::Rework, Reply::say(failed)));
@@ -175,6 +175,10 @@ fn happy_path_steps() -> Vec<common::Step> {
     vec![
         step(Role::FactFinder, Reply::say(facts())),
         step(Role::Recommender, Reply::say(decisions())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
         step(Role::PlanSynthesis, Reply::say(structure())),
         step(Role::ColdConsumer, Reply::say(PASS)),
         step(Role::PlanCritic, Reply::say(PASS)),
@@ -219,7 +223,11 @@ async fn plan_to_confirmation(fixture: &Fixture, script: &Script) -> String {
         .await
         .unwrap();
     assert_eq!(answered.next, "continue", "{}", answered.message);
-    assert_eq!(answered.state, "proving");
+    assert_eq!(answered.state, "refining");
+    assert_eq!(
+        engine.step_with(script, None, None).await.unwrap().state,
+        "proving"
+    );
 
     let proved = engine.step_with(script, None, None).await.unwrap();
     assert_eq!(proved.next, "await_user", "{}", proved.message);
@@ -277,15 +285,15 @@ async fn probe_output_is_discarded_without_entering_git_history() {
             "acceptance_ids": [], "depends_on": ["U2"], "probe": true
         }));
     let mut steps = happy_path_steps();
-    steps[2] = step(Role::PlanSynthesis, Reply::say(proposed.to_string()));
+    steps[3] = step(Role::PlanSynthesis, Reply::say(proposed.to_string()));
     steps.insert(
-        9,
+        10,
         step(
             Role::Implementer,
             Reply::write(&[("probe/throwaway.txt", "temporary experiment\n")], DONE),
         ),
     );
-    steps.insert(10, step(Role::UnitReviewer, Reply::say(PASS)));
+    steps.insert(11, step(Role::UnitReviewer, Reply::say(PASS)));
     let script = Script::new(steps);
     let outcomes = run_to_draft_pr(&fixture, &script).await;
     assert_eq!(outcomes.last().unwrap().state, "awaiting_adjust_or_ship");
@@ -353,7 +361,7 @@ async fn conflicting_or_malformed_answers_cannot_be_hidden_by_confirmation() {
 #[tokio::test]
 async fn a_plan_changed_after_preview_requires_fresh_reviews_and_confirmation() {
     let fixture = Fixture::new();
-    let mut steps = happy_path_steps()[..5].to_vec();
+    let mut steps = happy_path_steps()[..6].to_vec();
     steps.push(step(Role::ColdConsumer, Reply::say(PASS)));
     steps.push(step(Role::PlanCritic, Reply::say(PASS)));
     let script = Script::new(steps);
@@ -463,6 +471,7 @@ async fn each_role_runs_on_its_own_fixed_profile_and_the_writers_run_in_the_work
         vec![
             Role::FactFinder,
             Role::Recommender,
+            Role::Recommender,
             Role::PlanSynthesis,
             Role::ColdConsumer,
             Role::PlanCritic,
@@ -514,11 +523,6 @@ async fn an_accepted_unit_leaves_a_checkpoint_commit_naming_the_unit_and_the_pla
 
 #[tokio::test]
 async fn a_plain_language_confirmation_never_freezes_the_plan() {
-    let fixture = Fixture::new();
-    let script = Script::new(happy_path_steps());
-    plan_to_confirmation(&fixture, &script).await;
-    let engine = fixture.engine();
-
     for attempt in [
         "ok",
         "yes",
@@ -527,21 +531,25 @@ async fn a_plain_language_confirmation_never_freezes_the_plan() {
         "CONFIRM PLAN",
         "추천대로",
     ] {
-        let outcome = engine
+        let fixture = Fixture::new();
+        let script = Script::new(happy_path_steps());
+        plan_to_confirmation(&fixture, &script).await;
+        let outcome = fixture
+            .engine()
             .step_with(&script, None, Some(attempt))
             .await
             .unwrap();
-        assert_eq!(
-            outcome.state, "awaiting_confirmation",
-            "{attempt:?} froze the plan: {}",
-            outcome.message
-        );
-        assert_eq!(outcome.next, "await_user");
+        // Plain prose reopens the current interview; malformed confirmation stays at the gate.
+        assert!(matches!(
+            outcome.state.as_str(),
+            "inspecting" | "awaiting_confirmation"
+        ));
+        let store = hwahap::state::Store::open(&fixture.repo).unwrap();
+        assert!(store.read_run().unwrap().unwrap().plan_digest.is_none());
+        assert!(store.read_plan().unwrap().unwrap().frozen.is_none());
+        assert!(!fixture.worktree().exists());
+        assert!(!script.roles().contains(&Role::Implementer));
     }
-    assert!(
-        !fixture.worktree().exists(),
-        "a branch was created without a confirmation"
-    );
 }
 
 #[tokio::test]
@@ -565,8 +573,12 @@ async fn changing_an_answer_at_the_confirmation_prompt_invalidates_the_challenge
     let fixture = Fixture::new();
     // Planning sessions only: this run never gets as far as building anything.
     let mut steps = happy_path_steps();
-    steps.truncate(5);
-    // Changed answers require newly derived structure and reviews bound to that structure.
+    steps.truncate(6);
+    // Changed answers require follow-up, new structure and bound reviews.
+    steps.push(step(
+        Role::Recommender,
+        Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+    ));
     steps.push(step(Role::PlanSynthesis, Reply::say(structure())));
     steps.push(step(Role::ColdConsumer, Reply::say(PASS)));
     steps.push(step(Role::PlanCritic, Reply::say(PASS)));
@@ -579,7 +591,7 @@ async fn changing_an_answer_at_the_confirmation_prompt_invalidates_the_challenge
         .step_with(&script, None, Some("C1=ALT2"))
         .await
         .unwrap();
-    assert_eq!(changed.state, "deciding", "{}", changed.message);
+    assert_eq!(changed.state, "refining", "{}", changed.message);
 
     let mut reproved = engine.step_with(&script, None, None).await.unwrap();
     while reproved.next == "continue" {
@@ -602,7 +614,7 @@ async fn a_unit_that_writes_outside_its_declared_paths_is_discarded_and_reworked
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
     // U1 may only touch src/. Have it also write outside, then behave on the retry.
-    steps[5] = step(
+    steps[6] = step(
         Role::Implementer,
         Reply::write(
             &[
@@ -612,7 +624,7 @@ async fn a_unit_that_writes_outside_its_declared_paths_is_discarded_and_reworked
             DONE,
         ),
     );
-    steps.insert(6, step(Role::Rework, build_u1()));
+    steps.insert(7, step(Role::Rework, build_u1()));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -637,11 +649,11 @@ async fn a_unit_whose_test_fails_is_reworked_with_the_failure_quoted() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
     // Claim success while writing a file the unit's test does not accept.
-    steps[5] = step(
+    steps[6] = step(
         Role::Implementer,
         Reply::write(&[("src/wrong.txt", "not what T1 checks\n")], DONE),
     );
-    steps.insert(6, step(Role::Rework, build_u1()));
+    steps.insert(7, step(Role::Rework, build_u1()));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -663,12 +675,12 @@ async fn a_unit_whose_test_fails_is_reworked_with_the_failure_quoted() {
 async fn a_unit_rejected_by_the_reviewer_is_reworked_with_the_findings() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps[6] = step(
+    steps[7] = step(
         Role::UnitReviewer,
         Reply::say(r#"{"verdict":"fail","findings":["the file has no trailing newline"]}"#),
     );
-    steps.insert(7, step(Role::Rework, build_u1()));
-    steps.insert(8, step(Role::UnitReviewer, Reply::say(PASS)));
+    steps.insert(8, step(Role::Rework, build_u1()));
+    steps.insert(9, step(Role::UnitReviewer, Reply::say(PASS)));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -690,12 +702,12 @@ async fn a_unit_rejected_by_the_reviewer_is_reworked_with_the_findings() {
 async fn a_review_session_that_changes_the_working_tree_has_its_verdict_discarded() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps[6] = step(
+    steps[7] = step(
         Role::UnitReviewer,
         Reply::write(&[("src/sneaky.txt", "the reviewer wrote this\n")], PASS),
     );
-    steps.insert(7, step(Role::Rework, build_u1()));
-    steps.insert(8, step(Role::UnitReviewer, Reply::say(PASS)));
+    steps.insert(8, step(Role::Rework, build_u1()));
+    steps.insert(9, step(Role::UnitReviewer, Reply::say(PASS)));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -718,14 +730,14 @@ async fn a_review_session_that_changes_the_working_tree_has_its_verdict_discarde
 async fn a_worker_whose_final_message_is_not_the_contract_is_reworked() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps[5] = step(
+    steps[6] = step(
         Role::Implementer,
         Reply::write(
             &[("src/added.txt", "generated\n")],
             "Done! I added the file. Everything passes.",
         ),
     );
-    steps.insert(6, step(Role::Rework, build_u1()));
+    steps.insert(7, step(Role::Rework, build_u1()));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -747,14 +759,14 @@ async fn a_worker_whose_final_message_is_not_the_contract_is_reworked() {
 async fn a_plan_conflict_that_also_wrote_code_is_rejected_as_a_rework() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps[5] = step(
+    steps[6] = step(
         Role::Implementer,
         Reply::write(
             &[("src/added.txt", "generated\n")],
             r#"{"status":"plan_conflict","summary":"cannot","conflict":"C1 is impossible"}"#,
         ),
     );
-    steps.insert(6, step(Role::Rework, build_u1()));
+    steps.insert(7, step(Role::Rework, build_u1()));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -776,7 +788,7 @@ async fn a_plan_conflict_that_also_wrote_code_is_rejected_as_a_rework() {
 async fn a_clean_plan_conflict_stops_the_run_without_committing_anything() {
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps.truncate(5);
+    steps.truncate(6);
     steps.push(step(
         Role::Implementer,
         Reply::say(
@@ -813,7 +825,7 @@ async fn accepted_checkpoints_survive_a_restart_and_only_the_current_unit_re_run
     let fixture = Fixture::new();
     // Stop after U1 is accepted by having U2's implementer fail the session outright.
     let mut steps = happy_path_steps();
-    steps.truncate(7);
+    steps.truncate(8);
     steps.push(step(
         Role::Implementer,
         Reply::Fail("the adapter died".into()),
@@ -1661,12 +1673,12 @@ async fn a_reviewer_that_rewrites_a_file_it_reviewed_has_its_verdict_discarded()
     // was committed as the unit's work.
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps[6] = step(
+    steps[7] = step(
         Role::UnitReviewer,
         Reply::write(&[("src/added.txt", "the reviewer wrote this\n")], PASS),
     );
-    steps.insert(7, step(Role::Rework, build_u1()));
-    steps.insert(8, step(Role::UnitReviewer, Reply::say(PASS)));
+    steps.insert(8, step(Role::Rework, build_u1()));
+    steps.insert(9, step(Role::UnitReviewer, Reply::say(PASS)));
     let script = Script::new(steps);
 
     let outcomes = run_to_draft_pr(&fixture, &script).await;
@@ -1762,7 +1774,7 @@ async fn a_plan_conflict_can_be_answered_instead_of_stranding_the_run() {
     // request was refused, and the only exit was deleting .hwahap by hand.
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps.truncate(5);
+    steps.truncate(6);
     steps.push(step(
         Role::Implementer,
         Reply::say(
@@ -1819,6 +1831,10 @@ async fn a_second_run_in_the_same_repository_can_be_frozen() {
         .step_with(&second, None, Some(&all_answers()))
         .await
         .unwrap();
+    assert_eq!(
+        engine.step_with(&second, None, None).await.unwrap().state,
+        "proving"
+    );
     let proved = engine.step_with(&second, None, None).await.unwrap();
     let challenge = challenge_in(&proved.message, "CONFIRM PLAN ");
 
@@ -1836,7 +1852,7 @@ async fn an_answer_sent_with_a_confirmation_wins_and_the_confirmation_is_refused
     // content the user just replaced.
     let fixture = Fixture::new();
     let mut steps = happy_path_steps();
-    steps.truncate(5);
+    steps.truncate(6);
     steps.push(step(Role::ColdConsumer, Reply::say(PASS)));
     steps.push(step(Role::PlanCritic, Reply::say(PASS)));
     let script = Script::new(steps);
@@ -1852,7 +1868,7 @@ async fn an_answer_sent_with_a_confirmation_wins_and_the_confirmation_is_refused
         .await
         .unwrap();
 
-    assert_eq!(outcome.state, "deciding", "{}", outcome.message);
+    assert_eq!(outcome.state, "refining", "{}", outcome.message);
     assert!(!fixture.worktree().exists(), "the plan was frozen anyway");
 
     let plan: serde_json::Value = serde_json::from_str(
@@ -2002,7 +2018,7 @@ async fn a_successful_full_suite_that_mutates_files_cannot_publish() {
     let mut steps = happy_path_steps();
     let mut proposal: serde_json::Value = serde_json::from_str(&structure()).unwrap();
     proposal["full_suite"] = "printf changed > src/added.txt".into();
-    steps[2].reply = Reply::say(proposal.to_string());
+    steps[3].reply = Reply::say(proposal.to_string());
     let script = Script::new(steps);
     let outcomes = run_to_draft_pr(&fixture, &script).await;
     let outcome = outcomes.last().unwrap();
@@ -2021,7 +2037,7 @@ async fn completed_plan_reviews_survive_an_interrupted_critic_or_recommender() {
         } else {
             PASS
         };
-        let mut steps = happy_path_steps()[..3].to_vec();
+        let mut steps = happy_path_steps()[..4].to_vec();
         steps.push(step(Role::ColdConsumer, Reply::say(cold)));
         steps.push(step(
             Role::PlanCritic,
@@ -2038,6 +2054,10 @@ async fn completed_plan_reviews_survive_an_interrupted_critic_or_recommender() {
             .step_with(&script, None, Some(&all_answers()))
             .await
             .unwrap();
+        assert_eq!(
+            engine.step_with(&script, None, None).await.unwrap().state,
+            "proving"
+        );
         assert!(engine.step_with(&script, None, None).await.is_err());
         drop(engine);
         let store = hwahap::state::Store::open(&fixture.repo).unwrap();
@@ -2080,7 +2100,7 @@ async fn completed_plan_reviews_survive_an_interrupted_critic_or_recommender() {
         assert_eq!(script.prompts_for(Role::PlanCritic).len(), 2);
         if fail_cold {
             assert!(outcome.message.contains("output encoding undecided"));
-            assert_eq!(script.prompts_for(Role::Recommender).len(), 3);
+            assert_eq!(script.prompts_for(Role::Recommender).len(), 4);
         }
         assert_eq!(script.remaining(), 0);
     }
@@ -2089,7 +2109,7 @@ async fn completed_plan_reviews_survive_an_interrupted_critic_or_recommender() {
 #[tokio::test]
 async fn changed_plan_content_invalidates_the_checkpointed_cold_review() {
     let fixture = Fixture::new();
-    let mut steps = happy_path_steps()[..4].to_vec();
+    let mut steps = happy_path_steps()[..5].to_vec();
     steps.push(step(
         Role::PlanCritic,
         Reply::Fail("critic interrupted".into()),
@@ -2105,6 +2125,10 @@ async fn changed_plan_content_invalidates_the_checkpointed_cold_review() {
         .step_with(&script, None, Some(&all_answers()))
         .await
         .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
     assert!(engine.step_with(&script, None, None).await.is_err());
     drop(engine);
     let store = hwahap::state::Store::open(&fixture.repo).unwrap();
@@ -2261,14 +2285,7 @@ async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
         Box::new(hwahap::clock::FixedClock::new(NOW)),
         hwahap::forge::Forge::with_program("/missing-forge-for-plan-only"),
     );
-    let mut steps = happy_path_steps()[..5].to_vec();
-    steps.insert(
-        2,
-        step(
-            Role::Recommender,
-            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
-        ),
-    );
+    let steps = happy_path_steps()[..6].to_vec();
     let script = Script::new(steps);
     assert_eq!(
         engine.start_planning(REQUEST, true).unwrap().state,
@@ -2307,14 +2324,7 @@ async fn standalone_plan_freezes_without_forge_then_resumes_exact_contract() {
 async fn delayed_build_rejects_changed_source() {
     let fixture = Fixture::new();
     let engine = fixture.engine();
-    let mut steps = happy_path_steps()[..5].to_vec();
-    steps.insert(
-        2,
-        step(
-            Role::Recommender,
-            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
-        ),
-    );
+    let steps = happy_path_steps()[..6].to_vec();
     let script = Script::new(steps);
     engine.start_planning(REQUEST, true).unwrap();
     engine.step_with(&script, None, None).await.unwrap();
@@ -2473,6 +2483,10 @@ async fn changed_prerequisite_reopens_previously_answered_dependent() {
     let script = Script::new(vec![
         step(Role::FactFinder, Reply::say(facts())),
         step(Role::Recommender, Reply::say(questions.to_string())),
+        step(
+            Role::Recommender,
+            Reply::say(r#"{"decisions":[],"not_applicable":[]}"#),
+        ),
         step(Role::PlanSynthesis, Reply::say(structure())),
         step(Role::ColdConsumer, Reply::say(PASS)),
         step(Role::PlanCritic, Reply::say(PASS)),
@@ -2486,6 +2500,10 @@ async fn changed_prerequisite_reopens_previously_answered_dependent() {
         .step_with(&script, None, Some(&all_answers()))
         .await
         .unwrap();
+    assert_eq!(
+        engine.step_with(&script, None, None).await.unwrap().state,
+        "proving"
+    );
     assert_eq!(
         engine.step_with(&script, None, None).await.unwrap().state,
         "awaiting_confirmation"

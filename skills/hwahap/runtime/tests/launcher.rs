@@ -38,3 +38,16 @@ fn only_the_packaged_current_release_can_start() {
     assert!(accepted.status.success());
     assert_eq!(accepted.stdout, b"current\n");
 }
+
+#[test]
+fn compiled_runtime_reports_the_launcher_version() {
+    let out = Command::new(env!("CARGO_BIN_EXE_hwahap"))
+        .arg("--version")
+        .output()
+        .unwrap();
+    assert!(out.status.success());
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap().trim(),
+        "hwahap 4.0.0"
+    );
+}

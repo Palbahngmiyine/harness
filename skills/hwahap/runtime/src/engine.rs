@@ -190,26 +190,21 @@ impl Engine {
     }
 
     fn resolve(&self, request: Option<&str>) -> Result<Resolved> {
-        self.resolve_planning(request, false, false)
+        self.resolve_planning(request, false)
     }
 
     pub fn start_planning(&self, request: &str, plan_only: bool) -> Result<StepOutcome> {
-        match self.resolve_planning(Some(request), plan_only, true)? {
+        match self.resolve_planning(Some(request), plan_only)? {
             Resolved::Started(outcome) => Ok(outcome),
             Resolved::Advance(_) => unreachable!("a request starts or rejects"),
         }
     }
 
-    fn resolve_planning(
-        &self,
-        request: Option<&str>,
-        plan_only: bool,
-        interactive: bool,
-    ) -> Result<Resolved> {
+    fn resolve_planning(&self, request: Option<&str>, plan_only: bool) -> Result<Resolved> {
         crate::approval::reject_unbound_implementation_request(request)?;
         let existing = self.store.recover()?;
         match (existing, request) {
-            (None, Some(request)) => Ok(Resolved::Started(self.start(request, plan_only, interactive)?)),
+            (None, Some(request)) => Ok(Resolved::Started(self.start(request, plan_only)?)),
             (None, None) => Err(Error::Rejected(
                 "there is no active Hwahap run in this repository; call hwahap_step again with \
                  `request` set to the user's implementation request"
@@ -237,7 +232,7 @@ impl Engine {
                 // A finished run does not block the next one, but it is not silently overwritten:
                 // only retire its state after the owned worktree was safely removed.
                 self.store.archive(&*self.clock)?;
-                Ok(Resolved::Started(self.start(request, plan_only, interactive)?))
+                Ok(Resolved::Started(self.start(request, plan_only)?))
             }
             (Some(run), Some(_)) => Err(Error::Rejected(format!(
                 "a Hwahap run is already active in this repository ({}, state {}). Finish or abandon \
@@ -328,7 +323,7 @@ impl Engine {
 
     // ---------------------------------------------------------------- planning
 
-    fn start(&self, request: &str, plan_only: bool, interactive: bool) -> Result<StepOutcome> {
+    fn start(&self, request: &str, plan_only: bool) -> Result<StepOutcome> {
         if request.trim().is_empty() {
             return Err(Error::Rejected(
                 "the implementation request is empty".into(),
@@ -345,15 +340,13 @@ impl Engine {
         }
         let mut plan = Plan::new(&goal_id, &base_branch, request.trim());
         plan.plan_only = plan_only;
-        plan.interactive = interactive;
-        if interactive {
-            if !self.git.is_clean(&self.repo_root)? {
-                return Err(Error::Rejected(
-                    "PLAN requires a clean committed source so its evidence can be bound".into(),
-                ));
-            }
-            plan.source_head = Some(self.git.head_sha()?);
+        plan.interactive = true;
+        if !self.git.is_clean(&self.repo_root)? {
+            return Err(Error::Rejected(
+                "PLAN requires a clean committed source so its evidence can be bound".into(),
+            ));
         }
+        plan.source_head = Some(self.git.head_sha()?);
         self.store.write_plan(&plan)?;
         self.store
             .write_plan_markdown(&render::plan_markdown(&plan)?)?;
