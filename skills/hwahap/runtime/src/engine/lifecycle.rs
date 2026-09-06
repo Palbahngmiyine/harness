@@ -37,6 +37,7 @@ impl Engine {
         plan.interactive = true;
         plan.question_frontier.clear();
         plan.execution_authorization = None;
+        plan.approved_plan = None;
         Ok(())
     }
 

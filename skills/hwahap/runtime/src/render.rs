@@ -56,7 +56,18 @@ pub fn plan_markdown(plan: &Plan) -> Result<String> {
     render_units(plan, &mut md);
     render_tests(plan, &mut md);
     render_open_items(plan, &mut md);
-    if plan.execution_authorization.is_some() {
+    if let Some(approval) = &plan.approved_plan {
+        md.line("## Approved Codex plan");
+        md.line("The original implementation request is recorded separately from CONFIRM PLAN. Contract translation requires independent review; no interview answers are fabricated.");
+        md.line(format!(
+            "Approved document: `{}`; source: `{}`",
+            approval.markdown_digest, approval.source_head
+        ));
+        for line in approval.markdown.lines() {
+            md.line(format!("> {line}"));
+        }
+        render_reviews(plan, &mut md)?;
+    } else if plan.execution_authorization.is_some() {
         md.line("Planning omitted under the recorded explicit BUILD instruction. No planning reviews or CONFIRM PLAN receipt are claimed.");
     } else {
         render_reviews(plan, &mut md)?;
