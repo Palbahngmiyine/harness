@@ -132,6 +132,7 @@ impl Engine {
         request: Option<&str>,
         user_input: Option<&str>,
     ) -> Result<StepOutcome> {
+        crate::approval::reject_unbound_implementation_request(user_input)?;
         match self.resolve(request)? {
             Resolved::Started(outcome) => Ok(outcome),
             Resolved::Advance(run) if run.state.needs_sessions() => Err(Error::Rejected(
@@ -174,6 +175,7 @@ impl Engine {
         request: Option<&str>,
         user_input: Option<&str>,
     ) -> Result<StepOutcome> {
+        crate::approval::reject_unbound_implementation_request(user_input)?;
         match self.resolve(request)? {
             Resolved::Started(outcome) => Ok(outcome),
             Resolved::Advance(run) if run.state.needs_sessions() => {
@@ -204,6 +206,7 @@ impl Engine {
         plan_only: bool,
         interactive: bool,
     ) -> Result<Resolved> {
+        crate::approval::reject_unbound_implementation_request(request)?;
         let existing = self.store.recover()?;
         match (existing, request) {
             (None, Some(request)) => Ok(Resolved::Started(self.start(request, plan_only, interactive)?)),

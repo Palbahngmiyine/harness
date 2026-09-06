@@ -70,6 +70,8 @@ impl NativeHost {
     }
 
     pub async fn advance(&self, root: &Path, input: NativeInput) -> Result<NativeProgress> {
+        crate::approval::reject_unbound_implementation_request(input.request.as_deref())?;
+        crate::approval::reject_unbound_implementation_request(input.user_input.as_deref())?;
         if input.request.is_some() && input.user_input.is_some() {
             return Err(Error::Rejected(
                 "request and user_input cannot be combined; send one without discarding either message"

@@ -94,6 +94,7 @@ impl super::Engine {
         input: &BuildRequest,
         parent: Option<&str>,
     ) -> Result<super::StepOutcome> {
+        crate::approval::reject_unbound_implementation_request(Some(&input.user_instruction))?;
         let saved = crate::pr_review::read_evidence::<serde_json::Value>(
             &self.store,
             "build-request.json",
