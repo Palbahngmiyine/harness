@@ -88,8 +88,8 @@ Automate PR creation from a forked repo to upstream:
 ### hwahap
 
 Hwahap has moved to [Palbahngmiyine/hwahap](https://github.com/Palbahngmiyine/hwahap).
-Its skill, Rust MCP runtime, CI, and automated releases are maintained there.
-See the [installation guide](https://github.com/Palbahngmiyine/hwahap#2-설치) and
+Its Codex plugin, Rust MCP runtime, CI, and versioned releases are maintained there.
+See the [installation guide](https://github.com/Palbahngmiyine/hwahap#설치) and
 [releases](https://github.com/Palbahngmiyine/hwahap/releases).
 
 ### korean-spell-check
