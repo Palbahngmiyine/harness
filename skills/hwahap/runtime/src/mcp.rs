@@ -104,7 +104,7 @@ expires; never sleep for 360 seconds or hold one blocking wait through the deadl
 engine alone is validating, poll after one second. Return completion only after the child turn \
 and its commands stop, relaying its exact final text with dispatch_id, agent_id, agent_stopped:true \
 and reported_usage:null unless real tool counters exist. The brief requires a dispatch_id/result \
-JSON envelope; reused and coordinator replies without the current ID are rejected. Keep completed pool children \
+JSON envelope; every reply without the current ID is rejected. Keep completed pool children \
 for later follow-up turns. Do not close them after each result; interruption is not thread release. \
 Requested model/access and reported tokens are not independent applied-model, sandbox or billing proof.
 

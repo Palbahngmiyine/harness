@@ -1,13 +1,13 @@
-# hwahap v3
+# hwahap v4
 
 기본적으로 `PLAN → BUILD → ADJUST → SHIPPING`을 진행하며 PLAN과 BUILD를 따로 사용할 수 있는
 Codex 스킬과 local STDIO MCP 서버다. BUILD는 구현·검증·draft PR 검토를 포함하고,
 ADJUST에서 계약 변경은 PLAN으로, 계약 내 구현 수정은 BUILD로 돌아간다. Rust 실행기는 계획·검증·복구를 담당하고,
 호스트 Codex가 기본 하위 에이전트를 실행한다. 진행 상태와 실행 요청은 `.hwahap/`에 저장한다.
 
-v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2` 스키마는 전부 제거되었고
-지원하는 계약은 `hwahap/v4` 하나뿐이다. 기존 `.hwahap` 디렉터리를 만나면 변환하지 않고 명확한 오류를
-낸다.
+지원하는 실행 계약은 `hwahap/v4` 하나다. 다른 버전의 계약·리뷰·실행 기록은 자동 변환하거나
+승인을 이어받지 않는다. 이전 설치와 hook을 제거한 뒤 현재 스킬과 release를 함께 설치한다.
+보존할 대화·결정·검증 기록은 활성 `.hwahap` 저장소 밖의 이력으로 둔다.
 
 ## 1. 한눈에 보기
 
@@ -38,19 +38,24 @@ acceptance·테스트·허용 경로를 바꾸는 요청은 `user_input`으로 P
 hwahap은 스킬 하나와 MCP 서버 하나로 이루어진다. 둘을 따로 설치한다.
 
 ```sh
-# 1. 바이너리를 빌드한다
+# 현재 소스를 검증한 뒤 release를 빌드한다.
+cargo test --manifest-path skills/hwahap/runtime/Cargo.toml --all-targets
 cargo build --release --manifest-path skills/hwahap/runtime/Cargo.toml
+skills/hwahap/bin/hwahap --version
 
-# 2. MCP 서버를 등록한다
-codex mcp add hwahap -- "$PWD/skills/hwahap/bin/hwahap"
-
-# 3. 스킬을 설치한다 (이 저장소의 다른 스킬과 같은 방식)
-cp -R skills/hwahap "${CODEX_HOME:-$HOME/.codex}/skills/"
+# 기존 설치를 제거한 빈 경로에 현재 스킬과 release만 설치한다.
+hwahap_install="${CODEX_HOME:-$HOME/.codex}/skills/hwahap"
+test ! -e "$hwahap_install"
+mkdir -p "$hwahap_install/runtime/target/release"
+rsync -a --exclude target skills/hwahap/ "$hwahap_install/"
+cp skills/hwahap/runtime/target/release/hwahap "$hwahap_install/runtime/target/release/"
+codex mcp add hwahap -- "$hwahap_install/bin/hwahap"
 ```
 
-`bin/hwahap` 런처가 `HWAHAP_BIN` → `runtime/target/release/hwahap` →
-`runtime/target/debug/hwahap` → `PATH` 순으로 바이너리를 찾고, 없으면 빌드 명령을 알려주고 실패한다.
-진단은 전부 stderr로 나간다. stdout은 MCP 전송 채널이다.
+`bin/hwahap`은 같은 설치의 `runtime/target/release/hwahap`만 실행하고 `--version`이
+`hwahap 4.0.0`인지 확인한다. 환경변수·debug·PATH의 다른 바이너리를 탐색하지 않는다.
+진단은 stderr로, MCP 응답은 stdout으로 보낸다. 등록 후 Codex에서 연결을 새로 열어
+`initialize`의 서버 버전과 제공 도구를 확인한다. 등록 명령은 [공식 MCP 문서](https://developers.openai.com/codex/mcp)를 따른다.
 
 필요한 것: Rust 1.90 이상, POSIX 환경, `git`, 인증된 `gh`, 기본 하위 에이전트의 생성·follow-up·대기·중단 도구를
 제공하는 Codex 호스트다. `.hwahap/`은 대상 저장소의 `.gitignore`에 있어야 한다.

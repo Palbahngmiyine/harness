@@ -117,7 +117,7 @@ run을 archive하면 사용량과 기준값도 함께 보존한다. `.hwahap`은
 
 ## 로컬 Codex 사용량 연결
 
-사용할 v3 바이너리의 launcher에 아래 인자를 전달한다. 먼저 Hwahap run을 시작하고 해당 실행에
+현재 설치의 바이너리의 launcher에 아래 인자를 전달한다. 먼저 Hwahap run을 시작하고 해당 실행에
 참여하는 부모·자식의 정확한 로컬 Codex session JSONL 경로를 연결한다. 전역 설정 변경은 없다.
 
 ```sh
