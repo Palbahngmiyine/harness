@@ -124,10 +124,7 @@ impl NativeSessions {
                 "completion does not match the registered native dispatch".into(),
             ));
         }
-        super::reply::result(
-            &completion,
-            dispatch.reuse_agent_id.is_some() || dispatch.lane == super::NativeLane::Coordinator,
-        )?;
+        super::reply::result(&completion)?;
         if let Some(previous) = &waiting.pending.completion {
             if previous != &completion {
                 return Err(Error::Rejected(

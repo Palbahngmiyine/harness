@@ -130,7 +130,7 @@ fn stamp(store: &Store, id: &str, now: i64, terminal: Option<(&str, Option<u64>)
     save(store, &value)
 }
 
-/// Missing timing is compatible only with dispatches created before timing fields existed.
+/// Every dispatch must have the timing record created before it was offered.
 pub(super) fn observe(
     store: &Store,
     dispatch: &super::NativeDispatch,
@@ -138,11 +138,7 @@ pub(super) fn observe(
     bytes: Option<u64>,
 ) -> Result<()> {
     if read(store, &dispatch.dispatch_id)?.is_none() {
-        return if dispatch.hard_timeout_secs == 0 {
-            Ok(())
-        } else {
-            Err(Error::Corrupt("native dispatch timing is missing".into()))
-        };
+        return Err(Error::Corrupt("native dispatch timing is missing".into()));
     }
     match outcome {
         Some(outcome) => finish(store, &dispatch.dispatch_id, outcome, bytes),
@@ -165,20 +161,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn observation_requires_new_timing_but_accepts_a_legacy_dispatch() {
+    fn observation_rejects_missing_timing_for_every_dispatch() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::open(dir.path()).unwrap();
         let id = "b".repeat(64);
-        let mut dispatch: super::super::NativeDispatch =
+        let dispatch: super::super::NativeDispatch =
             serde_json::from_value(serde_json::json!({
                 "dispatch_id": id, "run_id": "r", "role": "fact_finder", "profile": "economy",
                 "model": "m", "effort": "medium", "cwd": "/tmp", "access": "read_only",
                 "coordinator_allowed": false, "prompt_digest": "p", "base_head": "h",
-                "brief": "facts", "stop_required": false
+                "brief": "facts", "stop_required": false, "pool_scope":"parent", "lane":"worker", "soft_budget_secs":60, "hard_timeout_secs":180
             }))
             .unwrap();
-        observe(&store, &dispatch, None, None).unwrap();
-        dispatch.hard_timeout_secs = 180;
         assert!(observe(&store, &dispatch, None, None).is_err());
         begin(&store, &id, Role::FactFinder, 5, 60, 180).unwrap();
         observe(&store, &dispatch, None, None).unwrap();

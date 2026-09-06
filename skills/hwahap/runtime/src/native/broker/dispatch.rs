@@ -142,7 +142,7 @@ impl NativeSessions {
                 return Err(Error::Rejected(format!("native {reason}; stop the child and its commands before acknowledging recovery")));
             }
         };
-        let final_message = crate::native::reply::result(&completion, false)?;
+        let final_message = crate::native::reply::result(&completion)?;
         Ok(SessionOutcome {
             transcript: completion.final_message.clone(),
             final_message,

@@ -379,7 +379,7 @@ async fn recommender_capacity_recovery_preserves_completed_fact_finding() {
     let completion = NativeCompletion {
         dispatch_id: first.dispatch_id.clone(),
         agent_id: "fact-child".into(),
-        final_message: facts.into(),
+        final_message: serde_json::json!({"dispatch_id":first.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(facts).unwrap()}).to_string(),
         agent_stopped: true,
         reported_usage: None,
     };

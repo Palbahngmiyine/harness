@@ -271,7 +271,7 @@ mod tests {
             json!({"dispatch_id":id,"run_id":"run","role":"recommender",
             "profile":"deep","unit":null,"model":model,"effort":"high","cwd":"/tmp",
             "access":"read_only","coordinator_allowed":true,"prompt_digest":"x",
-            "plan_digest":null,"base_head":"head","brief":"task","agent_id":null,"stop_required":false}),
+            "plan_digest":null,"base_head":"head","brief":"task","agent_id":null,"stop_required":false,"pool_scope":"parent","lane":"coordinator","soft_budget_secs":60,"hard_timeout_secs":180}),
         );
     }
     fn complete(store: &Store, id: &str, agent: &str, usage: serde_json::Value) {

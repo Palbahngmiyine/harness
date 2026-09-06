@@ -114,7 +114,8 @@ async fn registered_result_is_durable_bound_and_consumed_once() {
     let mut completion = NativeCompletion {
         dispatch_id: request.dispatch_id.clone(),
         agent_id: "child-1".into(),
-        final_message: "facts".into(),
+        final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":{"facts":[]}})
+            .to_string(),
         agent_stopped: true,
         reported_usage: None,
     };
@@ -131,12 +132,18 @@ async fn registered_result_is_durable_bound_and_consumed_once() {
     completion.agent_id = "other-child".into();
     assert!(broker.complete(completion.clone()).is_err());
     completion.agent_id = "child-1".into();
+    let mut unbound = completion.clone();
+    unbound.final_message = r#"{"facts":[]}"#.into();
+    assert!(
+        broker.complete(unbound).is_err(),
+        "fresh children must bind their result too"
+    );
     broker.complete(completion.clone()).unwrap();
     broker.complete(completion.clone()).unwrap();
     completion.final_message = "changed".into();
     assert!(broker.complete(completion).is_err());
     let outcome = task.await.unwrap().unwrap();
-    assert_eq!(outcome.final_message, "facts");
+    assert_eq!(outcome.final_message, r#"{"facts":[]}"#);
     assert!(store
         .artifacts_path()
         .join(format!("native-completion-{}.json", request.dispatch_id))
@@ -178,7 +185,9 @@ async fn completion_write_failures_do_not_deliver_and_exact_retry_delivers_once(
         let completion = NativeCompletion {
             dispatch_id: request.dispatch_id.clone(),
             agent_id: "child-1".into(),
-            final_message: "facts".into(),
+            final_message:
+                serde_json::json!({"dispatch_id":request.dispatch_id,"result":{"facts":[]}})
+                    .to_string(),
             agent_stopped: true,
             reported_usage: None,
         };
@@ -208,7 +217,7 @@ async fn completion_write_failures_do_not_deliver_and_exact_retry_delivers_once(
             Poll::Ready(Ok(outcome)) => outcome,
             other => panic!("retry did not deliver: {other:?}"),
         };
-        assert_eq!(outcome.final_message, completion.final_message);
+        assert_eq!(outcome.final_message, r#"{"facts":[]}"#);
         broker.complete(completion.clone()).unwrap();
         let saved: NativeCompletion =
             serde_json::from_slice(&std::fs::read(&result_path).unwrap()).unwrap();
@@ -290,7 +299,7 @@ async fn timing_immediate_completion_does_not_wait_for_the_hard_deadline() {
         .complete(NativeCompletion {
             dispatch_id: request.dispatch_id.clone(),
             agent_id: "fast-child".into(),
-            final_message: message.into(),
+            final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(message).unwrap()}).to_string(),
             agent_stopped: true,
             reported_usage: None,
         })
@@ -306,7 +315,7 @@ async fn timing_immediate_completion_does_not_wait_for_the_hard_deadline() {
         .unwrap()
         .unwrap();
     assert_eq!(timing.outcome.as_deref(), Some("completed"));
-    assert_eq!(timing.output_bytes, Some(message.len() as u64));
+    assert_eq!(timing.output_bytes, Some(serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(message).unwrap()}).to_string().len() as u64));
     assert!(timing.registered_at_ms.unwrap() >= timing.offered_at_ms);
     assert!(timing.finished_at_ms.unwrap() >= timing.registered_at_ms.unwrap());
     broker.finish().unwrap();
@@ -653,7 +662,7 @@ async fn host_consumes_registered_output_and_accepts_identical_replay() {
     )
     .await
     .unwrap();
-    let completion = NativeCompletion { dispatch_id: request.dispatch_id, agent_id: "native-1".into(), final_message: r#"{"facts":[{"id":"F1","question":"what exists?","answer":"empty repository","sources":["git HEAD"]}]}"#.into(), agent_stopped: true, reported_usage: None };
+    let completion = NativeCompletion { dispatch_id: request.dispatch_id.clone(), agent_id: "native-1".into(), final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(r#"{"facts":[{"id":"F1","question":"what exists?","answer":"empty repository","sources":["git HEAD"]}]}"#).unwrap()}).to_string(), agent_stopped: true, reported_usage: None };
     host.advance(
         temp.path(),
         NativeInput {
@@ -724,8 +733,8 @@ async fn native_fact_finder_ignores_runtime_writes_but_detects_user_file_changes
         }
         let mut progress = host.advance(temp.path(), NativeInput {
             completion: Some(NativeCompletion {
-                dispatch_id: request.dispatch_id, agent_id: "reader".into(),
-                final_message: r#"{"facts":[{"id":"F1","question":"what exists?","answer":"README.md","sources":["README.md"]}]}"#.into(),
+                dispatch_id: request.dispatch_id.clone(), agent_id: "reader".into(),
+                final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(r#"{"facts":[{"id":"F1","question":"what exists?","answer":"README.md","sources":["README.md"]}]}"#).unwrap()}).to_string(),
                 agent_stopped: true, reported_usage: None,
             }), ..Default::default()
         }).await.unwrap();

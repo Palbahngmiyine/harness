@@ -89,7 +89,9 @@ pub fn check_registration(store: &Store, dispatch: &NativeDispatch, id: &str) ->
 
 fn checked_registration(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<Pool> {
     if dispatch.pool_scope.is_empty() {
-        return Ok(Pool::default());
+        return Err(Error::Rejected(
+            "native dispatch parent scope is missing".into(),
+        ));
     }
     if dispatch.lane == NativeLane::Coordinator {
         return if id == "coordinator" {
@@ -144,7 +146,7 @@ pub fn register(store: &Store, dispatch: &NativeDispatch, id: &str) -> Result<()
 
 fn write_agent(store: &Store, dispatch: &NativeDispatch, id: &str, stopped: bool) -> Result<()> {
     let mut pool = checked_registration(store, dispatch, id)?;
-    if dispatch.pool_scope.is_empty() || dispatch.lane == NativeLane::Coordinator {
+    if dispatch.lane == NativeLane::Coordinator {
         return Ok(());
     }
     pool.agents.insert(
@@ -162,7 +164,7 @@ fn write_agent(store: &Store, dispatch: &NativeDispatch, id: &str, stopped: bool
 
 /// Only durable completion or exact stop acknowledgment makes a lane reusable.
 pub fn stopped(store: &Store, dispatch: &NativeDispatch) -> Result<()> {
-    if dispatch.pool_scope.is_empty() || dispatch.lane == NativeLane::Coordinator {
+    if dispatch.lane == NativeLane::Coordinator {
         return Ok(());
     }
     let Some(id) = &dispatch.agent_id else {
