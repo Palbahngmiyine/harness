@@ -110,22 +110,13 @@ mod tests {
     }
 
     #[test]
-    fn legacy_serialization_and_digest_do_not_gain_an_approval() {
-        let plan = Plan::new("legacy", "main", "Keep old approval");
-        let mut value = serde_json::to_value(&plan).unwrap();
-        assert!(value.get("approved_plan").is_none());
-        let old_digest = plan.digest().unwrap();
-        let mut imported: Plan = serde_json::from_value(value.clone()).unwrap();
-        assert_eq!(imported.digest().unwrap(), old_digest);
-        imported.approved_plan = Some(approval());
-        assert_ne!(imported.digest().unwrap(), old_digest);
-        value["approved_plan"] = serde_json::Value::Null;
-        assert_eq!(
-            serde_json::from_value::<Plan>(value)
-                .unwrap()
-                .digest()
-                .unwrap(),
-            old_digest
-        );
+    fn explicit_empty_approval_round_trips_without_granting_authority() {
+        let plan = Plan::new("current", "main", "Preserve explicit approval");
+        let value = serde_json::to_value(&plan).unwrap();
+        assert!(value.get("approved_plan").unwrap().is_null());
+        let mut restored: Plan = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.digest().unwrap(), plan.digest().unwrap());
+        restored.approved_plan = Some(approval());
+        assert_ne!(restored.digest().unwrap(), plan.digest().unwrap());
     }
 }

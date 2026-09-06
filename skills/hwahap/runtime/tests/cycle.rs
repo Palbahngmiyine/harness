@@ -1077,7 +1077,7 @@ async fn the_plan_and_its_rendering_are_written_where_the_user_is_told_to_look()
         &std::fs::read_to_string(fixture.repo.join(".hwahap/plan.json")).unwrap(),
     )
     .unwrap();
-    assert_eq!(plan["schema"], "hwahap/v3");
+    assert_eq!(plan["schema"], "hwahap/v4");
 }
 
 #[tokio::test]

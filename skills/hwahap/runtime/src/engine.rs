@@ -868,7 +868,7 @@ impl Engine {
         // Anything accepted against a plan detail this revision changed is no longer accepted.
         // Keeping it would let an adjustment ship the branch unchanged; dropping everything would
         // rebuild work the user never questioned. The fingerprint is what tells the two apart.
-        let invalidated = self.invalidated_units(&plan, &run)?;
+        let invalidated = Self::invalidated_units(&plan, &run)?;
         run.accepted_units.retain(|id| !invalidated.contains(id));
         for id in &invalidated {
             run.accepted_fingerprints.remove(id);
@@ -899,17 +899,13 @@ impl Engine {
     }
 
     /// Accepted units whose plan detail has moved since they were accepted.
-    fn invalidated_units(&self, plan: &Plan, run: &Run) -> Result<Vec<String>> {
+    fn invalidated_units(plan: &Plan, run: &Run) -> Result<Vec<String>> {
         let mut invalidated = Vec::new();
         for id in &run.accepted_units {
-            let still_valid = match (run.accepted_fingerprints.get(id), plan.unit(id)) {
-                // The unit itself is gone from the plan, so nothing it built is wanted.
-                (_, None) => false,
-                (Some(recorded), Some(_)) => *recorded == plan.unit_fingerprint(id)?,
-                // Accepted before fingerprints were recorded: assume it must be rebuilt rather than
-                // assume it is still right.
-                (None, Some(_)) => false,
-            };
+            let recorded = run.accepted_fingerprints.get(id).ok_or_else(|| {
+                Error::Corrupt(format!("accepted unit {id} has no recorded fingerprint"))
+            })?;
+            let still_valid = plan.unit(id).is_some() && *recorded == plan.unit_fingerprint(id)?;
             if !still_valid {
                 invalidated.push(id.clone());
             }
@@ -1976,6 +1972,28 @@ impl Next {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepted_work_without_fingerprints_is_rejected_even_if_unit_was_removed() {
+        let run = Run {
+            schema: crate::plan::SCHEMA.into(),
+            run_id: "current".into(),
+            goal_id: "current".into(),
+            revision: 1,
+            state: RunState::Deciding,
+            accepted_units: vec!["U1".into()],
+            accepted_fingerprints: Default::default(),
+            plan_digest: None,
+            branch: "test".into(),
+            reviewed_head: None,
+            seq: 0,
+        };
+        let plan = Plan::new("current", "main", "current contract");
+        assert!(Engine::invalidated_units(&plan, &run)
+            .unwrap_err()
+            .to_string()
+            .contains("U1 has no recorded fingerprint"));
+    }
 
     #[cfg(unix)]
     #[tokio::test]

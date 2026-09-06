@@ -9,7 +9,7 @@ unit은 그 계획 안에서 구현·검증·검토하는 작업 단위다. 정�
 
 merge·배포·실사용 검증은 이후 별도 작업이다.
 
-이 문서는 `hwahap/v3` 운영 기준이다. 설치는 [README](README.md), 실제 호스트 검증 범위는
+이 문서는 `hwahap/v4` 운영 기준이다. 설치는 [README](README.md), 실제 호스트 검증 범위는
 [PLATFORM](PLATFORM.md)을 따른다. native 도구 호출·등록·완료 전달의 단일 절차는 실행 중인
 [MCP instructions](runtime/src/mcp.rs)다. 호스트는 반환된 `next`와 `message`에 따라 진행한다.
 
