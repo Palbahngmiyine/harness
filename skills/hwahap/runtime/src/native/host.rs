@@ -104,6 +104,11 @@ impl NativeHost {
                 return Err(Error::Rejected("host_session_id must be a stable, nonempty parent task identifier (at most 128 bytes)".into()));
             }
         }
+        // Recover the compound approval snapshot before deciding who owns a new run.
+        if !active.contains_key(root) {
+            let _lock = RepoLock::acquire(root)?;
+            store.recover()?;
+        }
         let expected_scope = input
             .host_session_id
             .clone()
@@ -136,6 +141,20 @@ impl NativeHost {
                 {
                     return Err(Error::Rejected(
                         "BUILD belongs to another parent task".into(),
+                    ));
+                }
+                if store
+                    .read_events()?
+                    .iter()
+                    .rev()
+                    .find(|e| {
+                        e.kind == "approved_plan_snapshot" && e.data["run"]["run_id"] == run.run_id
+                    })
+                    .and_then(|e| e.data["pool_scope"].as_str())
+                    .is_some_and(|scope| Some(scope) != expected_scope.as_deref())
+                {
+                    return Err(Error::Rejected(
+                        "approved plan belongs to another parent task".into(),
                     ));
                 }
                 // Recover ownership from older pinned runtimes without allocating another pool.
@@ -191,7 +210,8 @@ impl NativeHost {
             let _lock = RepoLock::acquire(root)?;
             let engine = Engine::open(root)?;
             let outcome = if let Some(approved) = &input.approved_plan {
-                let outcome = engine.register_approved_plan(approved)?;
+                let outcome = engine
+                    .register_approved_plan_for_parent(approved, expected_scope.as_deref())?;
                 crate::pr_review::save_evidence(
                     &store,
                     "native-owner.json",
