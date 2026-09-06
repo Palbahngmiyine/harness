@@ -11,7 +11,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
-| [hwahap](skills/hwahap/) | Confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
+| [hwahap](https://github.com/Palbahngmiyine/hwahap) | Confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
 
@@ -29,9 +29,8 @@ cp -r skills/* ~/.claude/skills/
 
 Start a new session after copying to confirm that the skill is available.
 
-`hwahap` needs one extra step: it is a skill *and* an MCP server, so after copying the directory
-you also build its binary and register the server with `codex mcp add`. See
-[skills/hwahap/README.md](skills/hwahap/README.md).
+Hwahap is now maintained and installed separately from
+[Palbahngmiyine/hwahap](https://github.com/Palbahngmiyine/hwahap). It is not included in `skills/*`.
 
 ### Skill Locations
 
@@ -88,42 +87,10 @@ Automate PR creation from a forked repo to upstream:
 
 ### hwahap
 
-Hwahap v4 runs one implementation request end to end:
-
-- it investigates the repository itself and asks only about preferences and trade-offs
-- every material decision arrives with alternatives, a recommendation, evidence, and impact — and
-  the recommendation is never an implicit default
-- `CONFIRM PLAN <challenge>` freezes a digest-bound plan; after that a normal cycle asks nothing
-- units are implemented, tested, and independently reviewed one at a time, each accepted unit
-  becoming a checkpoint commit on a single run branch
-- success is judged from repository state and exit status, never from what an agent claims
-- it finishes with a draft pull request, and marks it ready only on an explicit `SHIP <challenge>`
-
-One Rust binary is a local STDIO MCP server (exactly three tools) and a durable broker for
-Codex native sub-agents, one dispatch at a time. Astra handles deep reasoning and one repair
-attempt; an already-Astra coordinator can handle two planning roles without extra children. There is no daemon, no database, no HTTP
-transport, and no lifecycle hook.
-
-Requirements: Rust 1.90 or newer, an authenticated `gh`, and a Codex host with native sub-agent tools. It is a
-Unix-only tool today: the engine runs a plan's test commands through `sh -c`.
-Installation, the architecture, the fixed model/effort policy, and the design decisions are in
-[`skills/hwahap/README.md`](skills/hwahap/README.md); the observed platform behavior and validation limits
-are in [`skills/hwahap/PLATFORM.md`](skills/hwahap/PLATFORM.md).
-
-Validate from the repository root:
-
-```bash
-cargo test --manifest-path skills/hwahap/runtime/Cargo.toml --all-targets
-skills/hwahap/tests/gates.sh
-```
-
-CI runs fmt, clippy, and the test suite on ubuntu, macOS, and Windows, plus the static simplicity
-gates that pin the design to numbers: three MCP tools, a 40-line skill, three model/effort
-profiles, and zero SQLite, HTTP-server, daemon, hook, or nested-exec dependencies. The `verify`
-job gates everything and is the required status check on `main`.
-
-Target repositories keep ignored run state under `.hwahap/`. Hwahap never marks a PR ready without
-an explicit confirmation, and never merges or enables auto-merge.
+Hwahap has moved to [Palbahngmiyine/hwahap](https://github.com/Palbahngmiyine/hwahap).
+Its skill, Rust MCP runtime, CI, and automated releases are maintained there.
+See the [installation guide](https://github.com/Palbahngmiyine/hwahap#2-설치) and
+[releases](https://github.com/Palbahngmiyine/hwahap/releases).
 
 ### korean-spell-check
 
