@@ -22,6 +22,7 @@ pub const DIR: &str = ".hwahap";
 
 /// The journal event kind that carries a full run snapshot.
 const SNAPSHOT_KIND: &str = "run_snapshot";
+const CONTRACT_SNAPSHOT_KIND: &str = "approved_plan_snapshot";
 
 /// Which of the three cycles a run is in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -339,6 +340,29 @@ impl Store {
         self.write_atomic(&self.plan_path(), &to_canonical_line(plan)?)
     }
 
+    /// Journal the old draft and its approved replacement together before changing either snapshot.
+    pub fn write_approved_plan(
+        &self,
+        clock: &dyn Clock,
+        run: &Run,
+        plan: &Plan,
+        request: &crate::approval::ApprovedPlanRequest,
+    ) -> Result<()> {
+        let event = self.append_event(
+            clock,
+            CONTRACT_SNAPSHOT_KIND,
+            serde_json::json!({
+                "run":run, "plan":plan, "request":request,
+                "previous_run":self.read_run()?, "previous_plan":self.read_plan()?
+            }),
+        )?;
+        self.write_plan(plan)?;
+        self.write_plan_markdown(&crate::render::plan_markdown(plan)?)?;
+        let mut snapshot = run.clone();
+        snapshot.seq = event.seq;
+        self.write_atomic(&self.run_path(), &to_canonical_line(&snapshot)?)
+    }
+
     pub fn write_plan_markdown(&self, markdown: &str) -> Result<()> {
         self.write_atomic(&self.root.join("plan.md"), markdown)
     }
@@ -490,18 +514,34 @@ impl Store {
         }
         self.verify_chain()?;
         let events = self.read_events()?;
-        let journalled = events
+        let last_snapshot = events
             .iter()
             .rev()
-            .find(|event| event.kind == SNAPSHOT_KIND)
+            .find(|event| event.kind == SNAPSHOT_KIND || event.kind == CONTRACT_SNAPSHOT_KIND);
+        let journalled = last_snapshot
             .map(|event| {
-                serde_json::from_value::<Run>(event.data.clone()).map(|mut run| {
+                let data = if event.kind == CONTRACT_SNAPSHOT_KIND {
+                    event.data["run"].clone()
+                } else {
+                    event.data.clone()
+                };
+                serde_json::from_value::<Run>(data).map(|mut run| {
                     run.seq = event.seq;
                     run
                 })
             })
             .transpose()
             .map_err(|e| corrupt(format!("a journalled run snapshot is unreadable: {e}")))?;
+
+        if let Some(event) = last_snapshot.filter(|e| e.kind == CONTRACT_SNAPSHOT_KIND) {
+            let plan: Plan = serde_json::from_value(event.data["plan"].clone())
+                .map_err(|e| corrupt(format!("approved plan snapshot is unreadable: {e}")))?;
+            if self.read_run()?.is_none_or(|run| run.seq < event.seq) {
+                // Recover both files even when the crash followed the plan write but preceded run.json.
+                self.write_plan(&plan)?;
+                self.write_plan_markdown(&crate::render::plan_markdown(&plan)?)?;
+            }
+        }
 
         match (self.read_run()?, journalled) {
             (None, None) => Ok(None),
@@ -832,6 +872,40 @@ mod tests {
         assert_eq!(store.recover().unwrap(), None);
         assert!(store.read_events().unwrap().is_empty());
         store.verify_chain().unwrap();
+    }
+
+    #[test]
+    fn approved_contract_recovers_both_snapshots_without_losing_the_draft() {
+        for write_plan_first in [false, true] {
+            let (_dir, store) = store();
+            let old = Plan::new("old", "main", "Unfinished interview");
+            store.write_plan(&old).unwrap();
+            store.write_run(&clock(), &a_run()).unwrap();
+            let before = store.read_run().unwrap().unwrap();
+            let mut next = before.clone();
+            next.revision += 1;
+            next.state = RunState::Proving;
+            let mut candidate = old.clone();
+            candidate.revision = next.revision;
+            candidate.goal.statement = "Approved replacement".into();
+            let event = store.append_event(&clock(), CONTRACT_SNAPSHOT_KIND,
+                serde_json::json!({"run":next,"plan":candidate,"previous_run":before,"previous_plan":old})
+            ).unwrap();
+            if write_plan_first {
+                store.write_plan(&candidate).unwrap();
+            }
+            let recovered = store.recover().unwrap().unwrap();
+            assert_eq!(recovered.seq, event.seq);
+            assert_eq!(recovered.revision, 2);
+            assert_eq!(store.read_plan().unwrap().unwrap(), candidate);
+            assert_eq!(store.recover().unwrap().unwrap(), recovered);
+            let events = store.read_events().unwrap();
+            assert_eq!(
+                events.last().unwrap().data["previous_plan"],
+                serde_json::json!(old)
+            );
+            store.verify_chain().unwrap();
+        }
     }
 
     #[test]

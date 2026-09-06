@@ -59,6 +59,7 @@ impl ApprovedPlanRequest {
         let mut plan = self.contract.plan(id, base_commit)?;
         plan.source_head = Some(self.approval.source_head.clone());
         plan.approved_plan = Some(self.approval.clone());
+        plan.execution_branch = Some(self.contract.branch.clone());
         Ok(plan)
     }
 }
