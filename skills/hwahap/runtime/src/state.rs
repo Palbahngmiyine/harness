@@ -347,12 +347,13 @@ impl Store {
         run: &Run,
         plan: &Plan,
         request: &crate::approval::ApprovedPlanRequest,
+        pool_scope: &str,
     ) -> Result<()> {
         let event = self.append_event(
             clock,
             CONTRACT_SNAPSHOT_KIND,
             serde_json::json!({
-                "run":run, "plan":plan, "request":request,
+                "run":run, "plan":plan, "request":request, "pool_scope":pool_scope,
                 "previous_run":self.read_run()?, "previous_plan":self.read_plan()?
             }),
         )?;

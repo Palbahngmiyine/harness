@@ -4,6 +4,14 @@ use crate::approval::ApprovedPlanRequest;
 impl Engine {
     /// Register the already-approved document, then review its translation before any execution.
     pub fn register_approved_plan(&self, input: &ApprovedPlanRequest) -> Result<StepOutcome> {
+        self.register_approved_plan_for_parent(input, None)
+    }
+
+    pub fn register_approved_plan_for_parent(
+        &self,
+        input: &ApprovedPlanRequest,
+        pool_scope: Option<&str>,
+    ) -> Result<StepOutcome> {
         input.approval.validate()?;
         let existing = self.store.recover()?;
         let old = self.store.read_plan()?;
@@ -112,8 +120,13 @@ impl Engine {
             reviewed_head: None,
             seq: 0,
         };
-        self.store
-            .write_approved_plan(&*self.clock, &run, &candidate, input)?;
+        self.store.write_approved_plan(
+            &*self.clock,
+            &run,
+            &candidate,
+            input,
+            pool_scope.unwrap_or(&run.run_id),
+        )?;
         Ok(self.report(&run, "Your plan approval is recorded. Hwahap is checking that the executable contract preserves it; no new approval is requested.".into()))
     }
 }

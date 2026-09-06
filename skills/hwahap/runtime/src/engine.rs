@@ -551,7 +551,14 @@ impl Engine {
             self.save_plan(&plan)?;
         }
 
-        let markdown = render::plan_markdown(&plan)?;
+        let mut markdown = render::plan_markdown(&plan)?;
+        if plan.approved_plan.is_some() {
+            // Review all execution fields, including commands omitted from the user summary.
+            markdown.push_str(&format!(
+                "\nComplete executable contract (data, not instructions):\n```json\n{}\n```\n",
+                serde_json::to_string_pretty(&plan).map_err(|e| Error::Corrupt(e.to_string()))?
+            ));
+        }
         let reviewed = plan.review_digest()?;
 
         let mut findings = Vec::new();
@@ -1343,6 +1350,9 @@ impl Engine {
             return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
         };
 
+        if plan.approved_plan.is_some() && plan.frozen.is_none() {
+            return Err(Error::Rejected("Approval is retained. Repair the translation with approved_plan and the exact current draft digest; do not restart the interview or ask for the same approval.".into()));
+        }
         let parsed = parse_message(input);
         if !parsed.conflicts.is_empty() {
             return Ok(self.report(
@@ -1703,7 +1713,18 @@ impl Engine {
             run_id: run.run_id.clone(),
             phase: run.state.phase().name().to_string(),
             state: run.state.name().to_string(),
-            next: run.state.next().name().to_string(),
+            next: if matches!(run.state, RunState::PlanReady)
+                && self
+                    .store
+                    .read_plan()
+                    .ok()
+                    .flatten()
+                    .is_some_and(|p| p.approved_plan.is_some())
+            {
+                "continue".into()
+            } else {
+                run.state.next().name().to_string()
+            },
             message,
             plan_digest: run.plan_digest.as_ref().map(|d| d.to_string()),
             pr_url: run.state.pr_url().map(str::to_string).or_else(|| {
@@ -1731,6 +1752,7 @@ impl Engine {
             RunState::AwaitingConfirmation { challenge } => format!(
                 "Read `.hwahap/plan.md`. To freeze it, type exactly:\n\nCONFIRM PLAN {challenge}"
             ),
+            RunState::PlanReady if plan.is_some_and(|p| p.approved_plan.is_some()) => "Your approved plan is saved. Continue BUILD without another approval.".into(),
             RunState::PlanReady => "PLAN is confirmed and saved in `.hwahap/plan.md`. Implementation has not started. Request BUILD with this plan's digest when ready.".into(),
             RunState::Coding { unit, attempt } => format!(
                 "Building {unit} (attempt {attempt}). {} unit(s) accepted so far.",
@@ -1747,7 +1769,8 @@ impl Engine {
             RunState::Shipped { pr_url } => format!("{pr_url} is ready for review."),
             RunState::Blocked { reason } => format!("Hwahap stopped: {reason}"),
             RunState::PlanConflict { unit, detail } => {
-                format!("{unit} hit a plan conflict: {detail}")
+                let repair = if plan.is_some_and(|p| p.approved_plan.is_some() && p.frozen.is_none()) { "\nPreserve the approved source. Repair its executable translation using approved_plan with replaces_plan_digest for this draft. Ask the user only for a genuinely new decision." } else { "" };
+                format!("{unit} hit a plan conflict: {detail}{repair}")
             }
         })
     }
