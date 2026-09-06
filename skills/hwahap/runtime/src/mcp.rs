@@ -125,6 +125,9 @@ checks pass, and the final review is still fresh.";
 /// Arguments to `hwahap_step`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 pub struct StepArgs {
+    /// Exact Codex plan implementation request and its executable translation, reviewed before BUILD.
+    #[serde(default)]
+    pub approved_plan: Option<crate::approval::ApprovedPlanRequest>,
     /// Actual answers to the current question_batch, relayed without rewriting their text.
     #[serde(default)]
     pub question_response: Option<crate::dialogue::QuestionResponse>,
@@ -307,6 +310,7 @@ impl Hwahap {
             .advance(
                 &root,
                 NativeInput {
+                    approved_plan: args.approved_plan,
                     question_response: args.question_response,
                     plan_only: args.plan_only,
                     build_confirmed: args.build_confirmed,

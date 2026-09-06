@@ -382,7 +382,13 @@ impl Engine {
             RunState::AwaitingConfirmation { challenge } => {
                 self.freeze(run, &challenge, user_input)
             }
-            RunState::PlanReady => self.adjust(run, user_input),
+            RunState::PlanReady => {
+                if user_input.is_none() && self.require_plan()?.approved_plan.is_some() {
+                    self.begin_frozen_build(run)
+                } else {
+                    self.adjust(run, user_input)
+                }
+            }
             RunState::AwaitingAdjustOrShip { .. } => self.adjust(run, user_input),
             RunState::PlanConflict { .. } => self.resolve_conflict(run, user_input),
             RunState::Shipped { .. } | RunState::Blocked { .. } => {
@@ -515,6 +521,16 @@ impl Engine {
     async fn prove(&self, mut run: Run, sessions: &dyn Sessions) -> Result<StepOutcome> {
         let mut plan = self.require_plan()?;
         self.verify_planning_source(&plan)?;
+        if let Some(approval) = &plan.approved_plan {
+            approval.validate()?;
+            if self.git.head_sha()? != approval.source_head
+                || !self.git.is_clean(&self.repo_root)?
+            {
+                return Err(Error::Rejected(
+                    "approved plan source changed before contract review".into(),
+                ));
+            }
+        }
 
         if plan.units.is_empty() || plan.structure_stale {
             let structure = self
@@ -539,10 +555,13 @@ impl Engine {
         let reviewed = plan.review_digest()?;
 
         let mut findings = Vec::new();
-        for (role, prompt) in [
+        for (role, mut prompt) in [
             (Role::ColdConsumer, prompts::cold_consumer(&markdown)),
             (Role::PlanCritic, prompts::plan_critic(&markdown)),
         ] {
+            if plan.approved_plan.is_some() {
+                prompt.push_str("\nThis is an already-approved Codex plan import. Compare the approved source document with every executable requirement, path, unit and test. Fail for any missing constraint, expanded authority, materially changed outcome, or new choice needed to implement. Do not fill gaps from the author's intent. Approval is already recorded; do not request approval again merely because it used Codex rather than CONFIRM PLAN. Report concrete translation defects or genuinely new decisions. An LLM review is not proof of semantic equivalence.\n");
+            }
             let saved = match role {
                 Role::ColdConsumer => &plan.reviews.cold_consumer,
                 _ => &plan.reviews.critic,
@@ -571,6 +590,17 @@ impl Engine {
             findings.extend(review.findings);
         }
         if !findings.is_empty() {
+            if plan.approved_plan.is_some() {
+                run.state = RunState::PlanConflict {
+                    unit: "plan".into(),
+                    detail: format!(
+                        "Approval retained; contract translation needs repair:\n{}",
+                        findings.join("\n")
+                    ),
+                };
+                self.store.write_run(&*self.clock, &run)?;
+                return Ok(self.report(&run, self.describe(&run, Some(&plan))?));
+            }
             // A finding is not closed by rewording: it becomes another question for the user, so
             // the plan goes back to Decide with the findings driving the next round.
             let more = self
@@ -618,7 +648,11 @@ impl Engine {
             ));
         }
 
-        let blockers = validate::freeze_blockers(&plan)?;
+        let blockers = if plan.approved_plan.is_some() {
+            validate::approved_plan_blockers(&plan)?
+        } else {
+            validate::freeze_blockers(&plan)?
+        };
         if !blockers.is_empty() {
             Self::capture_frontier(&mut plan)?;
             self.save_plan(&plan)?;
@@ -637,6 +671,18 @@ impl Engine {
             ));
         }
 
+        if let Some(approval) = &plan.approved_plan {
+            plan.frozen = Some(Frozen {
+                digest: plan.digest()?,
+                confirmed_at: self.clock.now(),
+                answer_text: approval.implementation_request.clone(),
+            });
+            run.plan_digest = Some(plan.digest()?);
+            run.state = RunState::PlanReady;
+            self.save_plan(&plan)?;
+            self.store.write_run(&*self.clock, &run)?;
+            return self.begin_frozen_build(run);
+        }
         let challenge = plan.challenge()?;
         self.store
             .write_plan_markdown(&render::plan_markdown(&plan)?)?;
@@ -1253,6 +1299,7 @@ impl Engine {
         plan.revision += 1;
         // The original authorization remains in build-request.json. This revision is PLAN.
         plan.execution_authorization = None;
+        plan.approved_plan = None;
         if !prose.is_empty() {
             plan.adjustments.push(crate::plan::Adjustment {
                 revision: plan.revision,
@@ -1552,6 +1599,11 @@ impl Engine {
 
     fn require_frozen_plan(&self, run: &Run) -> Result<Plan> {
         let plan = self.require_plan()?;
+        if plan.approved_plan.is_some() && !validate::approved_plan_blockers(&plan)?.is_empty() {
+            return Err(Error::BoundaryViolation(
+                "approved plan evidence or translation review is invalid".into(),
+            ));
+        }
         if !plan.is_frozen()? || plan.frozen.as_ref().map(|f| &f.digest) != run.plan_digest.as_ref()
         {
             return Err(Error::BoundaryViolation(

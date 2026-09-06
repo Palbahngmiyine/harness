@@ -91,6 +91,32 @@ pub fn build_blockers(plan: &Plan) -> Result<Vec<Violation>> {
     Ok(sorted_unique(out))
 }
 
+/// Validate the imported approval and fresh independent translation reviews before execution.
+pub fn approved_plan_blockers(plan: &Plan) -> Result<Vec<Violation>> {
+    let mut out = build_blockers(plan)?;
+    let valid = plan.approved_plan.as_ref().is_some_and(|a| {
+        a.validate().is_ok()
+            && plan.execution_authorization.as_ref() == Some(&a.implementation_request)
+            && plan.source_head.as_ref() == Some(&a.source_head)
+            && plan
+                .execution_branch
+                .as_ref()
+                .is_some_and(|b| b.starts_with("codex/"))
+            && !plan.plan_only
+            && !plan.interactive
+            && !plan.structure_stale
+            && plan.open_items.is_empty()
+    });
+    if !valid {
+        out.push(Violation::new(
+            "invalid_plan_approval",
+            "approved source, execution authority or translated contract is invalid",
+        ));
+    }
+    check_reviews(plan, &mut out)?;
+    Ok(sorted_unique(out))
+}
+
 /// Units in a deterministic topological order.
 ///
 /// Ties are broken by the numeric suffix, so `U2` precedes `U10` and the result does not depend on

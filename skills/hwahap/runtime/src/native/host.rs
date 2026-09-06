@@ -16,6 +16,7 @@ use crate::state::Store;
 
 #[derive(Default)]
 pub struct NativeInput {
+    pub approved_plan: Option<crate::approval::ApprovedPlanRequest>,
     pub plan_only: bool,
     pub build_confirmed: Option<String>,
     pub adjust_build: Option<crate::engine::AdjustBuildRequest>,
@@ -76,6 +77,7 @@ impl NativeHost {
             ));
         }
         let actions = usize::from(input.build.is_some())
+            + usize::from(input.approved_plan.is_some())
             + usize::from(input.build_confirmed.is_some())
             + usize::from(input.adjust_build.is_some())
             + usize::from(input.question_response.is_some())
@@ -177,6 +179,7 @@ impl NativeHost {
             ));
         }
         if input.build_confirmed.is_some()
+            || input.approved_plan.is_some()
             || input.adjust_build.is_some()
             || input.question_response.is_some()
         {
@@ -187,7 +190,17 @@ impl NativeHost {
             }
             let _lock = RepoLock::acquire(root)?;
             let engine = Engine::open(root)?;
-            let outcome = if let Some(digest) = &input.build_confirmed {
+            let outcome = if let Some(approved) = &input.approved_plan {
+                let outcome = engine.register_approved_plan(approved)?;
+                crate::pr_review::save_evidence(
+                    &store,
+                    "native-owner.json",
+                    &serde_json::json!({
+                        "run_id":outcome.run_id, "pool_scope":expected_scope.as_ref().unwrap_or(&outcome.run_id)
+                    }),
+                )?;
+                outcome
+            } else if let Some(digest) = &input.build_confirmed {
                 engine.build_confirmed(digest)?
             } else if let Some(response) = &input.question_response {
                 engine.answer_questions(response)?
