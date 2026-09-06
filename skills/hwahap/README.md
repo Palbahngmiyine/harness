@@ -6,7 +6,7 @@ ADJUST에서 계약 변경은 PLAN으로, 계약 내 구현 수정은 BUILD로 �
 호스트 Codex가 기본 하위 에이전트를 실행한다. 진행 상태와 실행 요청은 `.hwahap/`에 저장한다.
 
 v2와 호환되지 않는다. shell hook, `codex exec`, jq 런타임, `hwahap/v2` 스키마는 전부 제거되었고
-지원하는 계약은 `hwahap/v3` 하나뿐이다. 기존 `.hwahap` 디렉터리를 만나면 변환하지 않고 명확한 오류를
+지원하는 계약은 `hwahap/v4` 하나뿐이다. 기존 `.hwahap` 디렉터리를 만나면 변환하지 않고 명확한 오류를
 낸다.
 
 ## 1. 한눈에 보기
@@ -84,7 +84,7 @@ skills/hwahap/
 | 모듈 | 책임 |
 |---|---|
 | `canonical` | canonical JSON과 digest. challenge가 나오는 유일한 곳 |
-| `plan` | `hwahap/v3` 계약 타입. 답변 신선도 규칙 |
+| `plan` | `hwahap/v4` 계약 타입. 답변 신선도 규칙 |
 | `answer` | 원문 사용자 메시지와 정확한 확인 문장의 문법 |
 | `dialogue` | 계획에 결속된 질문 배치와 구조화 응답 검사 |
 | `frontier` | 지금 물을 수 있는 질문 |

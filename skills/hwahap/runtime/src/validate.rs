@@ -1190,7 +1190,7 @@ mod tests {
         assert_eq!(violation.code, "schema");
         assert_eq!(
             violation.detail,
-            "the plan declares schema \"hwahap/v2\", but hwahap/v3 is required"
+            "the plan declares schema \"hwahap/v2\", but hwahap/v4 is required"
         );
         assert!(
             blockers(&plan).contains(&violation),

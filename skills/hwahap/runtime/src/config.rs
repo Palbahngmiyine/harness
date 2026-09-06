@@ -26,8 +26,6 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Document {
-    #[serde(default)]
-    adapter: Option<toml::Value>,
     /// Kept as a raw value so that [`Profiles::from_toml`] stays the single parser for profiles;
     /// duplicating its rules here is how a config that passes one check and fails the other gets
     /// created.
@@ -88,12 +86,6 @@ impl Config {
             .map_err(|e| Error::Rejected(format!("{CONFIG_FILE} is not valid: {e}")))?;
 
         let mut config = Config::default();
-
-        if document.adapter.is_some() {
-            return Err(Error::Rejected(
-                "[adapter] is obsolete; remove it and use Codex native sub-agents".into(),
-            ));
-        }
 
         if let Some(profiles) = document.profiles {
             // Re-serialize just the profiles table so the one parser that knows the effort policy
@@ -182,9 +174,9 @@ mod tests {
     }
 
     #[test]
-    fn legacy_adapter_config_requires_explicit_migration() {
+    fn unknown_config_fields_are_rejected() {
         let error = Config::parse("[adapter]\ncommand = \"codex-acp\"\n").unwrap_err();
-        assert!(error.to_string().contains("obsolete"));
+        assert!(error.to_string().contains("unknown field"));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! The `hwahap/v3` plan contract.
+//! The `hwahap/v4` plan contract.
 //!
 //! The plan is the only thing the coding engine is allowed to act on. Everything the user decided
 //! lives here, and nothing else does: there is no separate answers database, no side table of
@@ -17,7 +17,7 @@ use crate::canonical::Digest;
 use crate::error::{Error, Result};
 
 /// The schema tag written into, and required from, `plan.json`.
-pub const SCHEMA: &str = "hwahap/v3";
+pub const SCHEMA: &str = "hwahap/v4";
 
 /// The twelve decision surfaces. They are a checklist, never a stage.
 pub const SURFACES: [Surface; 12] = [
@@ -444,30 +444,28 @@ pub struct Frozen {
 
 /// The whole frozen contract.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Plan {
     pub schema: String,
     /// An explicitly approved Codex plan, distinct from interview answers and typed confirmation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "crate::required_option")]
     pub approved_plan: Option<crate::approval::PlanApproval>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "crate::required_option")]
     pub execution_branch: Option<String>,
     /// Stop after confirmation; BUILD is a separate explicit action.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plan_only: bool,
-    /// New native runs use answer-driven interviewing; old saved contracts retain their digest.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    /// Whether this run uses the answer-driven planning interview.
     pub interactive: bool,
     /// The whole ready frontier for this interview round, paged by the host UI.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub question_frontier: Vec<String>,
     /// Repository commit inspected by a new PLAN, fixed before user confirmation.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "crate::required_option")]
     pub source_head: Option<String>,
     /// Verbatim instruction explicitly authorizing BUILD without the planning interview.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "crate::required_option")]
     pub execution_authorization: Option<String>,
     /// Exact integration base for direct builds; a moving local branch is not the baseline.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "crate::required_option")]
     pub base_commit: Option<String>,
     /// Stable slug identifying the run, and the `hwahap/<goal_id>` branch name.
     pub goal_id: String,
@@ -478,33 +476,22 @@ pub struct Plan {
     /// Every surface appears, applicable or not. A missing surface is a validation failure, so a
     /// surface can never be skipped by omission.
     pub surfaces: std::collections::BTreeMap<String, SurfaceStatus>,
-    #[serde(default)]
     pub facts: Vec<Fact>,
-    #[serde(default)]
     pub decisions: Vec<Decision>,
-    #[serde(default)]
     pub requirements: Vec<Requirement>,
-    #[serde(default)]
     pub acceptance: Vec<Acceptance>,
-    #[serde(default)]
     pub units: Vec<Unit>,
-    #[serde(default)]
     pub tests: Vec<Test>,
-    #[serde(default)]
     pub open_items: Vec<OpenItem>,
     /// What the user asked for after seeing a draft pull request, oldest first.
-    #[serde(default)]
     pub adjustments: Vec<Adjustment>,
     /// Derived requirements, acceptance, units, and tests need regeneration from current inputs.
-    /// Omit false so plans saved before this cache marker retain their confirmation digests.
-    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub structure_stale: bool,
     /// The command run once, after every unit is accepted.
     pub full_suite: String,
-    #[serde(default)]
     pub reviews: PlanReviews,
     /// Set by `CONFIRM PLAN` or explicit BUILD; excluded from the plan digest.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(deserialize_with = "crate::required_option")]
     pub frozen: Option<Frozen>,
 }
 
@@ -683,7 +670,7 @@ impl Plan {
         }))
     }
 
-    /// Rejects a plan whose schema tag is not `hwahap/v3`.
+    /// Rejects a plan whose schema tag is not `hwahap/v4`.
     ///
     /// A v2 `.hwahap` is not imported: the shapes do not correspond, and a silent partial import
     /// would produce a plan the user never confirmed.
@@ -704,22 +691,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn structure_staleness_round_trips_without_changing_legacy_digests() {
-        let mut plan = Plan::new("goal", "main", "a goal");
-        assert!(!plan.structure_stale);
-        let legacy = serde_json::to_value(&plan).unwrap();
-        assert!(legacy.get("structure_stale").is_none());
-        let restored: Plan = serde_json::from_value(legacy.clone()).unwrap();
-        assert!(!restored.structure_stale);
-        assert_eq!(restored.digest().unwrap(), Digest::of(&legacy).unwrap());
-        plan.structure_stale = true;
+    fn current_plan_requires_every_persisted_field() {
+        let plan = Plan::new("goal", "main", "a goal");
         let saved = serde_json::to_value(&plan).unwrap();
-        assert_eq!(saved["structure_stale"], true);
-        assert!(
-            serde_json::from_value::<Plan>(saved)
-                .unwrap()
-                .structure_stale
-        );
+        assert_eq!(saved["structure_stale"], false);
+        assert_eq!(serde_json::from_value::<Plan>(saved.clone()).unwrap(), plan);
+        for field in saved.as_object().unwrap().keys() {
+            let mut missing = saved.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Plan>(missing).is_err(), "{field}");
+        }
+        let mut extra = saved;
+        extra["removed_field"] = true.into();
+        assert!(serde_json::from_value::<Plan>(extra).is_err());
     }
 
     fn decision() -> Decision {

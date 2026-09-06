@@ -188,6 +188,7 @@ impl RunState {
 
 /// The atomic snapshot in `run.json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Run {
     pub schema: String,
     pub run_id: String,
@@ -195,21 +196,19 @@ pub struct Run {
     pub revision: u32,
     pub state: RunState,
     /// Accepted unit ids, in acceptance order.
-    #[serde(default)]
     pub accepted_units: Vec<String>,
     /// What each accepted unit was accepted against, by [`crate::plan::Plan::unit_fingerprint`].
     ///
     /// An adjustment rewrites the plan under work that is already committed. This is how the next
     /// freeze tells apart the units the change did not touch, which stay accepted, from the ones it
     /// invalidated, which must be built again.
-    #[serde(default)]
     pub accepted_fingerprints: std::collections::BTreeMap<String, Digest>,
     /// The frozen plan this run executes.
-    #[serde(default)]
+    #[serde(deserialize_with = "crate::required_option")]
     pub plan_digest: Option<Digest>,
     pub branch: String,
     /// The commit the final review looked at; `SHIP` refuses if the head has moved.
-    #[serde(default)]
+    #[serde(deserialize_with = "crate::required_option")]
     pub reviewed_head: Option<String>,
     /// The journal sequence this snapshot reflects.
     pub seq: u64,
@@ -863,6 +862,18 @@ mod tests {
             reviewed_head: None,
             seq: 0,
         }
+    }
+
+    #[test]
+    fn current_run_requires_every_persisted_field() {
+        let run = a_run();
+        let saved = serde_json::to_value(&run).unwrap();
+        for field in saved.as_object().unwrap().keys() {
+            let mut missing = saved.clone();
+            missing.as_object_mut().unwrap().remove(field);
+            assert!(serde_json::from_value::<Run>(missing).is_err(), "{field}");
+        }
+        assert_eq!(serde_json::from_value::<Run>(saved).unwrap(), run);
     }
 
     #[test]

@@ -1,4 +1,4 @@
-//! Hwahap v3: `PLAN -> PLAN FREEZE -> AUTONOMOUS CODING -> DRAFT PR -> ADJUST | SHIP`.
+//! Hwahap v4: `PLAN -> PLAN FREEZE -> AUTONOMOUS CODING -> DRAFT PR -> ADJUST | SHIP`.
 //!
 //! The crate is one binary that is two things at once: a local STDIO MCP server exposing exactly
 //! three tools to the host, and a durable broker for Codex native sub-agents.
@@ -31,3 +31,14 @@ pub mod validate;
 
 pub use error::{Error, Result};
 pub mod approval;
+
+/// Nullable persisted fields must be present; omission is not an implicit upgrade.
+pub(crate) fn required_option<'de, D, T>(
+    deserializer: D,
+) -> std::result::Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: serde::Deserialize<'de>,
+{
+    serde::Deserialize::deserialize(deserializer)
+}

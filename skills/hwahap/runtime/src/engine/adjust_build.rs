@@ -59,7 +59,7 @@ impl Engine {
             .clone()
             .ok_or_else(|| Error::Rejected("BUILD adjustment has no reviewed head".into()))?;
         run.accepted_units.retain(|id| !selected.contains(id));
-        let affected_units = self.invalidated_units(&plan, &run)?;
+        let affected_units = Self::invalidated_units(&plan, &run)?;
         let first = affected_units
             .first()
             .cloned()
