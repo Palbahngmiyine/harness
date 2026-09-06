@@ -11,6 +11,10 @@ Call `hwahap_step` with the repository path and the same stable `host_session_id
 For planning without implementation, start `request` with `plan_only:true`; stop at `plan_ready`.
 Use `build_confirmed` with the full stored plan digest only when the user explicitly requests BUILD.
 An ordinary implementation `request` keeps `plan_only:false` and proceeds after plan confirmation.
+If the user has already submitted `PLEASE IMPLEMENT THIS PLAN:` with the full approved Codex plan,
+use `approved_plan` to bind that message to its executable translation. Missing `plan.json` is a handoff
+failure, not evidence of missing user approval. Do not ask for the same approval or restart the interview.
+Keep the source approval, exact draft replacement digest and independent translation reviews distinct.
 When the user explicitly skips planning, use `build` with their verbatim authorization instead.
 For requested repairs under unchanged contracts use `adjust_build`; contract changes reopen PLAN.
 

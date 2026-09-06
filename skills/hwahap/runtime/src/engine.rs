@@ -1713,17 +1713,20 @@ impl Engine {
             run_id: run.run_id.clone(),
             phase: run.state.phase().name().to_string(),
             state: run.state.name().to_string(),
-            next: if matches!(run.state, RunState::PlanReady)
-                && self
-                    .store
-                    .read_plan()
-                    .ok()
-                    .flatten()
-                    .is_some_and(|p| p.approved_plan.is_some())
-            {
-                "continue".into()
-            } else {
-                run.state.next().name().to_string()
+            next: match self.store.read_plan().ok().flatten() {
+                Some(plan)
+                    if plan.approved_plan.is_some() && matches!(run.state, RunState::PlanReady) =>
+                {
+                    "continue".into()
+                }
+                Some(plan)
+                    if plan.approved_plan.is_some()
+                        && plan.frozen.is_none()
+                        && matches!(run.state, RunState::PlanConflict { .. }) =>
+                {
+                    "repair_translation".into()
+                }
+                _ => run.state.next().name().to_string(),
             },
             message,
             plan_digest: run.plan_digest.as_ref().map(|d| d.to_string()),

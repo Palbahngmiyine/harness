@@ -10,6 +10,7 @@ Hwahap의 PLAN은 제품 결정을 정리하는 작업 단계다. Codex의 colla
 |---|---|---|
 | 계획만 만들기 | `request`와 `plan_only:true` | 사용자 `CONFIRM PLAN` 이후 `plan_ready` |
 | 기획부터 구현까지 | `request`; `plan_only` 기본값은 `false` | 사용자 `CONFIRM PLAN` 이후 구현·draft 검토 |
+| Codex에서 이미 승인한 계획 구현하기 | `approved_plan` | 승인 원문 저장 → 독립 변환 검토 → 추가 승인 없이 BUILD |
 | 확정된 계획 구현하기 | `build_confirmed:"<전체 plan_digest>"` | 저장된 계약을 검증하고 BUILD 재개 |
 | 기획을 명시적으로 생략하기 | `build`에 `BuildRequest` | 원문 실행 권한과 별도 고정 계약으로 direct BUILD |
 | 같은 계약의 구현 수정하기 | `adjust_build` | 지정한 unit의 기존 계약으로 수정·검증 |
@@ -17,7 +18,7 @@ Hwahap의 PLAN은 제품 결정을 정리하는 작업 단계다. Codex의 colla
 
 `build_confirmed`는 사용자가 저장된 계획의 구현을 명시적으로 요청한 뒤에만 전달한다.
 값은 출력된 전체 digest이며 `CONFIRM PLAN`에 쓰는 짧은 challenge와 다르다.
-`plan_ready`에서 반복 조회하거나 `hwahap_step`을 빈 입력으로 호출해도 구현 권한을 추가하지 않는다.
+PLAN-only의 `plan_ready`에서 반복 조회하거나 `hwahap_step`을 빈 입력으로 호출해도 구현 권한을 추가하지 않는다.
 `build`의 `user_instruction`, `objective`, `base_branch`, `branch`, `units`, `full_suite`는
 기획 생략을 명시한 새 실행 계약이다. 확정된 PLAN을 실행하는 `build_confirmed`와 구분한다.
 
@@ -36,6 +37,34 @@ Hwahap의 PLAN은 제품 결정을 정리하는 작업 단계다. Codex의 colla
 `adjust_build`에는 사용자의 수정 권한 원문과 현재 계약 digest, 대상 unit ID를 넣는다.
 acceptance·테스트·허용 경로를 바꾸는 입력은 이 경로로 전달하지 않는다. 그런 변경은 `user_input`으로
 PLAN에 돌아가 결정하고 다시 확인한다. 기획 생략 권한이 이후 계약 변경까지 승인한 것은 아니다.
+
+## Codex에서 승인한 계획 넘기기
+
+사용자가 `PLEASE IMPLEMENT THIS PLAN:` 뒤에 전체 계획을 제출했다면 이미 받은 구현 승인을 보존한다.
+Hwahap에 그 계약이 없다는 이유로 기획 생략용 `build`를 쓰거나 `CONFIRM PLAN`을 다시 요구하지 않는다.
+호스트는 `approved_plan`을 지원하는 실제 도구 스키마를 확인하고 다음을 전달한다.
+
+- `approval.implementation_request`: 사용자의 전체 실제 메시지. 요약·동의 답변으로 대신 만들지 않는다.
+- `approval.markdown`: 접두사 다음 전체 계획 본문. 바깥 공백만 제거한다.
+- `approval.markdown_digest`: 그 본문 UTF-8 바이트의 SHA-256, `sha256:<hex>` 형식.
+- `approval.source_head`: 변환에 사용한 현재 깨끗한 checkout의 정확한 commit.
+- `contract`: `BuildRequest` 형식의 실행 명세. 원문과 같은 `user_instruction`, 목표·기준 브랜치·
+  새 `codex/` 브랜치·전체 테스트 명령·작업별 수용 기준·허용 경로·테스트를 빠짐없이 담는다.
+- `replaces_plan_digest`: 기존 미실행 초안이 있으면 현재 전체 digest, 없으면 `null`.
+
+등록은 승인 원문과 이전 초안 이력을 journal에 함께 보존하고 `proving`에 진입한다. 이전 인터뷰 답변이나
+검토 통과를 만들어 넣지 않는다. 독립 검토자 둘은 원문과 전체 실행 계약을 비교한다. 변환된 명세의 누락·
+권한 확대·새 결정은 구현 전에 드러낸다. 검토 통과는 의미적 동등성이나 모든 오해의 제거를 증명하지 않는다.
+
+변환 결함의 `plan_conflict/repair_translation`에서는 승인 원문을 그대로 유지하고 명세만 수정해 `approved_plan`을 다시 보낸다.
+`replaces_plan_digest`는 실패한 현재 초안의 digest로 갱신한다. 무관한 사용자 답변으로 승인 기록을 버리지 않는다.
+새로운 중요한 선택이 필요할 때만 사용자에게 그 차이를 묻는다. 원문의 승인 범위를 늘리면 안 된다.
+
+검토가 끝나면 사용자 원문을 실행 권한으로 보존하고 BUILD로 이어간다. 시작 직전 중단으로 `plan_ready`에
+남더라도 `next:continue`를 따라 추가 승인 없이 재개한다. PLAN-only의 `plan_ready/await_user`와 구분한다.
+동일 등록 재시도는 같은 run을 반환하며, 다른 부모 작업·stale 초안·frozen/executing 계약 교체는 거부한다.
+이 경로는 별도 `SHIP`, merge 또는 배포 권한을 만들지 않는다. 실제 호스트가 전달한 메시지의 바이트 결속이며,
+런타임이 사용자 신원을 독립적으로 인증한 것은 아니다.
 
 ## 질문 UI와 원문 응답
 
