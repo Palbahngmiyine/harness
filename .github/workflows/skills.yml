@@ -1,0 +1,28 @@
+name: Skills
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # Preserve the existing required check while Hwahap CI moves to its own repo.
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Verify skill entry points and the migration link
+        run: |
+          test ! -e skills/hwahap
+          grep -q 'https://github.com/Palbahngmiyine/hwahap' README.md
+          for skill in skills/*/SKILL.md; do
+            test -s "$skill"
+            grep -q '^name:' "$skill"
+            grep -q '^description:' "$skill"
+          done
