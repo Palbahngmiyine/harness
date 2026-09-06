@@ -1430,6 +1430,7 @@ impl Engine {
         } else {
             None
         };
+        let profiles = Config::for_run(&self.store)?.profiles;
         let sequence = self
             .store
             .append_event(
@@ -1437,7 +1438,7 @@ impl Engine {
                 "session_requested",
                 serde_json::json!({
                     "role": role.as_str(), "unit": spec.unit,
-                    "model_requested": self.config.profiles.for_role(role).model,
+                    "model_requested": profiles.for_role(role).model,
                     "prompt_digest": Digest::of_bytes(spec.prompt.as_bytes()),
                 }),
             )?
@@ -1460,7 +1461,7 @@ impl Engine {
             }
         }
         let outcome = outcome?;
-        outcome.receipt.verify_for(&spec, &self.config.profiles)?;
+        outcome.receipt.verify_for(&spec, &profiles)?;
         self.store.write_artifact(
             &format!("receipt-{sequence:04}-{}.json", role.as_str()),
             &serde_json::to_string_pretty(&outcome.receipt)
