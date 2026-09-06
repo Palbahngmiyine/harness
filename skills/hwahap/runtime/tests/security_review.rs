@@ -119,7 +119,7 @@ async fn either_teams_blocked_security_prevents_ship_and_explicit_recheck_gets_f
 }
 
 #[tokio::test]
-async fn interrupted_legacy_review_recheck_preserves_old_evidence_and_requests_both_teams() {
+async fn recheck_rejects_obsolete_report_without_rewriting_evidence() {
     let f = draft().await;
     let engine = f.engine();
     let store = Store::open(&f.repo).unwrap();
@@ -135,25 +135,13 @@ async fn interrupted_legacy_review_recheck_preserves_old_evidence_and_requests_b
     legacy["report"].as_object_mut().unwrap().remove("security");
     let bytes = serde_json::to_vec(&legacy).unwrap();
     std::fs::write(&path, &bytes).unwrap();
-    engine.recheck_pr().unwrap();
+    let snapshot = std::fs::read(store.root().join("run.json")).unwrap();
+    let progress = ReviewProgress::load(&store).unwrap().unwrap();
+    assert!(engine.recheck_pr().is_err());
     assert_eq!(
-        engine
-            .step_with(&Script::new(vec![]), None, None)
-            .await
-            .unwrap()
-            .state,
-        "pr_review"
+        std::fs::read(store.root().join("run.json")).unwrap(),
+        snapshot
     );
-    let current = ReviewProgress::load(&store).unwrap().unwrap();
-    assert_eq!(current.round, p.round + 1);
-    let clean = Script::new(vec![
-        step(Role::UnitReviewer, Reply::PrAttack),
-        step(Role::FinalReview, Reply::pr_defense()),
-    ]);
-    assert_eq!(
-        engine.step_with(&clean, None, None).await.unwrap().state,
-        "awaiting_adjust_or_ship"
-    );
-    assert_eq!(clean.remaining(), 0);
+    assert_eq!(ReviewProgress::load(&store).unwrap().unwrap(), progress);
     assert_eq!(std::fs::read(path).unwrap(), bytes);
 }

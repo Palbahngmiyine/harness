@@ -38,7 +38,7 @@ impl Engine {
         self.store.write_report(&report)
     }
 
-    /// Recheck only this run's published draft, including one created by an older pinned runtime.
+    /// Recheck this run's recorded published draft with current-format evidence.
     pub fn recheck_pr(&self) -> Result<StepOutcome> {
         let mut run = self
             .store
@@ -53,13 +53,14 @@ impl Engine {
             return Err(Error::Rejected("this run has no reviewable draft".into()));
         }
         let plan = self.require_frozen_plan(&run)?;
-        let saved = ReviewProgress::load(&self.store)?;
+        let mut previous = ReviewProgress::load(&self.store)?
+            .ok_or_else(|| Error::Corrupt("missing current PR review progress".into()))?;
         let digest = plan.digest()?;
         let url = run
             .state
             .pr_url()
             .map(str::to_string)
-            .or_else(|| saved.as_ref().map(|p| p.binding.pr_url.clone()))
+            .or_else(|| Some(previous.binding.pr_url.clone()))
             .ok_or_else(|| Error::Rejected("no recorded draft to recheck".into()))?;
         let worktree = self.store.worktree_path();
         let head = self.git.run_in(&worktree, &["rev-parse", "HEAD"])?;
@@ -74,48 +75,25 @@ impl Engine {
                 .as_deref()
                 != Some(url.as_str())
             || self.forge.head_sha(&worktree, &url)? != head
-            || saved
-                .as_ref()
-                .is_some_and(|p| p.binding.contract_digest != digest)
+            || previous.binding.contract_digest != digest
         {
             return Err(Error::BoundaryViolation(
                 "recheck PR ownership, head or contract mismatch".into(),
             ));
         }
-        // Retain the validated legacy draft before replacing its URL-bearing run state.
-        if saved.is_none() {
-            ReviewProgress {
-                binding: crate::pr_review::ReviewBinding {
-                    pr_url: url,
-                    head,
-                    contract_digest: digest,
-                },
-                round: 1,
-                stage: ReviewStage::Attack,
-                repairs: 0,
-            }
-            .save(&self.store)?;
-        } else if let Some(mut previous) = saved {
-            // Explicit recovery must not replay an immutable incomplete/legacy verdict.
-            // Preserve repair checkpoints: their commit may already be prepared or published.
-            let mut legacy = false;
-            for team in ["attack", "defense"] {
-                if let Some(record) =
-                    read_evidence::<serde_json::Value>(&self.store, &previous.artifact(team)?)?
-                {
-                    legacy |= record.pointer("/report/security").is_none();
-                }
-            }
-            if previous.stage != ReviewStage::Repair
-                && (matches!(run.state, RunState::Blocked { .. }) || legacy)
-            {
-                previous.round = previous
-                    .round
-                    .checked_add(1)
-                    .ok_or_else(|| Error::ExecutionLimit("review round overflow".into()))?;
-                previous.stage = ReviewStage::Attack;
-                previous.save(&self.store)?;
-            }
+        // Current interrupted/blocked reviews may be retried. Missing required evidence fields
+        // are corruption; do not manufacture a new round to upgrade an obsolete report.
+        let _: Option<ReviewRecord<AttackReport>> =
+            read_evidence(&self.store, &previous.artifact("attack")?)?;
+        let _: Option<ReviewRecord<DefenseReport>> =
+            read_evidence(&self.store, &previous.artifact("defense")?)?;
+        if previous.stage != ReviewStage::Repair && matches!(run.state, RunState::Blocked { .. }) {
+            previous.round = previous
+                .round
+                .checked_add(1)
+                .ok_or_else(|| Error::ExecutionLimit("review round overflow".into()))?;
+            previous.stage = ReviewStage::Attack;
+            previous.save(&self.store)?;
         }
         run.reviewed_head = None;
         run.state = RunState::FinalVerifying;

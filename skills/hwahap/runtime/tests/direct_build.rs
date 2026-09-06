@@ -413,8 +413,9 @@ async fn tampered_direct_contract_stops_before_any_worker_or_command() {
 }
 
 #[tokio::test]
-async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failure() {
+async fn recheck_retains_original_pr_on_close_replacement_or_suite_failure() {
     for failure in [
+        "missing_progress",
         "closed",
         "replacement",
         "suite",
@@ -457,8 +458,22 @@ async fn legacy_recheck_retains_original_pr_on_close_replacement_or_suite_failur
         store
             .write_run(&hwahap::clock::FixedClock::new(common::NOW), &run)
             .unwrap();
-        // Legacy pinned runtimes recorded the URL only in the run state.
-        std::fs::remove_file(store.artifacts_path().join("pr-review.json")).unwrap();
+        if failure == "missing_progress" {
+            let snapshot = std::fs::read(store.root().join("run.json")).unwrap();
+            let path = store.artifacts_path().join("pr-review.json");
+            std::fs::remove_file(&path).unwrap();
+            assert!(engine
+                .recheck_pr()
+                .unwrap_err()
+                .to_string()
+                .contains("missing current PR review progress"));
+            assert!(!path.exists());
+            assert_eq!(
+                std::fs::read(store.root().join("run.json")).unwrap(),
+                snapshot
+            );
+            continue;
+        }
         assert_eq!(engine.recheck_pr().unwrap().pr_url.as_ref(), Some(&url));
         let control = if failure.ends_with("_late") {
             "pr-list-after-read"
