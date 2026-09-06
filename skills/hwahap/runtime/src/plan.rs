@@ -449,6 +449,8 @@ pub struct Plan {
     /// An explicitly approved Codex plan, distinct from interview answers and typed confirmation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub approved_plan: Option<crate::approval::PlanApproval>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_branch: Option<String>,
     /// Stop after confirmation; BUILD is a separate explicit action.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub plan_only: bool,
@@ -526,6 +528,7 @@ impl Plan {
         Plan {
             schema: SCHEMA.to_string(),
             approved_plan: None,
+            execution_branch: None,
             plan_only: false,
             interactive: false,
             question_frontier: Vec::new(),

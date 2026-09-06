@@ -34,6 +34,7 @@ use crate::{frontier, prompts, proposal, render, validate};
 const MAX_ATTEMPTS: u32 = 2;
 
 mod adjust_build;
+mod approved_plan;
 mod build;
 mod grounding;
 mod interview;

@@ -42,7 +42,9 @@ impl Engine {
 
     pub(super) fn prepare_plan_worktree(&self, run: &Run, plan: &Plan) -> Result<String> {
         let branch = if run.branch.is_empty() {
-            format!("hwahap/{}", plan.goal_id)
+            plan.execution_branch
+                .clone()
+                .unwrap_or_else(|| format!("hwahap/{}", plan.goal_id))
         } else {
             run.branch.clone()
         };
