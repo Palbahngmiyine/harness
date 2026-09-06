@@ -214,6 +214,26 @@ pub struct Run {
     pub seq: u64,
 }
 
+impl Run {
+    fn require_current(&self) -> Result<()> {
+        if self.schema != SCHEMA {
+            return Err(Error::Rejected(format!(
+                "this .hwahap directory holds a {} run, but Hwahap only supports {SCHEMA}. \
+                 Retire the old active state and start a new run; Hwahap does not convert older runs.",
+                self.schema
+            )));
+        }
+        for id in &self.accepted_units {
+            if !self.accepted_fingerprints.contains_key(id) {
+                return Err(corrupt(format!(
+                    "accepted unit {id} has no recorded fingerprint"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// One journal line.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Event {
@@ -298,13 +318,7 @@ impl Store {
         };
         let run: Run = serde_json::from_str(&text)
             .map_err(|e| corrupt(format!("run.json is unreadable: {e}")))?;
-        if run.schema != SCHEMA {
-            return Err(Error::Rejected(format!(
-                "this .hwahap directory holds a {} run, but Hwahap only supports {SCHEMA}. \
-                 Remove .hwahap and start a new run; Hwahap does not convert older runs.",
-                run.schema
-            )));
-        }
+        run.require_current()?;
         Ok(Some(run))
     }
 
@@ -313,6 +327,7 @@ impl Store {
     /// The clock is a parameter rather than a field so that writing a snapshot without journalling
     /// it is not expressible — that pairing is what makes [`Store::recover`] able to rebuild.
     pub fn write_run(&self, clock: &dyn Clock, run: &Run) -> Result<()> {
+        run.require_current()?;
         let mut run = run.clone();
         let snapshot = serde_json::to_value(&run).map_err(|e| Error::Internal(e.to_string()))?;
         let event = self.append_event(clock, SNAPSHOT_KIND, snapshot)?;
@@ -328,7 +343,7 @@ impl Store {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
             Err(e) => return Err(Error::io(&path, e)),
         };
-        // A plan whose schema is not v3 still parses far enough to be reported precisely, so the
+        // A current-shaped plan with a different schema is rejected too, so the
         // error names what was found instead of "invalid JSON".
         let plan: Plan = serde_json::from_str(&text)
             .map_err(|e| corrupt(format!("plan.json is unreadable: {e}")))?;
@@ -533,6 +548,9 @@ impl Store {
             .transpose()
             .map_err(|e| corrupt(format!("a journalled run snapshot is unreadable: {e}")))?;
 
+        if let Some(run) = &journalled {
+            run.require_current()?;
+        }
         if let Some(event) = last_snapshot.filter(|e| e.kind == CONTRACT_SNAPSHOT_KIND) {
             let plan: Plan = serde_json::from_value(event.data["plan"].clone())
                 .map_err(|e| corrupt(format!("approved plan snapshot is unreadable: {e}")))?;
@@ -1223,6 +1241,31 @@ mod tests {
             std::fs::read_to_string(store.artifacts_path().join("F1.md")).unwrap(),
             "content"
         );
+    }
+
+    #[test]
+    fn obsolete_or_incomplete_journal_cannot_restore_an_active_run() {
+        for old_schema in [false, true] {
+            let (_dir, store) = store();
+            let mut run = a_run();
+            if old_schema {
+                run.schema = "hwahap/v3".into();
+            } else {
+                run.accepted_units.push("U1".into());
+            }
+            assert!(store.write_run(&clock(), &run).is_err());
+            store
+                .append_event(&clock(), SNAPSHOT_KIND, serde_json::to_value(&run).unwrap())
+                .unwrap();
+            let journal = std::fs::read(store.journal_path()).unwrap();
+            assert!(store.recover().is_err());
+            assert!(!store.run_path().exists());
+            assert_eq!(std::fs::read(store.journal_path()).unwrap(), journal);
+            store
+                .write_atomic(&store.run_path(), &to_canonical_line(&run).unwrap())
+                .unwrap();
+            assert!(store.read_run().is_err());
+        }
     }
 
     #[test]

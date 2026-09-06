@@ -88,7 +88,7 @@ Automate PR creation from a forked repo to upstream:
 
 ### hwahap
 
-Hwahap v3 runs one implementation request end to end:
+Hwahap v4 runs one implementation request end to end:
 
 - it investigates the repository itself and asks only about preferences and trade-offs
 - every material decision arrives with alternatives, a recommendation, evidence, and impact — and

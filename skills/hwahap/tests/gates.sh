@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # The static simplicity gates.
 #
-# Hwahap v3's design is a set of numbers: three tools, three profiles, one session, no daemon, no
+# Hwahap v4's design is a set of numbers: three tools, three profiles, one session, no daemon, no
 # database. Numbers drift silently unless something counts them, so this script counts them and
-# fails the build when one moves. Every gate here corresponds to a line in the V3 plan.
+# fails the build when one moves. Every gate here corresponds to a line in the current design.
 #
 # Run from the repository root: skills/hwahap/tests/gates.sh
 set -euo pipefail
@@ -90,7 +90,7 @@ manifest="$skill_dir/runtime/Cargo.toml"
 lock="$skill_dir/runtime/Cargo.lock"
 for banned in rusqlite libsqlite3-sys sqlx diesel sea-orm; do
   if grep -qE "^name = \"$banned\"" "$lock" 2>/dev/null; then
-    fail "the dependency graph contains $banned; Hwahap v3 has no database"
+    fail "the dependency graph contains $banned; Hwahap v4 has no database"
   fi
 done
 pass "SQLite dependencies = 0"
@@ -103,7 +103,7 @@ done
 pass "HTTP server dependencies = 0"
 
 if grep -qE 'transport-streamable-http|server-side-http' "$manifest"; then
-  fail "an HTTP MCP transport feature is enabled; Hwahap v3 is local STDIO only"
+  fail "an HTTP MCP transport feature is enabled; Hwahap v4 is local STDIO only"
 fi
 pass "MCP transport is local STDIO only"
 

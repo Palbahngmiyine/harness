@@ -86,7 +86,7 @@ run·plan·accepted unit을 유지한다. 새로 관찰한 호스트 회복 근�
 - native 인터페이스 테스트: 등록·완료 연결, 중복 완료, 재시작 복구, 시간 초과와 잠금.
 - [capacity 테스트](runtime/tests/native_capacity.rs): 통제한 실패 주입으로 no-child 중단·재시작, 새 근거 재개, 근거 재사용 거부, unknown-child 종료 확인, 실패 기록 중 단절을 검사한다.
 - [pool 테스트](runtime/tests/native_pool.rs): 통제한 세 슬롯에서 300개 작업을 생성 3회·follow-up 297회로 처리하고 역할·ID·모델·effort 변경과 오래된 응답을 거부한다.
-- [timing 테스트](runtime/src/native/timing.rs): 최초 시각·실패 보존, legacy 호환, 누락·손상 오류와 시계 역행을 검사한다.
+- [timing 테스트](runtime/src/native/timing.rs): 최초 시각·실패 보존, 기록 누락·손상 오류와 시계 역행을 검사한다.
 - [direct BUILD 테스트](runtime/tests/direct_build.rs): 기획 생략, 초기화 재전송, 실제 Git commit·원격 push와 같은 PR 수정, 오래된 보고서·동일 검토자 거부, 방어 단절 재개·예산 보존·범위 변조 거부.
 - MCP 인터페이스 테스트: 세 도구의 공개 계약과 입력 검증.
 
@@ -123,7 +123,10 @@ bootstrap 단계에서는 부모 Astra의 구현, 동일 Astra Critic의 unit �
 run 복구를 관찰했다. bootstrap 자체는 이전의 PR 전 최종 리뷰를 수행했다. 이후 후보 바이너리로 기존
 draft를 재검토해 PR 후 두 팀 검토까지 확인했다. 실행 버전과 수정 대상 코드는 구분해야 한다.
 
-### PR #12의 실제 BUILD·보안 검토 기록
+### PR #12의 과거 BUILD·보안 검토 기록
+
+아래는 당시 바이너리의 관찰 이력이며 v4 실행 검증이 아니다. v4는 아래의 구형 보고서·PR 기록
+복구 경로를 제거했다. 현재 검증과 설치는 별도 기록하며 과거 실행을 새 버전의 성공으로 재사용하지 않는다.
 
 2026-09-05, [PR #12의 `129f942`](https://github.com/Palbahngmiyine/harness/pull/12/commits/129f942efd336d44e1a76fc9d06544f1486b87c7)
 시점에 고정한 관찰이다. 이후 검토 요청 수가 늘어나도 이 표본의 범위와 수치를 바꾸지 않는다.

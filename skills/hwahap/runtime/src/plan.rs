@@ -672,13 +672,13 @@ impl Plan {
 
     /// Rejects a plan whose schema tag is not `hwahap/v4`.
     ///
-    /// A v2 `.hwahap` is not imported: the shapes do not correspond, and a silent partial import
+    /// Another schema is not imported: the shapes do not correspond, and a silent partial import
     /// would produce a plan the user never confirmed.
     pub fn require_supported_schema(&self) -> Result<()> {
         if self.schema != SCHEMA {
             return Err(Error::Rejected(format!(
                 "this .hwahap directory holds schema {:?}, but Hwahap only supports {SCHEMA}. \
-                 Remove .hwahap and start a new run; Hwahap does not convert older runs.",
+                 Retire the old active state and start a new run; Hwahap does not convert older runs.",
                 self.schema
             )));
         }

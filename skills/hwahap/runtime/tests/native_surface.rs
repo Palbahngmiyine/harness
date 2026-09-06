@@ -50,11 +50,13 @@ async fn fixture(
     timeout: u64,
 ) -> (tempfile::TempDir, Arc<NativeSessions>, SessionSpec) {
     let temp = tempfile::tempdir().unwrap();
+    std::fs::write(temp.path().join("README.md"), "# Minimal repository\n").unwrap();
     for args in [
         vec!["init", "-b", "main"],
         vec!["config", "user.email", "test@example.invalid"],
         vec!["config", "user.name", "Native Test"],
-        vec!["commit", "--allow-empty", "-m", "seed"],
+        vec!["add", "README.md"],
+        vec!["commit", "-m", "seed"],
     ] {
         let output = std::process::Command::new("git")
             .args(args)
@@ -67,6 +69,8 @@ async fn fixture(
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    // Ignore runtime state without changing the repository's .gitignore.
+    std::fs::write(temp.path().join(".git/info/exclude"), "/.hwahap/\n").unwrap();
     Engine::open(temp.path())
         .unwrap()
         .step(Some("Inspect this repository"), None)
@@ -662,7 +666,7 @@ async fn host_consumes_registered_output_and_accepts_identical_replay() {
     )
     .await
     .unwrap();
-    let completion = NativeCompletion { dispatch_id: request.dispatch_id.clone(), agent_id: "native-1".into(), final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(r#"{"facts":[{"id":"F1","question":"what exists?","answer":"empty repository","sources":["git HEAD"]}]}"#).unwrap()}).to_string(), agent_stopped: true, reported_usage: None };
+    let completion = NativeCompletion { dispatch_id: request.dispatch_id.clone(), agent_id: "native-1".into(), final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(r#"{"facts":[{"id":"F1","question":"what exists?","answer":"README.md exists","sources":["README.md:1"]}]}"#).unwrap()}).to_string(), agent_stopped: true, reported_usage: None };
     host.advance(
         temp.path(),
         NativeInput {
@@ -700,16 +704,6 @@ async fn native_fact_finder_ignores_runtime_writes_but_detects_user_file_changes
     use hwahap::native::{NativeHost, NativeInput};
     for changed_path in [None, Some(".hwahap-other/new.txt"), Some("new.txt")] {
         let (temp, _broker, _spec) = fixture(5, 30).await;
-        std::fs::write(temp.path().join("README.md"), "# Minimal repository\n").unwrap();
-        for args in [vec!["add", "README.md"], vec!["commit", "-m", "readme"]] {
-            assert!(std::process::Command::new("git")
-                .args(args)
-                .current_dir(temp.path())
-                .output()
-                .unwrap()
-                .status
-                .success());
-        }
         assert!(!temp.path().join(".gitignore").exists());
         let host = NativeHost::default();
         let request = host_dispatch(&host, temp.path()).await;
@@ -734,7 +728,7 @@ async fn native_fact_finder_ignores_runtime_writes_but_detects_user_file_changes
         let mut progress = host.advance(temp.path(), NativeInput {
             completion: Some(NativeCompletion {
                 dispatch_id: request.dispatch_id.clone(), agent_id: "reader".into(),
-                final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(r#"{"facts":[{"id":"F1","question":"what exists?","answer":"README.md","sources":["README.md"]}]}"#).unwrap()}).to_string(),
+                final_message: serde_json::json!({"dispatch_id":request.dispatch_id,"result":serde_json::from_str::<serde_json::Value>(r#"{"facts":[{"id":"F1","question":"what exists?","answer":"README.md","sources":["README.md:1"]}]}"#).unwrap()}).to_string(),
                 agent_stopped: true, reported_usage: None,
             }), ..Default::default()
         }).await.unwrap();

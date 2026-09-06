@@ -2,7 +2,7 @@
 //!
 //! Hwahap's whole claim is that it judges from repository state rather than from what an agent
 //! says. Testing that claim needs a real repository and a lying agent, but it does not need a
-//! model. [`Script`] stands in for the ACP client at the [`Sessions`] seam, so every branch of the
+//! model. [`Script`] stands in for native sessions at the [`Sessions`] seam, so every branch of the
 //! cycle — rework, out-of-scope resets, plan conflicts, crash recovery, the ship gate — runs
 //! deterministically and in milliseconds.
 
@@ -47,7 +47,7 @@ pub enum Reply {
         paths: Vec<String>,
         message: String,
     },
-    /// Fail the session outright, as a dropped adapter would.
+    /// Fail the session outright, as a dropped native session would.
     Fail(String),
     /// Answer with a receipt whose recorded request differs from the dispatch.
     SayWithSkewedReceipt(String),
