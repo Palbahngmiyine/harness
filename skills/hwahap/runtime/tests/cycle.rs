@@ -1006,7 +1006,7 @@ async fn ship_is_refused_before_there_is_a_pull_request() {
 }
 
 #[tokio::test]
-async fn a_session_whose_applied_model_differs_from_the_requested_one_stops_the_run() {
+async fn a_session_whose_recorded_request_differs_from_the_dispatch_stops_the_run() {
     let fixture = Fixture::new();
     let script = Script::new(vec![step(
         Role::FactFinder,

@@ -18,7 +18,8 @@ use hwahap::clock::FixedClock;
 use hwahap::engine::{Engine, Sessions};
 use hwahap::error::{Error, Result};
 use hwahap::forge::Forge;
-use hwahap::profile::{Profiles, Receipt, Role};
+use hwahap::profile::Role;
+use hwahap::session::{NativeReceipt, SessionReceipt};
 use hwahap::session::{SessionOutcome, SessionSpec};
 
 pub const NOW: &str = "2026-09-04T00:00:00Z";
@@ -48,7 +49,7 @@ pub enum Reply {
     },
     /// Fail the session outright, as a dropped adapter would.
     Fail(String),
-    /// Answer with a receipt whose applied effort differs from what was requested.
+    /// Answer with a receipt whose recorded request differs from the dispatch.
     SayWithSkewedReceipt(String),
 }
 
@@ -98,7 +99,6 @@ pub struct Call {
 pub struct Script {
     queue: Mutex<VecDeque<Step>>,
     log: Mutex<Vec<Call>>,
-    profiles: Profiles,
 }
 
 impl Script {
@@ -106,7 +106,6 @@ impl Script {
         Script {
             queue: Mutex::new(steps.into()),
             log: Mutex::new(Vec::new()),
-            profiles: Profiles::defaults(),
         }
     }
 
@@ -164,15 +163,23 @@ impl Script {
             )));
         }
 
-        let wanted = self.profiles.for_role(spec.role);
-        let mut receipt = Receipt {
+        let common = git(
+            &spec.cwd,
+            &["rev-parse", "--path-format=absolute", "--git-common-dir"],
+        );
+        let store = hwahap::state::Store::open(Path::new(&common).parent().unwrap())?;
+        let profiles = hwahap::config::Config::for_run(&store)?.profiles;
+        let wanted = profiles.for_role(spec.role);
+        let mut receipt = NativeReceipt {
+            dispatch_id: format!("script-{:?}-{}", spec.role, self.calls().len()),
+            agent_id: format!("script-{:?}", spec.role),
             profile: spec.role.profile(),
             role: spec.role,
             unit: spec.unit.clone(),
             model_requested: wanted.model.clone(),
-            model_applied: wanted.model.clone(),
             effort_requested: wanted.effort,
-            effort_applied: wanted.effort,
+            elapsed_ms: 1,
+            reported_usage: None,
         };
 
         let mut native_id = None;
@@ -190,9 +197,9 @@ impl Script {
                 pr_report(spec, true)?
             }
             Reply::Say(message) => message,
-            Reply::Fail(detail) => return Err(Error::command("codex-acp", detail)),
+            Reply::Fail(detail) => return Err(Error::command("scripted-session", detail)),
             Reply::SayWithSkewedReceipt(message) => {
-                receipt.model_applied = "gpt-5.4-mini".to_string();
+                receipt.model_requested = "gpt-5.4-mini".to_string();
                 message
             }
             Reply::WriteThenSay { files, message } => {
@@ -217,20 +224,11 @@ impl Script {
         Ok(SessionOutcome {
             final_message: message.clone(),
             transcript: message,
-            receipt: if let Some(agent_id) = native_id {
-                hwahap::session::SessionReceipt::Native(hwahap::session::NativeReceipt {
-                    dispatch_id: format!("script-{:?}", spec.role),
-                    agent_id,
-                    profile: receipt.profile,
-                    role: receipt.role,
-                    unit: receipt.unit,
-                    model_requested: receipt.model_requested,
-                    effort_requested: receipt.effort_requested,
-                    elapsed_ms: 1,
-                    reported_usage: None,
-                })
-            } else {
-                receipt.into()
+            receipt: {
+                if let Some(agent_id) = native_id {
+                    receipt.agent_id = agent_id;
+                }
+                SessionReceipt::Native(receipt)
             },
             stop_reason: "end_turn".to_string(),
         })

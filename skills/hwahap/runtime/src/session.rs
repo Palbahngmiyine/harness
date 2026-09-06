@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{Error, Result};
-use crate::profile::{Effort, Profile, Profiles, Receipt, Role};
+use crate::profile::{Effort, Profile, Profiles, Role};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
@@ -68,22 +68,13 @@ pub struct NativeReceipt {
     rename_all = "snake_case"
 )]
 pub enum SessionReceipt {
-    /// For scripted/adapter regression fixtures; the native broker never constructs this.
-    AdapterEcho(Receipt),
     /// The host relayed an explicit native spawn request. Applied model is not independently known.
     Native(NativeReceipt),
-}
-
-impl From<Receipt> for SessionReceipt {
-    fn from(value: Receipt) -> Self {
-        Self::AdapterEcho(value)
-    }
 }
 
 impl SessionReceipt {
     pub fn verify(&self) -> Result<()> {
         match self {
-            Self::AdapterEcho(receipt) => receipt.verify(),
             Self::Native(receipt) => {
                 if receipt.profile != receipt.role.profile()
                     || receipt.dispatch_id.trim().is_empty()
@@ -104,7 +95,8 @@ impl SessionReceipt {
 
     pub fn verify_for(&self, spec: &SessionSpec, profiles: &Profiles) -> Result<()> {
         self.verify()?;
-        if let Self::Native(receipt) = self {
+        let Self::Native(receipt) = self;
+        {
             let wanted = profiles.for_role(spec.role);
             if receipt.role != spec.role
                 || receipt.unit != spec.unit
@@ -112,7 +104,7 @@ impl SessionReceipt {
                 || receipt.effort_requested != wanted.effort
             {
                 return Err(Error::UnsupportedProfile(
-                    "native result does not match dispatch".into(),
+                    format!("native result does not match dispatch: expected {}/{:?} for {:?}/{:?}, recorded {}/{:?} for {:?}/{:?}", wanted.model, wanted.effort, spec.role, spec.unit, receipt.model_requested, receipt.effort_requested, receipt.role, receipt.unit),
                 ));
             }
         }

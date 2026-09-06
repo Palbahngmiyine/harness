@@ -282,7 +282,6 @@ impl Engine {
             {
                 Ok(())
             }
-            (SessionReceipt::AdapterEcho(_), SessionReceipt::AdapterEcho(_)) => Ok(()),
             _ => Err(Error::BoundaryViolation(
                 "PR review needs two distinct read-only Astra children".into(),
             )),
