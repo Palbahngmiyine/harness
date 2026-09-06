@@ -313,3 +313,47 @@ fn stale_source_and_changed_execution_contract_cannot_reuse_an_import() {
     assert!(engine.register_approved_plan(&input).is_err());
     assert_eq!(store.read_plan().unwrap().unwrap(), plan);
 }
+
+#[tokio::test]
+async fn approved_message_cannot_restart_an_interview_through_the_generic_input_path() {
+    let f = Fixture::new();
+    let input = request(&f);
+    let engine = f.engine();
+    assert!(engine
+        .start_build(&input.contract)
+        .unwrap_err()
+        .to_string()
+        .contains("approved_plan"));
+    assert!(engine
+        .start_planning(&input.approval.implementation_request, false)
+        .is_err());
+    let store = Store::open(&f.repo).unwrap();
+    assert!(store.read_run().unwrap().is_none());
+    engine
+        .start_planning("Existing unfinished interview", false)
+        .unwrap();
+    let before = store.read_events().unwrap().len();
+    let script = Script::new(vec![]);
+    let error = engine
+        .step_with(&script, None, Some(&input.approval.implementation_request))
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("approved_plan"));
+    assert_eq!(store.read_events().unwrap().len(), before);
+    assert!(script.calls().is_empty());
+    let host = hwahap::native::NativeHost::default();
+    let error = host
+        .advance(
+            &f.repo,
+            hwahap::native::NativeInput {
+                request: Some(input.approval.implementation_request),
+                host_session_id: Some("same-task".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(error.to_string().contains("approved_plan"));
+    assert_eq!(store.read_events().unwrap().len(), before);
+}

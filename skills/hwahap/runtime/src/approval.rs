@@ -6,6 +6,15 @@ use serde::{Deserialize, Serialize};
 
 use crate::{canonical::Digest, engine::BuildRequest, plan::Plan, Error, Result};
 
+/// Prevent an approved-plan message from being demoted into a fresh interview.
+/// Recognition of the framing is routing only; validate() still requires the complete binding.
+pub(crate) fn reject_unbound_implementation_request(text: Option<&str>) -> Result<()> {
+    if text.is_some_and(|s| s.trim_start().starts_with("PLEASE IMPLEMENT THIS PLAN:")) {
+        return Err(Error::Rejected("Use approved_plan to bind the full Codex implementation request to its executable contract. A missing handoff is not a reason to ask for the same approval again.".into()));
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct PlanApproval {

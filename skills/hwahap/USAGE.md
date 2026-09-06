@@ -43,6 +43,7 @@ PLAN에 돌아가 결정하고 다시 확인한다. 기획 생략 권한이 이�
 사용자가 `PLEASE IMPLEMENT THIS PLAN:` 뒤에 전체 계획을 제출했다면 이미 받은 구현 승인을 보존한다.
 Hwahap에 그 계약이 없다는 이유로 기획 생략용 `build`를 쓰거나 `CONFIRM PLAN`을 다시 요구하지 않는다.
 호스트는 `approved_plan`을 지원하는 실제 도구 스키마를 확인하고 다음을 전달한다.
+같은 승인 메시지를 일반 `request`·`user_input`으로 보내면 인터뷰를 시작하지 않고 인계 경로를 안내한다.
 
 - `approval.implementation_request`: 사용자의 전체 실제 메시지. 요약·동의 답변으로 대신 만들지 않는다.
 - `approval.markdown`: 접두사 다음 전체 계획 본문. 바깥 공백만 제거한다.
