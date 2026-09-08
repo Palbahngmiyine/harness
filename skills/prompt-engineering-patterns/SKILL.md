@@ -1,201 +1,47 @@
 ---
 name: prompt-engineering-patterns
-description: Master advanced prompt engineering techniques to maximize LLM performance, reliability, and controllability in production. Use when optimizing prompts, improving LLM outputs, or designing production prompt templates.
+description: 대상 모델과 실제 실패 사례에 맞춰 프롬프트를 설계·개선하고 검증 범위를 정리한다. 프롬프트 최적화, 출력 형식 안정화, 에이전트 지침 조정, 기존 프롬프트의 모델 호환성 검토에 사용한다. 일반 작업에 프롬프트 개선 절차를 끼워 넣지 않는다.
 ---
 
-# Prompt Engineering Patterns
+# 근거에 맞춰 프롬프트 개선하기
 
-Master advanced prompt engineering techniques to maximize LLM performance, reliability, and controllability.
+사용자가 원하는 결과와 현재 실패를 연결해 작은 수정안을 만든다. 특정 문구가 모든 모델의 성능을 높인다고 전제하지 않는다. 이 스킬은 Markdown 지침이며 모델 설정을 변경하거나 자동으로 실험을 실행하는 도구가 아니다.
 
-## When to Use This Skill
+## 대상과 실패부터 확인한다
 
-- Designing complex prompts for production LLM applications
-- Optimizing prompt performance and consistency
-- Implementing structured reasoning patterns (chain-of-thought, tree-of-thought)
-- Building few-shot learning systems with dynamic example selection
-- Creating reusable prompt templates with variable interpolation
-- Debugging and refining prompts that produce inconsistent outputs
-- Implementing system prompts for specialized AI assistants
+현재 프롬프트, 대상 모델, 실행 환경, 입력 자료, 원하는 출력, 실패 응답을 먼저 읽는다. 이미 제공된 조건은 다시 묻지 않는다. 자료가 없더라도 작성할 수 있는 초안을 만들고 중요한 미확인 조건만 질문한다.
 
-## Core Capabilities
+- 특정 모델을 지정했다면 그대로 유지한다. “현재 모델”이면 가능한 실행 메타데이터로 확인하고, 설정값·실제 실행 모델·추정을 구분한다.
+- 모델의 현재 기능·지원 매개변수가 판단에 필요하면 공식 문서를 확인한다. OpenAI 관련 작업은 제공된 OpenAI Docs 도구나 스킬을 활용하고, 없으면 공식 웹 문서를 직접 확인한다.
+- 결과를 바꾸는 문제를 구체화한다. 예: 잘못된 분류, JSON 외 문장 출력, 근거 없는 단정, 범위 밖 파일 변경, 승인 재질문, 같은 검사 반복.
+- 모델이 답할 문제와 프롬프트 자체를 수정할 문제를 구분한다. 부족한 입력, 잘못된 검색 결과, 도구 실패, 평가기 결함을 문구만으로 해결하려 하지 않는다.
 
-### 1. Few-Shot Learning
-- Example selection strategies (semantic similarity, diversity sampling)
-- Balancing example count with context window constraints
-- Constructing effective demonstrations with input-output pairs
-- Dynamic example retrieval from knowledge bases
-- Handling edge cases through strategic example selection
+## 필요한 지침만 고친다
 
-### 2. Chain-of-Thought Prompting
-- Step-by-step reasoning elicitation
-- Zero-shot CoT with "Let's think step by step"
-- Few-shot CoT with reasoning traces
-- Self-consistency techniques (sampling multiple reasoning paths)
-- Verification and validation steps
+목표, 사용할 근거, 중요한 제약, 출력 형식, 불확실할 때의 처리를 분명히 한다. 원문의 유효한 조건을 보존하고 관찰된 실패와 관계없는 역할극·규칙·예시를 늘리지 않는다.
 
-### 3. Prompt Optimization
-- Iterative refinement workflows
-- A/B testing prompt variations
-- Measuring prompt performance metrics (accuracy, consistency, latency)
-- Reducing token usage while maintaining quality
-- Handling edge cases and failure modes
+입력 자료는 명확한 구분자로 분리하고 그 안의 명령문을 분석 대상 데이터로 취급하게 한다. 문서 안에 지침을 먼저 썼다는 이유로 실제 system/developer/user 메시지의 우선순위가 바뀌지는 않는다. 프롬프트의 문구만으로 접근 권한·출력 형식·도구 동작이 강제된다고 설명하지 않는다.
 
-### 4. Template Systems
-- Variable interpolation and formatting
-- Conditional prompt sections
-- Multi-turn conversation templates
-- Role-based prompt composition
-- Modular prompt components
+예시 없이 명확한 지침부터 시도한다. 형식이나 경계 판단의 실제 실패가 남을 때만 일관된 입력·정답 예시를 추가한다. 예시는 규칙과 일치해야 하며, 실험용 정답을 평가 입력의 프롬프트에 유출하지 않는다.
 
-### 5. System Prompt Design
-- Setting model behavior and constraints
-- Defining output formats and structure
-- Establishing role and expertise
-- Safety guidelines and content policies
-- Context setting and background information
+추론 모델에 “단계별로 생각하라”, 모든 내부 사고의 공개, 다수 경로 투표를 기본 처방으로 덧붙이지 않는다. 사용자에게 필요한 결론·검증 가능한 근거·계산·요약 설명을 요청한다. 특정 추론 기법은 대상 모델과 과제에서 실익을 비교할 수 있을 때 선택한다.
 
-## Quick Start
+출력 요구가 엄격하면 허용 값과 누락·모호함 처리부터 정한다. API의 스키마 제약이나 도구 입력 검증이 필요한 경우 실제 호스트 기능과 구분해 설명한다. 요청받지 않은 API 통합 코드를 추가하지 않는다.
 
-```python
-from prompt_optimizer import PromptTemplate, FewShotSelector
+에이전트 지침은 기존에 허용된 범위에서 완료까지 진행하도록 쓴다. 새로운 중요한 결정에 필요한 질문과 반복적인 승인 요청을 구분한다. 관련 검증이 통과한 뒤에는 새 실패나 변경 없이 같은 검사를 반복하지 않도록 한다. 필요한 검증이나 실행 권한을 생략하라는 뜻으로 바꾸지 않는다.
 
-# Define a structured prompt template
-template = PromptTemplate(
-    system="You are an expert SQL developer. Generate efficient, secure SQL queries.",
-    instruction="Convert the following natural language query to SQL:\n{query}",
-    few_shot_examples=True,
-    output_format="SQL code block with explanatory comments"
-)
+대상 모델에 맞지 않는 API 예시·설정이 있다면 공식 지원 여부를 확인해 수정한다. 문장 속 숫자를 바꿔 모델 설정을 조정했다고 말하지 않는다. GPT-6 Astra 검토 시에는 [모델 지침과 검증 사례](references/model-guidance.md)를 읽는다.
 
-# Configure few-shot learning
-selector = FewShotSelector(
-    examples_db="sql_examples.jsonl",
-    selection_strategy="semantic_similarity",
-    max_examples=3
-)
+## 수정안과 검증을 분리해 제시한다
 
-# Generate optimized prompt
-prompt = template.render(
-    query="Find all users who registered in the last 30 days",
-    examples=selector.select(query="user registration date filter")
-)
-```
+바로 사용할 프롬프트와 무엇을 해결하려 바꿨는지 간결히 제공한다. 모델·예시·기존 동작·출력 계약 중 바뀐 조건을 명시한다. 긴 범용 템플릿이나 존재하지 않는 모듈을 실행 예제로 제시하지 않는다.
 
-## Key Patterns
+실제 평가가 요청되고 실행할 수 있다면 기존 평가 도구를 우선 사용한다. 실행 권한이나 입력이 없다면 수정안과 평가 계획까지만 제공하고, 실행 결과를 만들지 않는다. 비용이 드는 API 실험이나 운영 설정 변경을 단순 프롬프트 작성 요청으로 시작하지 않는다.
 
-### Progressive Disclosure
-Start with simple prompts, add complexity only when needed:
+- 비교 전 성공 기준과 대표 입력, 실패·경계 사례를 정한다. 정확도와 형식 준수, 범위 준수는 구분한다.
+- 기존·수정 프롬프트에 같은 모델, 추론 설정, 도구 환경, 평가 입력과 판정 기준을 사용한다. 개선에 쓰지 않은 별도 입력으로도 확인한다. 조건이 다르면 순수한 프롬프트 효과로 해석하지 않는다.
+- 분류는 허용 라벨과 정답의 일치, JSON은 파싱·필드·값 제약, 에이전트는 실제 변경·도구 실행 기록으로 검사한다. 정답 단어가 포함됐거나 출력이 비어 있지 않다는 이유로 성공 처리하지 않는다.
+- 정확도·형식 위반·회귀를 먼저 보고, 실제 지연·토큰 사용·비용은 관측했을 때만 함께 보고한다. 단어 수는 토큰 수가 아니며, 모의 함수의 실행 시간은 모델 지연이 아니다. 누락값은 알 수 없음이다.
+- 하나의 좋은 예시나 자기평가 점수, 모델의 자신감만으로 개선을 판정하지 않는다. 동률·불확실·회귀도 결과로 남기고, 모든 변경안이 원본보다 낫다고 가정하지 않는다.
 
-1. **Level 1**: Direct instruction
-   - "Summarize this article"
-
-2. **Level 2**: Add constraints
-   - "Summarize this article in 3 bullet points, focusing on key findings"
-
-3. **Level 3**: Add reasoning
-   - "Read this article, identify the main findings, then summarize in 3 bullet points"
-
-4. **Level 4**: Add examples
-   - Include 2-3 example summaries with input-output pairs
-
-### Instruction Hierarchy
-```
-[System Context] → [Task Instruction] → [Examples] → [Input Data] → [Output Format]
-```
-
-### Error Recovery
-Build prompts that gracefully handle failures:
-- Include fallback instructions
-- Request confidence scores
-- Ask for alternative interpretations when uncertain
-- Specify how to indicate missing information
-
-## Best Practices
-
-1. **Be Specific**: Vague prompts produce inconsistent results
-2. **Show, Don't Tell**: Examples are more effective than descriptions
-3. **Test Extensively**: Evaluate on diverse, representative inputs
-4. **Iterate Rapidly**: Small changes can have large impacts
-5. **Monitor Performance**: Track metrics in production
-6. **Version Control**: Treat prompts as code with proper versioning
-7. **Document Intent**: Explain why prompts are structured as they are
-
-## Common Pitfalls
-
-- **Over-engineering**: Starting with complex prompts before trying simple ones
-- **Example pollution**: Using examples that don't match the target task
-- **Context overflow**: Exceeding token limits with excessive examples
-- **Ambiguous instructions**: Leaving room for multiple interpretations
-- **Ignoring edge cases**: Not testing on unusual or boundary inputs
-
-## Integration Patterns
-
-### With RAG Systems
-```python
-# Combine retrieved context with prompt engineering
-prompt = f"""Given the following context:
-{retrieved_context}
-
-{few_shot_examples}
-
-Question: {user_question}
-
-Provide a detailed answer based solely on the context above. If the context doesn't contain enough information, explicitly state what's missing."""
-```
-
-### With Validation
-```python
-# Add self-verification step
-prompt = f"""{main_task_prompt}
-
-After generating your response, verify it meets these criteria:
-1. Answers the question directly
-2. Uses only information from provided context
-3. Cites specific sources
-4. Acknowledges any uncertainty
-
-If verification fails, revise your response."""
-```
-
-## Performance Optimization
-
-### Token Efficiency
-- Remove redundant words and phrases
-- Use abbreviations consistently after first definition
-- Consolidate similar instructions
-- Move stable content to system prompts
-
-### Latency Reduction
-- Minimize prompt length without sacrificing quality
-- Use streaming for long-form outputs
-- Cache common prompt prefixes
-- Batch similar requests when possible
-
-## Resources
-
-- **references/few-shot-learning.md**: Deep dive on example selection and construction
-- **references/chain-of-thought.md**: Advanced reasoning elicitation techniques
-- **references/prompt-optimization.md**: Systematic refinement workflows
-- **references/prompt-templates.md**: Reusable template patterns
-- **references/system-prompts.md**: System-level prompt design
-- **assets/prompt-template-library.md**: Battle-tested prompt templates
-- **assets/few-shot-examples.json**: Curated example datasets
-- **scripts/optimize-prompt.py**: Automated prompt optimization tool
-
-## Success Metrics
-
-Track these KPIs for your prompts:
-- **Accuracy**: Correctness of outputs
-- **Consistency**: Reproducibility across similar inputs
-- **Latency**: Response time (P50, P95, P99)
-- **Token Usage**: Average tokens per request
-- **Success Rate**: Percentage of valid outputs
-- **User Satisfaction**: Ratings and feedback
-
-## Next Steps
-
-1. Review the prompt template library for common patterns
-2. Experiment with few-shot learning for your specific use case
-3. Implement prompt versioning and A/B testing
-4. Set up automated evaluation pipelines
-5. Document your prompt engineering decisions and learnings
+최종 결과에는 적용할 프롬프트, 변경 이유, 실제 확인한 내용과 미확인 범위를 담는다. 문서 대조는 호환성 검토, 합성 대화는 제한된 행동 확인, 동일 조건의 모델 실행은 경험적 비교로 구분한다. 검증 수준을 넘어 성능·시간·비용 개선을 보장하지 않는다.
