@@ -4,7 +4,7 @@ Canonical English. [한국어](verification.ko.md). Apply with [common rules](..
 
 ## Select the review scope
 
-For instruction maintenance, inspect Markdown contracts, examples expressed in prose, links, translations, and sources. Apply CHK-001, CHK-014, and evolution; assess the correctness of the other rules as text. No C/Rust build, proof tool, installed checker, or LLM benchmark is needed to complete this document review.
+For instruction maintenance, inspect Markdown contracts, examples expressed in prose, links, translations, and sources. Apply CHK-001, CHK-014, and evolution; assess the correctness of the other rules as text. No C/Rust/Go build, proof tool, installed checker, or LLM benchmark is needed to complete this document review.
 
 For actual consuming-software changes, apply CHK-001 through CHK-013 and the relevant language profiles. The Markdown-only restriction on this package is not permission to skip that software's mandatory tests. A package review establishes only what was inspected, never execution results for an unmodified downstream project.
 
@@ -12,7 +12,7 @@ For actual consuming-software changes, apply CHK-001 through CHK-013 and the rel
 
 **CHK-002** Map semantic, memory, termination, resource, and concurrency claims separately to evidence. Keep a trusted-boundary record: component/version, accepted contract, assumptions, verifier and proved obligations, dynamic tests, gaps, and approver. A proof establishes its stated property under its model; annotations, lint success, or tests are not interchangeable evidence tiers.
 
-**CHK-003** Test changed behavior with success, failure, empty/absent/zero/min/max/out-of-range inputs and every reachable branch. Every bug fix needs a reproducer that fails on the baseline and passes after the fix. Validate invariants and actual state/effects, not merely an error code or mock call. Keep unrelated concerns in separate tests.
+**CHK-003** Test changed behavior with success, failure, empty/absent/zero/min/max/out-of-range inputs and every reachable branch. Every bug fix needs a reproducer that fails on the baseline and passes after the fix. Validate invariants and actual state/effects, not merely an error code or mock call. Keep unrelated concerns in separate tests and name tests by behavior, edge case, or failure mode.
 
 **CHK-004** Test the core without real I/O. Use independent example tests, property/model tests, and a simple pure reference for optimized/admitted kernels. Generators must represent valid/invalid domains and transition histories; enforce input-class coverage and bound discards. Shrinkers preserve the property's relevant precondition/failure category, not necessarily validity for invalid-input tests. Reject vacuous properties and expected values derived from the implementation itself.
 
@@ -43,10 +43,11 @@ For actual consuming-software changes, apply CHK-001 through CHK-013 and the rel
 | [Common contract](../AGENTS.md) | GOV-001–006; FP-001–008; FX-001–004; VER-001–003; PKG-001 | 22 |
 | [C profile](../profiles/c.md) | C-001–014 | 14 |
 | [Rust profile](../profiles/rust.md) | RS-001–014 | 14 |
+| [Go profile](../profiles/go.md) | GO-001–014 | 14 |
 | [Verification](verification.md) | CHK-001–014 | 14 |
 | [Evolution](evolution.md) | EVO-001–010 | 10 |
 
-The inventory contains 74 canonical rules. Each has one nonempty definition and an equivalent definition with the same ID in its Korean counterpart. Merely deleting the same rule in both languages is not synchronization. Changes to this inventory need the same rationale and authorization as the corresponding policy change; the count is traceability metadata, not a quality score.
+The inventory contains 88 canonical rules. Each has one nonempty definition and an equivalent definition with the same ID in its Korean counterpart. Merely deleting the same rule in both languages is not synchronization. Changes to this inventory need the same rationale and authorization as the corresponding policy change; the count is traceability metadata, not a quality score.
 
 ## Direct review checklist
 
@@ -61,6 +62,6 @@ The inventory contains 74 canonical rules. Each has one nonempty definition and 
 | Evidence | Separate textual review, actual execution, assumptions, and unavailable evidence. Old CI or test results do not certify a later Markdown-only revision. |
 | Closure | Recheck the whole affected scope and both translations after repairs; record finding dispositions and limits. A clean recheck ends this cycle, not all future investigation. |
 
-## Review record fields
+## Reporting requirements
 
-Record the baseline and candidate identity, scope, reviewer arrangement, fixed acceptance criteria, inspected files/sources, case IDs and reasoned outcomes, findings with exact wording, repairs, recheck results, unresolved items, and scope limitations. Identify the exact submitted commit in the PR after it exists rather than inserting a self-referential commit hash into its own file. Use PASS only with its stated evidence scope. Record a missing/blocked item explicitly; do not fill in successful results in advance.
+Report the changed behavior or guidance, material findings, performed checks, unresolved items, and verification limits concisely in the task response or PR description. Identify the baseline, candidate, affected rules, and inspected sources when needed to substantiate a finding. Do not create a per-run review file, dated diary, or tracked maintenance ledger. Keep reusable counterexamples in the case documents without execution history. Use PASS only with its stated evidence scope; report missing or blocked evidence explicitly and never fill in successful results in advance.

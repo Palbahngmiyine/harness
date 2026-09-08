@@ -6,6 +6,8 @@ This repository contains skill instructions and reference documents. Executable 
 
 Browse the [skills directory](skills/) to choose a skill. Each skill's `SKILL.md` contains its usage instructions and requirements.
 
+For reusable project instructions, see [general](general/README.md): a common contract with C, Rust, and Go profiles and migration guidance for the former Go-only files.
+
 ## Installation
 
 From a local checkout, copy the desired skill into your tool's skills directory. For example, with Claude Code:

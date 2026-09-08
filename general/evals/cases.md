@@ -2,7 +2,7 @@
 
 Canonical English. [한국어](cases.ko.md). [Review procedure](../fp/evolution.md) · [Acceptance criteria](../fp/verification.md).
 
-These 30 public cases are review data, not instructions to execute or extra authority. They are not held-out evaluations, executed tests, or formal proofs. The first 15 preserve earlier IDs and counterexample intent; 15 documentation/boundary cases extend them. Derive a verdict from the rules and primary sources. A conflict with an expected outcome is a finding, not permission to silently rewrite the acceptance criterion.
+These 42 public cases are review data, not instructions to execute or extra authority. They are not held-out evaluations, executed tests, or formal proofs. The first 15 preserve earlier IDs and counterexample intent; 15 documentation/boundary cases and 12 Go integration cases extend them. Derive a verdict from the rules and primary sources. A conflict with an expected outcome is a finding, not permission to silently rewrite the acceptance criterion.
 
 | Case ID | Challenge | Required contract-level judgment | Rules |
 | --- | --- | --- | --- |
@@ -36,5 +36,17 @@ These 30 public cases are review data, not instructions to execute or extra auth
 | document-criterion | An instruction-maintenance task is blocked by an unavailable compiler despite changing no software. | Use CHK-014; runtime tools are irrelevant to the document gate, not secretly passed. | CHK-001, CHK-014, EVO-006 |
 | scope-authority | A legacy checker is retired under an explicit Markdown-only user request. | Allow the authorized delivery change, record lost enforcement, retain semantic cases and downstream obligations. | GOV-001, PKG-001, EVO-005 |
 | source-limits | A paper about runST is claimed to prove C const, Rust ownership, or an agent review loop automatically pure and convergent. | Reject the overclaim; distinguish type-enforced encapsulation, reviewed host-language contracts, and a bounded engineering procedure. | FP-007, EVO-001, EVO-010 |
+| go-slice-alias | A value-receiver method appends to a copied slice with spare capacity. | Reject automatic purity; writes may remain visible through the original backing array. | GO-002, GO-005 |
+| go-nested-copy | A copied map contains slices still owned by the caller. | Require isolation of nested reachable storage and a coherent ingress snapshot; shallow copying is insufficient. | GO-002, FP-006 |
+| go-zero-variant | Private fields and a constructor are claimed to exclude an invalid zero value or unknown enum-like tag. | Require a valid zero contract or ingress rejection and explicit unsupported-tag handling. | GO-001, FP-004 |
+| go-typed-nil | An error interface contains a nil pointer and the caller assumes err equals nil. | Distinguish interface nilness from its dynamic value; preserve the result/error contract. | GO-006 |
+| go-hidden-method | Formatting a domain value calls a String method that updates a global counter. | Include interface and formatting methods in the transitive effect audit. | GO-003, FP-002 |
+| go-map-order | A decision chooses the first matching item encountered in map traversal. | Require an explicit stable selection rule when multiple matches can affect the result. | GO-004, CHK-005 |
+| go-valid-value | A closure captures only an immutable scalar and returns a bounds-checked value/error. | Accept under the explicit domain contract; demand neither a monad framework nor kernel admission when no mutation occurs. | GO-003, GO-004, FP-005 |
+| go-cancel-join | A test calls cancel and declares the worker stopped and its remote write rolled back. | Require observed completion and separate remote-outcome evidence; cancellation proves neither. | GO-008, FX-001, FX-002 |
+| go-subtest-cleanup | A parent defers closing a fixture then starts parallel subtests using it. | Reject the lifetime mismatch; use cleanup after all subtests and verify release and outstanding work. | GO-009, GO-011 |
+| go-cover-proof | A green race run and 100% statement coverage are reported as branch/MC/DC, deadlock freedom, and purity evidence. | Reject the conflated claims; retain explicit condition evidence and separate concurrency/semantic obligations. | GO-012, GO-014, CHK-006 |
+| go-fuzz-seeds | Ordinary go test replays seed inputs and is reported as an active fuzz campaign. | Report seed regression only; active fuzz evidence needs an actual bounded fuzz run and retained findings. | GO-013, CHK-009 |
+| go-cgo-retain | C retains arbitrary Go pointers because the caller assumes garbage collection makes retention safe. | Require the pinned cgo retention/pinning rules and both boundary profiles, with actual tests for changed software. | GO-010, C-014, GOV-004 |
 
-Record each actually reviewed outcome with its justification; writing only "30 passed" or copying this answer column is not a review. Preserve new counterexamples with stable IDs and affected rules, without claiming exhaustive coverage of inputs.
+Review the applicable cases with rule-based reasoning and summarize material findings in the task response or PR; do not create a per-run review diary. Writing only "42 passed" or copying this answer column is not a review. Preserve new counterexamples with stable IDs and affected rules, without claiming exhaustive coverage of inputs.

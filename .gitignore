@@ -1,2 +1,5 @@
 .hwahap/
 target/
+
+# Local review notes are not repository artifacts.
+/general/reviews/
