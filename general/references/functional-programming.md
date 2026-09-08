@@ -35,7 +35,11 @@ The policy is an engineering synthesis: no cited paper mandates a 100-line file 
 ## Deliberate policy choices
 
 - The previous type-only internal-mutation rule is refined into a recorded admission/assurance contract. Strict immutable domain specifications remain the default; audited C/Rust kernels are never described as compiler-proven runST equivalents.
-- The instruction-document line cap is removed, while the source/test/script 100-line policy is retained. Mechanical checks cover this package, not every downstream file automatically.
+- The instruction-document line cap is removed, while the source/test/script 100-line policy is retained. The package is Markdown-only; direct review cannot automatically enforce that policy in downstream code.
 - Branch coverage, MC/DC, failure injection, analyzer matrices, and release gates preserve the prior testing requirements with explicit applicability and unrun states.
 - C snapshot creation needs race-free access and a coherent multi-field protocol; copying alone does not provide either. Rust Arc reference counting can be trusted representation bookkeeping, but reference counts and Weak liveness cannot become hidden inputs to domain results.
 - Sequential attacker/defender review is permitted but must be labelled honestly. A clean scoped recheck is a stopping condition, not proof that no future issue can exist.
+
+## Markdown-only maintenance scope
+
+The user explicitly replaced the previous executable package with Markdown-only guidance. The prose [review cases](../evals/cases.md) and CHK-014 checklist preserve counterexample intent, not the removed checker's enforcement strength. Downstream software still needs its applicable tests and proofs; a document-only change needs a document-only verdict. Historical executions belong to their original commits, not the current artifact. This scope change is authorized, not a claim that deleting tests improves correctness.
