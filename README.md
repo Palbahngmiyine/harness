@@ -8,6 +8,8 @@ Browse the [skills directory](skills/) to choose a skill. Each skill's `SKILL.md
 
 For reusable project instructions, see [general](general/README.md): a common contract with C, Rust, and Go profiles and migration guidance for the former Go-only files.
 
+For cross-project Codex working rules, see the [English source](global/AGENTS.md) and [Korean translation](global/AGENTS.ko.md). These defaults complement project-specific instructions.
+
 ## Installation
 
 From a local checkout, copy the desired skill into your tool's skills directory. For example, with Claude Code:
