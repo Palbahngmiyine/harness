@@ -10,18 +10,18 @@ Canonical English. [한국어](AGENTS.ko.md). Sources explain the rationale; the
 
 **GOV-003** Read the relevant implementation, types, tests, manifests, and CI before changing code or tests. Code establishes current behavior, not correctness; requirements establish expected behavior. Record completion criteria and distinguish verified facts from assumptions. Preserve user changes, language choices, and unrelated files.
 
-**GOV-004** Load documents by the work being performed, not by preference:
-- C source/headers, C libraries, or C-facing ABI: read [C profile](profiles/c.md).
-- Rust source, Cargo packages, or Rust-facing ABI: read [Rust profile](profiles/rust.md).
-- Mixed C/Rust FFI: read both profiles; neither supersedes the other's boundary obligations.
-- Any implementation or test change: read [verification](fp/verification.md).
-- Changes to these instructions, checkers, module contracts, or a repeated failure pattern: read [evolution](fp/evolution.md) and [verification](fp/verification.md).
-- Read [sources](references/functional-programming.md) when validating a claim or changing a rule; do not load all references on every task.
-Missing required documents block the affected change; never pretend a link was read. Other languages retain this common contract without inheriting C/Rust-specific claims.
+**GOV-004** Load details according to the affected work:
+- C code, headers, libraries, or C-facing ABI: read the [C profile](profiles/c.md).
+- Rust code, Cargo packages, or Rust-facing ABI: read the [Rust profile](profiles/rust.md).
+- Mixed C/Rust FFI or a common-rule change affecting both languages: read both profiles; neither cancels the other's boundary obligations.
+- Implementation/test changes: read [verification](fp/verification.md) in consuming-software mode.
+- Guidance, profile, contract, or recurring-failure changes: read [verification](fp/verification.md), [evolution](fp/evolution.md), and the relevant [review cases](evals/cases.md). Use instruction-maintenance mode for Markdown-only work.
+- Read the relevant [sources](references/functional-programming.md) when validating a claim or changing its rule, not every source on every task.
+Missing required text blocks only the affected judgment/change; report the missing evidence and continue independent authorized work. Never pretend a link was read. Other languages retain this common contract without inheriting C/Rust-specific claims.
 
-**GOV-005** This repository stores a reusable package under `general/`; this is not automatically repository-root guidance. For installation keep the complete `<project>/general/` subtree and add an explicit instruction in the existing root guidance to read `general/AGENTS.md`; merge that instruction without overwriting existing policy. Alternatively explicitly load its real path. Do not flatten or move the package without adapting relative links and checker roots. Verify discovery and context truncation in the target client; a Markdown link alone does not auto-load its target.
+**GOV-005** This is a reusable Markdown package under `general/`, not automatically repository-root guidance. Preserve its relative directory layout and merge an explicit instruction to read its real entry path into the consuming project's existing root guidance; never overwrite unrelated policy. Install only the applicable instruction/profile/reference documents and their local dependencies, not historical review records. Adapt links when relocating; verify actual client discovery and truncation. Links alone do not load targets, and a document-only review does not prove client loading.
 
-**GOV-006** English is normative; synchronize Korean translations by rule ID in the same change. Differences in wording require semantic review, not just matching IDs. Instruction documents have no 100-line limit. New/modified source, test, and script files still have a 100-physical-line limit after the project's formatter, including comments and blanks. Do not compress code, delete checks, invent forwarding files, or change formatter settings to evade it. Split by responsibility; require explicit approval for a path-specific exception. Do not refactor unrelated oversized files.
+**GOV-006** English is normative; synchronize paired Korean rules and case IDs in the same change and review their meaning, obligations, and exceptions, not IDs alone. Instruction documents have no 100-line limit. In consuming software, new/modified source, test, and script files remain limited to 100 physical lines after the project's formatter, including comments and blanks. Do not compress code, delete checks, invent forwarding files, or relax formatting to evade the limit. Split by responsibility; require explicit path-specific approval for exceptions and preserve unrelated oversized files. This downstream policy does not authorize adding code to this package.
 
 ## Semantic core
 
@@ -53,12 +53,12 @@ Missing required documents block the affected change; never pretend a link was r
 
 ## Verification and delivery
 
-**VER-001** Apply the verification document's relevant mandatory gates. Keep tests readable without reducing failure coverage. Benchmark runtime, allocation, peak live memory, and stack behavior against representative baselines; preserve semantics before optimizing. Required checks cannot be traded for speed or line count.
+**VER-001** Select the verification document's mode and relevant mandatory gates before claiming completion. For consuming software, keep tests readable without reducing failure coverage; evaluate runtime, allocation, peak live memory, and stack behavior when the change affects performance or its declared gate requires it. Preserve semantics before optimizing. Required checks cannot be traded for speed or line count. Guidance maintenance uses the Markdown review gate, not an invented runtime suite.
 
 **VER-002** Run fast checks for changes and full required checks at their declared gates. A new change, failure, unresolved risk, or release candidate justifies rerunning; do not expand successful checks without cause. Documentation-only work needs documentation validation, not invented runtime coverage claims. If independent parallel work is useful, separate edit scopes and verify integration; multiple agreeing agents are not independent evidence by themselves.
 
-**VER-003** Inspect the final diff for hidden effects, alias escape, partiality, boundary-leaked domain rules, unnecessary abstraction, and scope drift. For each release candidate rerun the required full regression suite and provide concrete human checks for user behavior, security, performance, compatibility, and rollback/recovery. Report changes, commands/results, evidence scope, unverified obligations, and limitations; never claim an unrun check or universal correctness.
+**VER-003** Inspect the final diff for hidden effects, alias escape, partiality, boundary-leaked domain rules, unnecessary abstraction, and scope drift. A consuming-software release candidate needs its required regressions and concrete human checks for behavior, security, performance, compatibility, and recovery; a guidance revision needs CHK-014's documented review. Report changes, inspected evidence, any actually executed checks, unverified obligations, and limits. Never claim an unrun check, automatic enforcement, or universal correctness.
 
 ## Package maintenance
 
-**PKG-001** For this instruction package run `python3 general/checks/validate.py` and `python3 -m unittest discover -s general/checks -p 'test_*.py' -v` from the repository root. The dedicated workflow also runs small C/Rust conformance probes. These validate the package and examples, not arbitrary downstream programs, proof tools, translations' meaning, or coding-agent effectiveness. Downstream commands must come from that project's manifests/CI, not this example suite.
+**PKG-001** Keep additions and final changes for this guidance package Markdown-only: instructions, profiles, rationale, review cases, and review records. Do not add workflow definitions, source/test files, scripts, executable examples, generated checkers, or machine-readable corpora. Do not recreate an executor inside a Markdown code block. Use CHK-014 and the prose review cases to maintain the package without requiring a compiler, runner, CI, or paid service. Preserve unrelated repository files; this rule does not erase pre-existing code elsewhere or weaken consuming-software verification. A scope change needs explicit user authorization. When correcting an existing PR, compare its final contribution against the target-branch baseline; explicitly requested removal of previously introduced non-Markdown artifacts is permitted, not removal of unrelated baseline files.

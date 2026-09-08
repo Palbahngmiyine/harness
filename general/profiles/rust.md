@@ -2,6 +2,8 @@
 
 Canonical English. [한국어](rust.ko.md). Apply with [common rules](../AGENTS.md) and [verification](../fp/verification.md). Evidence: [sources](../references/functional-programming.md).
 
+Scope: this is prose policy. Implementation and executable-verification obligations below apply when changing actual C/Rust software. Editing this profile alone uses CHK-014 document review; no example code or runner belongs in this package.
+
 ## Values, effects, and composition
 
 **RS-001** Use enums, immutable structs, private fields, and smart constructors for domain values; use `Option`/`Result` and exhaustive matches for absence and expected failure. Validate deserialization, FFI, migrations, and feature-specific constructors too. No panic, unchecked indexing, or `unwrap` for untrusted input or expected errors.

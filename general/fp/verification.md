@@ -2,7 +2,13 @@
 
 Canonical English. [한국어](verification.ko.md). Apply with [common rules](../AGENTS.md); policy changes also require [evolution](evolution.md).
 
-**CHK-001** Before implementing, record the affected rule IDs, input domain, observable outputs/errors/state/effects, required checks, tool versions, and completion criterion. Use states `PASS`, `FAIL`, `NOT_APPLICABLE(reason)`, `NOT_RUN(reason)`, or `APPROVED_EXCEPTION(reference)`. An exception is not a pass; unresolved mandatory obligations block the affected completion/release claim.
+## Select the review scope
+
+For instruction maintenance, inspect Markdown contracts, examples expressed in prose, links, translations, and sources. Apply CHK-001, CHK-014, and evolution; assess the correctness of the other rules as text. No C/Rust build, proof tool, installed checker, or LLM benchmark is needed to complete this document review.
+
+For actual consuming-software changes, apply CHK-001 through CHK-013 and the relevant language profiles. The Markdown-only restriction on this package is not permission to skip that software's mandatory tests. A package review establishes only what was inspected, never execution results for an unmodified downstream project.
+
+**CHK-001** Record scope, baseline revision, affected rule IDs, inputs/observations, acceptance criteria, and the evidence actually available. Software changes additionally record language/tool versions and mandatory execution gates. Use `PASS(scope, evidence)`, `FAIL(reason)`, `NOT_APPLICABLE(reason)`, `NOT_RUN(reason)`, or `APPROVED_EXCEPTION(reference)`. PASS for a document means the specified text checks passed, not that a program was tested. An exception is not a pass; unresolved mandatory obligations block only the affected claim. Do not confuse a tool absent for applicable work with a tool irrelevant to documentation-only work.
 
 **CHK-002** Map semantic, memory, termination, resource, and concurrency claims separately to evidence. Keep a trusted-boundary record: component/version, accepted contract, assumptions, verifier and proved obligations, dynamic tests, gaps, and approver. A proof establishes its stated property under its model; annotations, lint success, or tests are not interchangeable evidence tiers.
 
@@ -28,4 +34,33 @@ Canonical English. [한국어](verification.ko.md). Apply with [common rules](..
 
 **CHK-013** For every release candidate rerun the full required regressions and create a concrete human checklist: changed user-visible workflows, actual security implications, measured performance, compatibility, and rollback/recovery steps, each with method/evidence/verdict. Review is not complete merely because a checklist is mentioned. Do not manufacture unrelated risks or approval work.
 
-**CHK-014** This package's checker validates required paths, registered rule sequences, nonempty one-line rule introductions, bilingual ID parity, text hygiene, and source-file length. Link checking covers inline local file paths and ATX-heading fragments used by this package, not arbitrary Markdown/HTML or external URL availability. Changes to the rule registry require the same review as rule changes; matching IDs cannot prevent semantic weakening. Its native probes demonstrate selected contracts and legal impurity counterexamples. These checks do not establish translation equivalence, whole-program purity, memory safety of clients, termination proofs, or agent performance. Report each of those as a separate review or unperformed activity.
+**CHK-014** Maintain the package by direct Markdown review. Follow the inventory and checklist below, compare with the accepted baseline, and record findings against exact paths and rule IDs. A prose scenario is a reasoned contract check, not an executed regression test. There is no bundled checker, native probe, or dedicated CI gate. Structural agreement alone establishes neither semantic equivalence nor automatic enforcement.
+
+## Markdown review inventory
+
+| Canonical document | Required rule IDs | Count |
+| --- | --- | ---: |
+| [Common contract](../AGENTS.md) | GOV-001–006; FP-001–008; FX-001–004; VER-001–003; PKG-001 | 22 |
+| [C profile](../profiles/c.md) | C-001–014 | 14 |
+| [Rust profile](../profiles/rust.md) | RS-001–014 | 14 |
+| [Verification](verification.md) | CHK-001–014 | 14 |
+| [Evolution](evolution.md) | EVO-001–010 | 10 |
+
+The inventory contains 74 canonical rules. Each has one nonempty definition and an equivalent definition with the same ID in its Korean counterpart. Merely deleting the same rule in both languages is not synchronization. Changes to this inventory need the same rationale and authorization as the corresponding policy change; the count is traceability metadata, not a quality score.
+
+## Direct review checklist
+
+| Check | Required observation |
+| --- | --- |
+| Artifact scope | Compare final changed paths with the accepted base: only Markdown guidance artifacts; no runner or workflow introduced. Check embedded instructions do not regenerate removed code. |
+| Loading and links | Follow each local link and any heading target within the installed document set; confirm required profiles exist, no stale execution dependency remains, and conditional loading reaches needed rules. Do not assert actual client loading without observing it. |
+| Rules | Check every inventory ID, substantive body, applicability, exception, and cross-reference against the baseline. Duplicate/missing IDs and empty or weakened obligations require a finding. Check UTF-8 text, line endings, final newline, trailing whitespace, and conflict markers without confusing formatting with semantics. |
+| Translation | Compare each rule/case meaning, especially MUST, negation, exceptions, approval, evidence, and termination. Matching IDs or line counts is insufficient. |
+| Semantics | Challenge hidden effects, aliases, constructors, state/failure ordering, totality, cleanup, and lawful composition using the relevant primary sources. Keep normative changes separate from explanatory notes. |
+| Cases | Review the prose [cases](../evals/cases.md), preserve earlier case IDs and intent, and add newly found counterexamples. Derive the decision from rules and sources, not merely by copying the expected answer. |
+| Evidence | Separate textual review, actual execution, assumptions, and unavailable evidence. Old CI or test results do not certify a later Markdown-only revision. |
+| Closure | Recheck the whole affected scope and both translations after repairs; record finding dispositions and limits. A clean recheck ends this cycle, not all future investigation. |
+
+## Review record fields
+
+Record the baseline and candidate identity, scope, reviewer arrangement, fixed acceptance criteria, inspected files/sources, case IDs and reasoned outcomes, findings with exact wording, repairs, recheck results, unresolved items, and scope limitations. Identify the exact submitted commit in the PR after it exists rather than inserting a self-referential commit hash into its own file. Use PASS only with its stated evidence scope. Record a missing/blocked item explicitly; do not fill in successful results in advance.
