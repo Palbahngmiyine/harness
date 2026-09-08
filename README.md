@@ -23,8 +23,6 @@ Skill locations:
 
 Start a new session after copying to confirm that the skill is available.
 
-[Hwahap](https://github.com/Palbahngmiyine/hwahap) is maintained and installed separately.
-
 ## License
 
 MIT
