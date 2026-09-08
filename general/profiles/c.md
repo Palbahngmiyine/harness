@@ -2,7 +2,7 @@
 
 Canonical English. [한국어](c.ko.md). Apply with [common rules](../AGENTS.md) and [verification](../fp/verification.md). Evidence: [sources](../references/functional-programming.md).
 
-Scope: this is prose policy. Implementation and executable-verification obligations below apply when changing actual C/Rust software. Editing this profile alone uses CHK-014 document review; no example code or runner belongs in this package.
+Scope: this is prose policy. Implementation and executable-verification obligations below apply when changing actual C software or its foreign-language boundaries. Editing this profile alone uses CHK-014 document review; no example code or runner belongs in this package.
 
 ## Semantic model and representation
 
@@ -36,4 +36,4 @@ Scope: this is prose policy. Implementation and executable-verification obligati
 
 **C-013** Test debug, optimized, and actual release builds; required checks must survive `NDEBUG`. Run supported address/undefined/race/memory/leak analyses in compatible separate builds, noting instrumentation coverage and runtime limitations. Compare admitted kernels against a simple pure model and test valid alias arrangements, boundary arithmetic, cancellation, and recovery. Do not execute undefined behavior in a normal test and interpret a non-crash as correctness.
 
-**C-014** At C/Rust boundaries require the two profiles together. Specify lengths, nullability, ownership/deallocator pairing, aliasing, lifetime, calling convention, alignment, thread/callback behavior, and error/unwind policy. Translate external errors into domain values; never transfer a mutable handle into the semantic core. Run the actual cross-language boundary tests when changing the consuming software; this prose profile is not execution evidence.
+**C-014** At C foreign-language boundaries read every affected profile, including Rust for Rust interop and Go for cgo. Specify lengths, nullability, ownership/deallocator pairing, aliasing, lifetime, calling convention, alignment, thread/callback behavior, and error/unwind policy. Translate external errors into domain values; never transfer a mutable handle into the semantic core. Run the actual cross-language boundary tests when changing the consuming software; this prose profile is not execution evidence.
