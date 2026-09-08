@@ -11,6 +11,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
+| [plan-intent](skills/plan-intent/) | 의도·동작·중요한 선택·검증 기준을 연결하는 Markdown 전용 기획 | KO |
 | [hwahap](https://github.com/Palbahngmiyine/hwahap) | Confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
@@ -91,6 +92,14 @@ Hwahap has moved to [Palbahngmiyine/hwahap](https://github.com/Palbahngmiyine/hw
 Its Codex plugin, Rust MCP runtime, CI, and versioned releases are maintained there.
 See the [installation guide](https://github.com/Palbahngmiyine/hwahap#설치) and
 [releases](https://github.com/Palbahngmiyine/hwahap/releases).
+
+### plan-intent
+
+사용자의 원래 의도와 실제 경험을 구체적인 동작·검증 기준에 연결합니다.
+`$plan-intent 이 아이디어를 내 의도에 맞게 기획해줘`로 사용합니다.
+기존 합의를 보존하고 중요한 이해 차이만 질문하며, 구현자가 이어받을 기획서를 만듭니다.
+스킬은 Markdown 3개로 구성되며 스크립트나 실행기 의존성이 없습니다.
+OpenAI GPT-6 Astra 가이드와 일반 설계 원칙은 스킬의 references에 기록했습니다.
 
 ### korean-spell-check
 
