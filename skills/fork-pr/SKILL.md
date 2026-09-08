@@ -1,6 +1,6 @@
 ---
 name: fork-pr
-description: Fork된 레포에서 upstream 레포로 PR 생성. git 내역 분석, 커밋 요약, PR 본문 자동 생성. fork pr, upstream pr, pr 생성, pull request, 풀 리퀘스트, upstream으로 pr 관련 작업 시 사용.
+description: Fork된 레포에서 upstream 레포로 PR을 생성할 때 Git 내역과 검증 근거를 정리한다. fork PR, upstream PR 요청에 사용하며 같은 저장소의 일반 PR 요청에는 적용하지 않는다.
 allowed-tools: Read, Grep, Glob, Bash
 ---
 
@@ -41,8 +41,8 @@ git remote -v
 ```
 
 **확인할 내용:**
-- `origin`: fork된 레포 (예: `Palbahngmiyine/collabo`)
-- `upstream`: 원본 레포 (예: `nurigo/collabo`)
+- `origin`: fork된 레포 (예: `contributor/project`)
+- `upstream`: 원본 레포 (예: `upstream-owner/project`)
 
 upstream이 설정되어 있지 않으면 사용자에게 설정 방법을 안내합니다.
 
@@ -61,7 +61,7 @@ git remote show upstream | grep 'HEAD branch'
 git log upstream/[base-branch]..HEAD --oneline
 
 # 변경된 파일 통계
-git diff upstream/[base-branch]..HEAD --stat
+git diff upstream/[base-branch]...HEAD --stat
 ```
 
 **분석할 내용:**
@@ -79,35 +79,22 @@ git diff upstream/[base-branch]..HEAD --stat
 
 ### Step 4: 검증 (테스트/빌드)
 
-PR 생성 전 코드 품질을 검증합니다.
+PR 생성 전에 저장소 지침, CI, 빌드·테스트 설정에서 이번 변경에 필요한 검증 명령을 확인합니다. 특정 패키지 매니저나 빌드를 모든 저장소에 강제하지 않습니다.
 
-**중요: 테스트 실행 여부는 사용자에게 먼저 확인합니다.**
+PR 작업에 필요한 일반적인 검증은 기존 요청 범위 안에서 실행하며 매번 승인 질문을 하지 않습니다. 외부 비용이나 중요한 부작용으로 추가 권한이 필요한 작업만 별도로 확인합니다.
 
-1. **사용자에게 질문**: "테스트를 실행할까요?" (AskUserQuestion 사용)
-   - 옵션: "테스트 실행" / "테스트 건너뛰기"
-
-2. **빌드는 항상 실행**: 빌드는 컴파일 오류 확인을 위해 필수로 실행합니다.
-
-```bash
-# 테스트 실행 (사용자가 선택한 경우에만)
-pnpm test
-
-# 빌드 확인 (항상 실행)
-pnpm build
-```
-
-검증 실패 시 사용자에게 알리고 PR 생성을 중단합니다.
+검증이 실패하면 원인을 조사해 허용된 범위에서 수정하고 관련 검사를 다시 실행합니다. 해결되지 않은 실패나 실행할 수 없는 검사는 PR에 명시하며 통과로 표시하지 않습니다. 초안 PR을 포함한 게시 여부는 사용자 요청과 저장소 규칙을 따릅니다.
 
 ### Step 5: PR 생성
 
-검증이 완료되면 PR을 생성합니다:
+검증 결과와 공개할 변경 범위를 확인한 뒤 PR을 생성합니다. 본문은 실제 줄바꿈이 있는 임시 파일에 작성하고 `--body-file`로 전달합니다:
 
 ```bash
 gh pr create --repo [upstream-owner]/[repo-name] \
   --base [target-branch] \
   --head [fork-owner]:[source-branch] \
   --title "[자동 생성 제목]" \
-  --body "[자동 생성 본문]"
+  --body-file [본문-파일]
 ```
 
 ---
@@ -136,9 +123,9 @@ gh pr create --repo [upstream-owner]/[repo-name] \
 - [ ] 빌드 성공 확인
 - [ ] 기능 동작 테스트
 
----
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
 ```
+
+사용자나 저장소에서 요구하는 경우에만 작성 도구 표시를 추가합니다.
 
 ---
 
@@ -168,7 +155,7 @@ develop 브랜치로 fork pr 생성해줘
 테스트까지 실행하고 fork pr 만들어줘
 ```
 
-> 기본적으로 테스트 실행 여부를 물어봅니다. 위와 같이 명시하면 질문 없이 바로 테스트를 실행합니다.
+> 저장소와 변경에 필요한 검증을 수행하고, 실행 결과와 미실행 범위를 구분해 보고합니다.
 
 ---
 
@@ -216,6 +203,6 @@ git rebase upstream/[base-branch]
 |--------|------|
 | `git remote -v` | remote 목록 확인 |
 | `git log upstream/main..HEAD --oneline` | PR 포함 커밋 확인 |
-| `git diff upstream/main..HEAD --stat` | 변경 파일 통계 |
+| `git diff upstream/[base-branch]...HEAD --stat` | PR 변경 파일 통계 |
 | `gh pr create --repo owner/repo` | PR 생성 |
 | `gh pr view` | 생성된 PR 확인 |
