@@ -2,6 +2,10 @@
 
 A curated collection of Agent Skills for developers using Claude Code and Codex. Each skill provides a focused workflow that a compatible agent can discover and use.
 
+This repository contains skill instructions and reference documents. Executable source code and helper scripts are maintained outside this repository and must not be added here.
+
+The Skills workflow checks skill entry points and remains required for pull requests. CodeQL analysis is disabled in the repository settings because this collection does not contain executable source code.
+
 ## Skills
 
 | Skill | Description | Language |
@@ -110,8 +114,7 @@ skill-name/
 ├── SKILL.md           # Required: Skill definition with YAML frontmatter
 ├── agents/            # Optional: Agent-specific display metadata
 ├── references/        # Optional: Reference documentation
-├── scripts/           # Optional: Executable helper scripts
-└── assets/            # Optional: Templates, examples, data files
+└── assets/            # Optional: Document templates and examples
 ```
 
 The `SKILL.md` file requires YAML frontmatter with at minimum:
