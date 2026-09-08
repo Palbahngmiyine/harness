@@ -15,7 +15,6 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [evening-socratic-journal](skills/evening-socratic-journal/) | Codex 활동과 일상 문답으로 함께 쓰는 Markdown 전용 저녁 일기 | KO |
 | [hwahap](https://github.com/Palbahngmiyine/hwahap) | Confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
-| [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
 
 ## Installation
 
@@ -117,14 +116,6 @@ Korean language spell checker:
 - Grammar checks (주어-서술어 호응, 높임법, 피동/사동)
 - File and inline text support
 - Includes a comprehensive common-mistakes reference
-
-### wrap-up
-
-End-of-session workflow in four phases:
-1. **Ship It**: Commit uncommitted changes, verify file placement
-2. **Remember It**: Save learnings to appropriate memory locations
-3. **Review & Apply**: Self-improvement findings and actions
-4. **Publish It**: Draft publishable content from the session
 
 ## Skill Structure
 
