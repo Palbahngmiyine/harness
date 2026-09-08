@@ -6,7 +6,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 
 | Skill | Description | Language |
 |-------|-------------|----------|
-| [prompt-engineering-patterns](skills/prompt-engineering-patterns/) | Advanced prompt engineering techniques for maximizing LLM performance | EN |
+| [prompt-engineering-patterns](skills/prompt-engineering-patterns/) | 대상 모델·실패 사례·평가 근거에 맞춘 Markdown 프롬프트 개선 | KO |
 | [claude-code-analyzer](skills/claude-code-analyzer/) | Analyze Claude Code usage patterns and optimize workflows | EN |
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
@@ -43,14 +43,9 @@ Hwahap is now maintained and installed separately from
 
 ### prompt-engineering-patterns
 
-Master advanced prompt engineering techniques including:
-- Few-shot learning with dynamic example selection
-- Chain-of-thought and tree-of-thought prompting
-- Prompt optimization and A/B testing workflows
-- Template systems with variable interpolation
-- System prompt design patterns
-
-Includes reference docs, a prompt template library, and curated few-shot examples.
+대상 모델과 실제 실패 사례를 바탕으로 목표·출력 형식·작업 범위를 보존하는 프롬프트를 작성합니다.
+GPT-6 Astra의 공식 지침과 API 호환성을 확인하고, 문서 대조·모의 문답·실제 모델 평가를 구분합니다.
+Markdown 지침과 참고 문서로 구성되며, 실행하지 않은 실험의 정확도·토큰·비용 개선을 주장하지 않습니다.
 
 ### claude-code-analyzer
 
