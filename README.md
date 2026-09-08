@@ -68,7 +68,7 @@ Automate PR creation from a forked repo to upstream:
 - Git remote validation and upstream detection
 - Commit history analysis with Conventional Commits grouping
 - Auto-generated PR body with summary, changes, and test plan
-- Build verification before PR creation
+- Repository-specific validation before PR creation
 
 ### hwahap
 
@@ -127,7 +127,7 @@ description: What the skill does and when to use it
 
 - A compatible Agent Skills client such as [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex
 - Some skills require additional tools:
-  - `gh`: Optional for GitHub discovery features
+  - `gh`: Required by the `fork-pr` workflow
 
 ## License
 

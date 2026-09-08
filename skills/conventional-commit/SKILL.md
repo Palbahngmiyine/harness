@@ -99,7 +99,7 @@ When generating a commit message, follow these steps:
 ### Step 1: Analyze Changes
 
 1. Run `git status` to see modified files
-2. Run `git diff` to see actual changes (both staged and unstaged)
+2. Run `git diff` for unstaged changes and `git diff --cached` for staged changes; base the commit message on the changes being committed
 3. Understand what was changed and why
 
 ### Step 2: Determine Commit Type
