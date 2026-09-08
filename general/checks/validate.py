@@ -4,9 +4,9 @@ import json
 import re
 import sys
 
-PAIRS = ('AGENTS', 'profiles/c', 'profiles/rust', 'fp/verification', 'fp/evolution')
-ID = re.compile(r'^\*\*([A-Z]+-\d{3})\*\*', re.MULTILINE)
-LINK = re.compile(r'\[[^\]]*\]\(([^)]+)\)')
+from contracts import ID, RULE_GROUPS, document_findings, registered_ids
+
+PAIRS = tuple(RULE_GROUPS)
 CODE = {'.py', '.c', '.h', '.rs', '.sh'}
 
 
@@ -41,16 +41,13 @@ def validate(root: Path) -> list[str]:
         if path.suffix in CODE and len(text.splitlines()) > 100:
             errors.append(f'source over 100 lines: {path}')
         if path.suffix == '.md':
-            for link in LINK.findall(text):
-                if '://' in link or link.startswith(('mailto:', '#')):
-                    continue
-                target = (path.parent / link.split('#')[0]).resolve()
-                if not target.is_relative_to(base) or not target.exists():
-                    errors.append(f'broken/outside link: {path}: {link}')
+            errors.extend(document_findings(path, text, base))
     known = set()
     for name in PAIRS:
         english = ID.findall(texts.get(base / f'{name}.md', ''))
         korean = ID.findall(texts.get(base / f'{name}.ko.md', ''))
+        if english != registered_ids(name):
+            errors.append(f'registered rules differ: {name}')
         if not english or english != korean:
             errors.append(f'rule parity: {name}')
         if len(set(english)) != len(english) or known.intersection(english):

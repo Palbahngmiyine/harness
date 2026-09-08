@@ -2,6 +2,7 @@
 // Cell and Drop below are intentional, legal impurity counterexamples.
 #![forbid(unsafe_code)]
 use std::cell::Cell;
+use std::sync::Arc;
 
 fn add_value(left: u32, right: u32) -> Option<u32> {
     left.checked_add(right)
@@ -25,6 +26,11 @@ fn main() {
     assert_eq!(input, 12);
     assert_eq!(add_value(u32::MAX, 0), Some(u32::MAX));
     assert_eq!(add_value(u32::MAX, 1), None);
+    let shared = Arc::new(12_u32);
+    let before_count = Arc::strong_count(&shared);
+    let same_value = Arc::clone(&shared);
+    assert_eq!(add_value(*shared, 5), add_value(*same_value, 5));
+    assert_ne!(before_count, Arc::strong_count(&shared));
     let cell = Cell::new(0);
     let not_pure = || {
         cell.set(cell.get() + 1);
