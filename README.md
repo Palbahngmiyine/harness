@@ -12,6 +12,7 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
 | [plan-intent](skills/plan-intent/) | 의도·동작·중요한 선택·검증 기준을 연결하는 Markdown 전용 기획 | KO |
+| [evening-socratic-journal](skills/evening-socratic-journal/) | Codex 활동과 일상 문답으로 함께 쓰는 Markdown 전용 저녁 일기 | KO |
 | [hwahap](https://github.com/Palbahngmiyine/hwahap) | Confirm a plan with you, then build, test, review, and open a draft PR autonomously | KO/EN |
 | [korean-spell-check](skills/korean-spell-check/) | Korean spelling, spacing, and grammar checker | KO |
 | [wrap-up](skills/wrap-up/) | End-of-session checklist for shipping, memory, and self-improvement | EN |
@@ -100,6 +101,13 @@ See the [installation guide](https://github.com/Palbahngmiyine/hwahap#설치) an
 기존 합의를 보존하고 중요한 이해 차이만 질문하며, 구현자가 이어받을 기획서를 만듭니다.
 스킬은 Markdown 3개로 구성되며 스크립트나 실행기 의존성이 없습니다.
 OpenAI GPT-6 Astra 가이드와 일반 설계 원칙은 스킬의 references에 기록했습니다.
+
+### evening-socratic-journal
+
+오늘의 Codex 대화와 Codex 밖 활동을 소크라테스식 질문으로 돌아보고 저녁 일기를 함께 씁니다.
+`$evening-socratic-journal 오늘 하루를 돌아보며 일기 같이 쓰자`로 사용합니다.
+단점을 단정하지 않고 답변과 반대 사례를 살피며, 사용자가 고른 작은 실천을 일기에 연결합니다.
+Markdown 3개로 구성되며 기록 읽기 도구가 없어도 문답으로 진행합니다. 예약 실행은 별도 요청 사항입니다.
 
 ### korean-spell-check
 
