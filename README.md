@@ -7,7 +7,6 @@ A curated collection of Agent Skills for developers using Claude Code and Codex.
 | Skill | Description | Language |
 |-------|-------------|----------|
 | [prompt-engineering-patterns](skills/prompt-engineering-patterns/) | 대상 모델·실패 사례·평가 근거에 맞춘 Markdown 프롬프트 개선 | KO |
-| [claude-code-analyzer](skills/claude-code-analyzer/) | Analyze Claude Code usage patterns and optimize workflows | EN |
 | [skill-writer](skills/skill-writer/) | Guide for creating well-structured Agent Skills | EN |
 | [conventional-commit](skills/conventional-commit/) | Conventional Commits spec with Korean commit messages | KO/EN |
 | [fork-pr](skills/fork-pr/) | Fork-to-upstream PR automation workflow | KO |
@@ -46,16 +45,6 @@ Hwahap is now maintained and installed separately from
 대상 모델과 실제 실패 사례를 바탕으로 목표·출력 형식·작업 범위를 보존하는 프롬프트를 작성합니다.
 GPT-6 Astra의 공식 지침과 API 호환성을 확인하고, 문서 대조·모의 문답·실제 모델 평가를 구분합니다.
 Markdown 지침과 참고 문서로 구성되며, 실행하지 않은 실험의 정확도·토큰·비용 개선을 주장하지 않습니다.
-
-### claude-code-analyzer
-
-Complete Claude Code workflow optimization:
-- Usage pattern analysis from conversation history
-- GitHub community resource discovery (agents, skills, commands)
-- Project structure detection and CLAUDE.md generation
-- Auto-allow tool recommendations
-
-Includes bash scripts for analysis (`analyze.sh`, `analyze-claude-md.sh`, `github-discovery.sh`, `fetch-features.sh`).
 
 ### skill-writer
 
@@ -138,7 +127,6 @@ description: What the skill does and when to use it
 
 - A compatible Agent Skills client such as [Claude Code](https://docs.claude.com/en/docs/claude-code) or Codex
 - Some skills require additional tools:
-  - `jq`: Required by claude-code-analyzer scripts
   - `gh`: Optional for GitHub discovery features
 
 ## License
