@@ -20,6 +20,30 @@
 
 [오늘의 대화 기록 찾기](record-lookup.md)는 확인일에 macOS 한 대에서 Claude Code와 Codex CLI가 남긴 로컬 파일을 직접 읽어 정리한 것이며, 확인한 버전은 그 문서의 머리말에 적는다. 두 도구의 공식 문서가 보장하는 안정된 API가 아니라 관찰한 저장 형식이므로 파일명 접미사·테이블·필드는 업데이트로 바뀔 수 있다. 조회 예시는 읽기 전용 참고이며 이 저장소의 문서 전용 방침 안에서 스크립트를 대신하지 않는다.
 
+## 역학 연습의 근거와 한계
+
+확인일: 2026-09-12. 아래 자료의 본문(학회 발표본·재게시본 포함)을 확인했다. 개인 저널링에 system dynamics를 적용한 통제 연구는 찾지 못했고, Sterman 1994 "Learning in and about complex systems"(System Dynamics Review 10)는 초록만 확인했다. [역학 연습 진행표](dynamics-practice.md)의 연습이 이해력을 높인다는 직접 증거는 없다.
+
+설계 근거는 세 가지다. 첫째, 사람이 쌓임·지연·피드백을 체계적으로 오인한다는 진단 연구(Booth Sweeney & Sterman 2000, Cronin 등 2009, Sterman 2001)가 "무엇이 쌓였나"를 묻는 이유다. 둘째, 설명이나 규칙 제시는 효과가 없고 직접 다뤄 보기와 결과 피드백만 효과가 있었다는 실험(Moxnes & Saysel 2004)이 AI 설명 대신 사용자 식별과 다음 저녁의 예측 확인을 두는 이유다. 셋째, 언어형 질문에서 이해가 더 잘 드러난다는 결과(Fischer & Degen 2012)가 도표 없이 말로 진행하는 이유다. 효과는 사용자의 예측 적중 여부와 본인 판단으로만 확인한다. "도움이 된 느낌"은 측정된 학습과 다를 수 있다(Green 등 2022).
+
+채택하지 않은 요소와 이유: AI가 그리는 인과 루프 다이어그램(Forrester, Richardson, Sterman 2002가 시뮬레이션 없는 루프 추론을 경고), 시스템 원형 이름(정의가 합의되지 않았고 이 스킬의 진단 금지와 충돌), 개입 지점 순위(Meadows 본인이 "Leverage points are not intuitive… we intuitively use them backward"라고 썼다, https://donellameadows.org/archives/leverage-points-places-to-intervene-in-a-system/ 웹 게시 글 확인), 수치 모델(10분 대화로 불가), 짧은 강의식 설명(Sterman 2010이 단기 노출의 비효과를 명시). 시뮬레이션은 능동 통제군 대비 유의한 효과를 보인 유일한 요소였지만 이 형식으로 제공할 수 없어 방향 예측과 다음 저녁 확인으로 대체했다. 이 대체가 같은 효과를 낸다는 증거는 없다.
+
+| 출처 | 본문에서 확인한 내용 | 스킬에 적용한 방식 |
+|---|---|---|
+| [MIT OCW 15.871 Introduction to System Dynamics (Fall 2013)](https://ocw.mit.edu/courses/15-871-introduction-to-system-dynamics-fall-2013/pages/syllabus/) | 목표 "recognize and deal with situations where policy interventions are likely to be delayed, diluted, or defeated by unanticipated reactions and side effects"; 주제 stock/flow, feedback, causal loop diagrams; 후속 15.872는 시뮬레이션 중심 | 4단계 정책 저항의 질문 소재. 시뮬레이션은 제공하지 않는다. |
+| [Sterman 2001, "System Dynamics Modeling: Tools for Learning in a Complex World", California Management Review](https://faculty.sites.iastate.edu/tesfatsi/archive/tesfatsi/SystemDynamics.JohnSterman2001.pdf) | 가장 어려운 요소 "feedback, time delays, stocks and flows (accumulations), and nonlinearity"(p.11); 피드백은 강화·균형 두 종류(p.17); "people commonly ignore time delays, even when the existence and contents of the delays are known"(p.13) | 진행표의 네 요소, 2·3단계 질문. |
+| [Sterman 2002, "All models are wrong", System Dynamics Review](https://web.mit.edu/jsterman/www/All_Models_Are_Wrong_(SDR).pdf) | 개념 지도만으로 충분하다는 주장에 "They are mistaken. Simulation is essential"(p.524); 질문자에서 전문가·교사 역할로 옮기면 방어를 낳는다(p.522) | 도표·루프 그림 제시 제외, AI는 질문자 역할 유지, 시뮬레이션 대신 방향 예측과 다음 저녁 확인. |
+| [Booth Sweeney & Sterman 2000, "Bathtub dynamics"](https://web.mit.edu/jsterman/www/Bathtub.pdf) | 경영대 학생도 스톡·플로우·지연 이해가 낮고 학력·연령과 무관; "there is little evidence, or even systematic research, to support educators' and consultants' faith in its efficacy"(p.1) | 1단계를 두는 이유(진단). 효과 주장 문구 금지. |
+| [Cronin, Gonzalez & Sterman 2009, Organizational Behavior and Human Decision Processes](https://www.mit.edu/~jsterman/CroninGonzalezSterman061210.pdf) | 상관 휴리스틱 "output should 'look like' the input"(p.5); MIT Sloan 대학원생 173명 중 유입·유출 정답 95% 이상, 재고 최대 시점 정답 44%; 표시 형식·인센티브로 개선 실패 | 1단계 점검 질문. |
+| [Sterman 2010, "Does formal system dynamics training improve people's understanding of accumulation?" (2009 학회 발표본)](https://proceedings.systemdynamics.org/2009/proceed/papers/P1113.pdf) | 반학기 11회 과정 후 오답률 46.1%→24.7%; 짧은 워크숍은 "unlikely to be effective"; 교실 밖 전이 미검증 | 매일 요소 하나씩 반복하는 진행표. 단기 노출로 효과를 주장하지 않는다. |
+| [Moxnes & Saysel 2004](https://proceedings.systemdynamics.org/2004/SDS_2004/PAPERS/277MOXNE.pdf) | 유추를 설명으로 제공(T2)·규칙 제시(T3)는 효과 없음; 같은 유추 안에서 직접 조작(T1)·다회 결과 피드백(T4)은 효과 | AI 설명 대신 사용자 직접 식별. 예측을 적고 다음 저녁에 확인. |
+| [Fischer & Degen 2012](https://proceedings.systemdynamics.org/2012/proceed/papers/P1434.pdf) | 언어형으로 물으면 정답률이 86%까지 상승 | 그래프·도표 없이 말로 묻고 답한다. |
+| [Green, Molloy & Duggan 2022, Sustainability 14(1)](https://www.mdpi.com/2071-1050/14/1/394) | 능동 통제군 무작위 대조 실험(n=106): 시뮬레이션 d=0.6 유의, 시스템 사고 교육 d=0.4 비유의; 참가자 74.1%가 크게 도움됐다고 답했으나 점수 차이 비유의 | "도움이 된 느낌"을 효과 증거로 쓰지 않는다. 효과는 예측 확인과 사용자 판단으로만. |
+| [Repenning & Sterman 2001, California Management Review](https://web.mit.edu/nelsonr/www/Repenning=Sterman_CMR_su01_.pdf) | 작업 압력이 늘면 개선 시간이 줄고 역량이 감퇴하는 순환(pp.70–71); 지연(p.72); worse-before-better(p.73); "the structure of the system inadvertently leads"(p.78); 개인 삶 확장 언급(p.75) | 구조 귀인(성격 대신 조건). 4단계 질문. 개인 적용의 1차 근거는 이 문단 하나이며 실증이 아니다. |
+| [Forrester, D-4405-1 "System Dynamics, Systems Thinking, and Soft OR"](https://s3.amazonaws.com/static.clexchange.org/ftp/documents/roadmaps/RM7/D-4405-1.pdf) | "'Systems thinking' has no clear definition or usage"(p.10); 인과 루프 다이어그램은 "do not provide the discipline… imposed by level and rate diagrams"(p.11) | AI의 루프 그림 제시 제외. 순환 뒤의 스톡을 항상 묻는다. |
+| [Richardson 1986, "Problems with causal-loop diagrams", D-3312-2](https://s3.amazonaws.com/static.clexchange.org/ftp/documents/roadmaps/RM4/D-3312-2.pdf) | "causal-loop diagrams obscure the stock and flow structure… Even experienced modelers are easily misled"; 비례 연결 가정은 대부분의 행동 추론을 틀리게 한다(p.167) | 즉석 루프 추론 대신 스톡 식별을 먼저 둔다. |
+| [Senge 외, 추론의 사다리 (Fieldbook 재게시본)](https://cdn.edreports.org/legacy/files/Ladder-of-Inference-OCDE.pdf) | "What is the observable data behind that statement? … Can you run me through your reasoning?"; "The point of this method is not to nail Larry (or even to diagnose Larry)" | 불일치 확인 질문(“예측할 때 무엇을 가정했나요?”). 진단 금지. |
+
 ## 실제 사용에서 볼 것
 
 사용자가 자기 말로 받아들인 해석이 있는지, 실천을 선택했는지, 다음 날 실행과 효과가 어땠는지, 문답이 부담스럽지 않았는지로 조정한다. 대화 횟수나 일기 분량 증가를 개선 증거로 삼지 않는다. 형식 검사와 모의 문답 검토만으로 장기간의 효과를 주장하지 않는다.
