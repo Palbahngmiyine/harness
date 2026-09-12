@@ -12,7 +12,7 @@
 
 ## OpenAI GPT-6 Astra 가이드와의 대응
 
-공식 문서 확인일: 2026-09-08. [latest-model 가이드](https://developers.openai.com/api/docs/guides/latest-model)의 확인 시점 제목은 “Using GPT-6 Astra”, 모델 표기는 `gpt-6-astra`였다.
+[latest-model 가이드](https://developers.openai.com/api/docs/guides/latest-model)의 확인 시점 제목은 “Using GPT-6 Astra”, 모델 표기는 `gpt-6-astra`였다.
 
 | 공식 문서의 항목 | 스킬 적용 |
 |---|---|

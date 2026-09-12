@@ -1,6 +1,6 @@
 # Sources and policy rationale
 
-Checked 2026-09-08. This file is explanatory evidence, not another instruction authority.
+This file is explanatory evidence, not another instruction authority.
 The English rules are normative; Korean files mirror their rule IDs. Links below identify primary sources.
 The policy is an engineering synthesis: no cited paper mandates a 100-line file limit, proves C/Rust pure by default, or proves recursive agent improvement converges.
 
@@ -28,7 +28,7 @@ The policy is an engineering synthesis: no cited paper mandates a 100-line file 
 
 ## Go semantics and verification
 
-Go sources checked 2026-09-08. These sources describe language/tool behavior; the immutable-core boundary, admission policy, and required verification gates are this package's engineering choices, not claims that Go enforces functional purity.
+These sources describe language/tool behavior; the immutable-core boundary, admission policy, and required verification gates are this package's engineering choices, not claims that Go enforces functional purity.
 
 - **S17 — Go language specification.** [Specification](https://go.dev/ref/spec), slice/map/interface types, zero values, assignment, range, arithmetic, and defer. These explain alias sharing, typed nil, unspecified map iteration, and function-scoped cleanup (GO-001/002/004/006/007/009). Review the consuming module's language version, including loop-variable semantics; do not infer deep immutability or exhaustive variants from Go syntax.
 - **S18 — Go concurrency contracts.** [Memory model](https://go.dev/ref/mem), [context](https://pkg.go.dev/context#CancelFunc), [race detector](https://go.dev/doc/articles/race_detector). Synchronization and cancellation are separate from completion; the race detector finds races in executed paths. These support GO-008/012, not a guarantee against deadlocks, leaks, or unknown remote outcomes.
