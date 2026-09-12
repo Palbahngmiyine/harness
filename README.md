@@ -2,7 +2,7 @@
 
 A collection of Agent Skills for developers using Claude Code and Codex.
 
-This repository contains skill instructions and reference documents. Executable source code and helper scripts are maintained outside this repository and must not be added here.
+This repository contains skill instructions and reference documents. Executable source code and helper scripts are maintained outside this repository and must not be added here. Short read-only lookup examples quoted inside reference documents (for example, a single `jq` or `sqlite3` command) are documentation of a data format, not helper scripts.
 
 Browse the [skills directory](skills/) to choose a skill. Each skill's `SKILL.md` contains its usage instructions and requirements.
 
