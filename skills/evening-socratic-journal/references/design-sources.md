@@ -22,6 +22,8 @@
 
 공식 문서가 설명하는 저장 루트와 직접 관찰한 내부 형식을 구분한다. [OpenAI — Config and state locations](https://developers.openai.com/codex/config-advanced/#config-and-state-locations)는 `CODEX_HOME`과 기본 `~/.codex`를, [Claude Code — Find or create your settings files](https://code.claude.com/docs/en/settings#find-or-create-your-settings-files)는 `CLAUDE_CONFIG_DIR`로 설정·세션 기록 등의 위치를 옮길 수 있음을 설명한다. SQLite 테이블·JSONL 필드·각 전용 조회 도구의 출처 범위는 실행 환경에서 별도로 확인한다.
 
+장기 goal의 당일 진행은 진행 중인 로컬 작업에서 전용 조회의 최근 턴 본문이 비어 있어도 원본에 당일 진행·완료 이벤트가 남은 사례를 읽어 보완했다. 개별 이벤트 시각으로 이전 상태와 당일 변화를 구분하는 규칙이며, 특정 내부 필드가 모든 버전에서 같다고 보장하지 않는다. 실제 대화 제목·식별자·원문은 배포 자료에 포함하지 않는다.
+
 ## 역학 연습의 근거와 한계
 
 아래 자료의 본문(학회 발표본·재게시본 포함)을 확인했다. 개인 저널링에 system dynamics를 적용한 통제 연구는 찾지 못했고, Sterman 1994 "Learning in and about complex systems"(System Dynamics Review 10)는 초록만 확인했다. [역학 연습 진행표](dynamics-practice.md)의 연습이 이해력을 높인다는 직접 증거는 없다.
