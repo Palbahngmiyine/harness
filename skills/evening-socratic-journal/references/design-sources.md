@@ -2,13 +2,7 @@
 
 이 문서는 스킬 설계를 검토하는 유지보수 자료다. 아래의 연구 한계·출처 설명을 일기나 전달 답변의 서문·표·각주·꼬리말로 옮기지 않는다. 사용자의 감정과 자기평가를 이 설명으로 제한하거나 변호하지 않는다. 일기 출력은 `SKILL.md`의 “일기 전체의 문체”를 따른다.
 
-다음 공식 자료의 본문을 확인했다. 아래의 일기 운영 방식은 교육용 질문법을 이 요청에 응용한 설계이며, 효과가 검증된 치료 프로그램이나 성격 평가 도구라는 뜻이 아니다.
-
-| 출처 | 본문에서 확인한 내용 | 스킬에 적용한 방식 |
-|---|---|---|
-| [OpenAI — Build skills](https://learn.chatgpt.com/docs/build-skills) | `SKILL.md`에 `name`과 `description`이 필요하며 scripts, references, UI 설정은 선택 사항이다. 전체 본문과 참고 자료를 필요한 때 읽는다. | `.md` 파일만 사용하고 질문 예시와 설계 출처를 필요할 때 읽는다. |
-| [University of Connecticut CETL — Socratic Questions](https://cetl.uconn.edu/resources/teaching-your-course/leading-effective-discussions/socratic-questions/) | 답에 이어 질문하고 주기적으로 요약하며, 가정·증거·다른 관점·결과·질문 자체를 탐색한다. | 답에 따른 후속 질문, 대안 해석, 선택의 이익과 비용을 검토한다. |
-| [University of Michigan — Summary Notes](https://public.websites.umich.edu/~scps/html/03chap/html/summary.htm) | 결론·근거·가정을 구분하며, 결론을 기각할 증거와 빠진 정보를 묻는다. | 관찰과 해석을 구분하고 반대 사례·누락된 상황을 확인한다. |
+이 스킬의 질문·재개·일기 작성 방식은 연구를 참고한 운영 설계다. 개인 저널링이나 LLM 문답의 장기 학습 효과를 검증한 프로그램이라는 뜻은 아니다. 아래에서는 이번 재설계에서 본문을 확인한 연구와 스킬에 맞춘 가설적 적용을 구분한다.
 
 ## 질문 선택과 개인화의 범위
 
@@ -16,7 +10,7 @@
 
 질문 축은 `근거의 충분성`, `준비와 직접 실행`, `공동 결과와 독립 이해`, `목표의 초점`, `가역적 선택의 위임`이다. 특정 사용자의 성향이나 단점을 나타내는 분류가 아니며, 맞지 않는 질문은 생략한다. AI의 오류나 도구 실패가 반복의 원인일 수도 있다. 에이전트 밖의 생활은 코딩 에이전트의 대화 기록만으로 알 수 없다.
 
-한 번에 한 질문, 약 10분의 기본 깊이, 두 생활 영역, 작은 선택 하나, 다음 일기의 후속 확인은 이 스킬의 운영 제안이다. 위 문서가 이 조합의 효과를 직접 입증하지 않는다. 일기 문답은 별도 자동 수집·복습 체계 없이 사용할 수 있다.
+한 번에 한 질문, 생활 경험의 선택, 답에 따른 지도, 기존 일기에서의 재개는 이 스킬의 운영 제안이다. 시간이나 질문 수를 학습 완료의 기준으로 삼지 않는다. 일기 문답은 별도 자동 수집·복습 체계 없이 사용할 수 있다.
 
 ## 대화 기록 조회의 근거
 
@@ -28,29 +22,93 @@
 
 ## 역학 연습의 근거와 한계
 
-아래 자료의 본문(학회 발표본·재게시본 포함)을 확인했다. 개인 저널링에 system dynamics를 적용한 통제 연구는 찾지 못했고, Sterman 1994 "Learning in and about complex systems"(System Dynamics Review 10)는 초록만 확인했다. [역학 연습 진행표](dynamics-practice.md)의 연습이 이해력을 높인다는 직접 증거는 없다.
+아래 여섯 자료의 본문을 확인했다. 강의계획·이론 논문·준실험·통제 실험을 구분하며, 과제 수행과 학습 향상도 구분한다. 집계 수치는 저자의 보고이며 원자료 재분석 결과가 아니다. 개인 일기에 이 연습을 적용한 장기 효과는 이 자료들에서 검증되지 않았다. 공개 원자료를 확인하지 못한 자료는 원자료가 존재하지 않는다고 단정하지 않는다.
 
-설계 근거는 세 가지다. 첫째, 사람이 쌓임·지연·피드백을 오인할 수 있다는 연구(Booth Sweeney & Sterman 2000, Cronin 등 2009, Sterman 2001)가 "무엇이 쌓였나"를 묻는 이유다. 둘째, 직접 다뤄 보기와 결과 피드백을 살핀 실험(Moxnes & Saysel 2004)을 참고해 사용자 식별과 후속 관찰을 둔다. 셋째, 언어형 질문 연구(Fischer & Degen 2012)를 참고해 말로 설명하게 한다. 각 연구를 모든 설명·개인 일기·LLM 협업에 일반화하지 않는다. "도움이 된 느낌"과 예측 한 번의 적중은 측정된 학습 효과와 다르다(Green 등 2022).
+## 1. MIT 15.871 syllabus (교육과정, 효과실험 아님)
 
-LLM 작업의 이해를 맞추기 위한 `사용자 첫 설명 → 조건 변화 예측 → 코드·문서·실행 근거 대조 → 설명 수정`은 이 스킬의 설계다. 첫 답 전에 모범 답안을 주지 않는 것과 답 이후 근거에 맞게 교정하는 것을 구분한다. 소크라테스식 문답을 이유로 확인된 사실 오류를 그대로 두거나 질문만 반복하지 않는다. 이 흐름의 장기 효과는 실제 사용에서 별도로 확인해야 한다.
+URL: https://ocw.mit.edu/courses/15-871-introduction-to-system-dynamics-fall-2013/pages/syllabus/
 
-채택하지 않은 요소와 이유: AI가 그리는 인과 루프 다이어그램(Forrester, Richardson, Sterman 2002가 시뮬레이션 없는 루프 추론을 경고), 시스템 원형 이름(정의가 합의되지 않았고 이 스킬의 진단 금지와 충돌), 개입 지점 순위(Meadows 본인이 "Leverage points are not intuitive… we intuitively use them backward"라고 썼다, https://donellameadows.org/archives/leverage-points-places-to-intervene-in-a-system/ 웹 게시 글 확인), 수치 모델(10분 대화로 불가), 짧은 강의식 설명(Sterman 2010이 단기 노출의 비효과를 명시). 시뮬레이션은 능동 통제군 대비 유의한 효과를 보인 유일한 요소였지만 이 형식으로 제공할 수 없어 방향 예측과 다음 저녁 확인으로 대체했다. 이 대체가 같은 효과를 낸다는 증거는 없다.
+General Information / Course Objectives and Scope / Modeling Software / Calendar: 반학기 입문 과목, 강의 주2회 90분 및 recitation 주1회 90분. 문제정의·모델목적, causal-loop mapping, stock-flow mapping, 피드백과 축적 결합, 단순시스템 동역학, 정책분석이 연결된다. **15.871 자체에도 모델 구축·시뮬레이션 과제와 VensimPLE 사용이 있다.** 후속 과목만 시뮬레이션이라는 독해는 틀리다. 표본·대조·효과·유지·전이 데이터는 제시되지 않는다. 강의계획은 교육 목표와 구성의 근거이고 효과 추정치의 근거가 아니다.
 
-| 출처 | 본문에서 확인한 내용 | 스킬에 적용한 방식 |
-|---|---|---|
-| [MIT OCW 15.871 Introduction to System Dynamics (Fall 2013)](https://ocw.mit.edu/courses/15-871-introduction-to-system-dynamics-fall-2013/pages/syllabus/) | 목표 "recognize and deal with situations where policy interventions are likely to be delayed, diluted, or defeated by unanticipated reactions and side effects"; 주제 stock/flow, feedback, causal loop diagrams; 후속 15.872는 시뮬레이션 중심 | 4단계 정책 저항의 질문 소재. 시뮬레이션은 제공하지 않는다. |
-| [Sterman 2001, "System Dynamics Modeling: Tools for Learning in a Complex World", California Management Review](https://faculty.sites.iastate.edu/tesfatsi/archive/tesfatsi/SystemDynamics.JohnSterman2001.pdf) | 가장 어려운 요소 "feedback, time delays, stocks and flows (accumulations), and nonlinearity"(p.11); 피드백은 강화·균형 두 종류(p.17); "people commonly ignore time delays, even when the existence and contents of the delays are known"(p.13) | 진행표의 네 요소, 2·3단계 질문. |
-| [Sterman 2002, "All models are wrong", System Dynamics Review](https://web.mit.edu/jsterman/www/All_Models_Are_Wrong_(SDR).pdf) | 개념 지도만으로 충분하다는 주장에 "They are mistaken. Simulation is essential"(p.524); 질문자에서 전문가·교사 역할로 옮기면 방어를 낳는다(p.522) | 초기 설명은 사용자에게 맡긴다. 방향 예측을 시뮬레이션과 동등한 검증으로 취급하지 않는다. |
-| [Booth Sweeney & Sterman 2000, "Bathtub dynamics"](https://web.mit.edu/jsterman/www/Bathtub.pdf) | 경영대 학생도 스톡·플로우·지연 이해가 낮고 학력·연령과 무관; "there is little evidence, or even systematic research, to support educators' and consultants' faith in its efficacy"(p.1) | 1단계를 두는 이유(진단). 효과 주장 문구 금지. |
-| [Cronin, Gonzalez & Sterman 2009, Organizational Behavior and Human Decision Processes](https://www.mit.edu/~jsterman/CroninGonzalezSterman061210.pdf) | 상관 휴리스틱 "output should 'look like' the input"(p.5); MIT Sloan 대학원생 173명 중 유입·유출 정답 95% 이상, 재고 최대 시점 정답 44%; 표시 형식·인센티브로 개선 실패 | 1단계 점검 질문. |
-| [Sterman 2010, "Does formal system dynamics training improve people's understanding of accumulation?" (2009 학회 발표본)](https://proceedings.systemdynamics.org/2009/proceed/papers/P1113.pdf) | 반학기 11회 과정 후 오답률 46.1%→24.7%; 짧은 워크숍은 "unlikely to be effective"; 교실 밖 전이 미검증 | 매일 요소 하나씩 반복하는 진행표. 단기 노출로 효과를 주장하지 않는다. |
-| [Moxnes & Saysel 2004](https://proceedings.systemdynamics.org/2004/SDS_2004/PAPERS/277MOXNE.pdf) | 유추를 설명으로 제공(T2)·규칙 제시(T3)는 효과 없음; 같은 유추 안에서 직접 조작(T1)·다회 결과 피드백(T4)은 효과 | 초기 답을 사용자가 직접 짚게 하고 예측을 후속 관찰과 비교하는 설계에 참고. |
-| [Fischer & Degen 2012](https://proceedings.systemdynamics.org/2012/proceed/papers/P1434.pdf) | 언어형으로 물으면 정답률이 86%까지 상승 | 그래프·도표 없이 말로 묻고 답한다. |
-| [Green, Molloy & Duggan 2022, Sustainability 14(1)](https://www.mdpi.com/2071-1050/14/1/394) | 능동 통제군 무작위 대조 실험(n=106): 시뮬레이션 d=0.6 유의, 시스템 사고 교육 d=0.4 비유의; 참가자 74.1%가 크게 도움됐다고 답했으나 점수 차이 비유의 | "도움이 된 느낌"을 효과 증거로 쓰지 않는다. 효과는 예측 확인과 사용자 판단으로만. |
-| [Repenning & Sterman 2001, California Management Review](https://web.mit.edu/nelsonr/www/Repenning=Sterman_CMR_su01_.pdf) | 작업 압력이 늘면 개선 시간이 줄고 역량이 감퇴하는 순환(pp.70–71); 지연(p.72); worse-before-better(p.73); "the structure of the system inadvertently leads"(p.78); 개인 삶 확장 언급(p.75) | 구조 귀인(성격 대신 조건). 4단계 질문. 개인 적용의 1차 근거는 이 문단 하나이며 실증이 아니다. |
-| [Forrester, D-4405-1 "System Dynamics, Systems Thinking, and Soft OR"](https://s3.amazonaws.com/static.clexchange.org/ftp/documents/roadmaps/RM7/D-4405-1.pdf) | "'Systems thinking' has no clear definition or usage"(p.10); 인과 루프 다이어그램은 "do not provide the discipline… imposed by level and rate diagrams"(p.11) | AI의 루프 그림 제시 제외. 순환 뒤의 스톡을 항상 묻는다. |
-| [Richardson 1986, "Problems with causal-loop diagrams", D-3312-2](https://s3.amazonaws.com/static.clexchange.org/ftp/documents/roadmaps/RM4/D-3312-2.pdf) | "causal-loop diagrams obscure the stock and flow structure… Even experienced modelers are easily misled"; 비례 연결 가정은 대부분의 행동 추론을 틀리게 한다(p.167) | 즉석 루프 추론 대신 스톡 식별을 먼저 둔다. |
-| [Senge 외, 추론의 사다리 (Fieldbook 재게시본)](https://cdn.edreports.org/legacy/files/Ladder-of-Inference-OCDE.pdf) | "What is the observable data behind that statement? … Can you run me through your reasoning?"; "The point of this method is not to nail Larry (or even to diagnose Larry)" | 불일치 확인 질문(“예측할 때 무엇을 가정했나요?”). 진단 금지. |
+스킬 적용(가설): 용어를 하루씩 소진하기보다 문제정의에서 구조·시간경로·정책검증으로 이어지는 누적 과정을 둔다. 강의 소요시간을 일기 시간제한이나 최소시간으로 복제하지 않는다.
+
+## 2. Sterman 2002 (Forrester Prize lecture, 이론·연구종합)
+
+URL: https://web.mit.edu/jsterman/www/All_Models_Are_Wrong_(SDR).pdf
+
+특히 인쇄 pp.524–525(PDF 24–25): 형식모델과 시뮬레이션을 통한 동적 추론 검증을 강조하지만, 질적 지도가 기존에 빠진 피드백을 드러내는 가치도 인정하며 모델링 비용·시간 판단을 명시한다. **그림을 금지하지 않는다.** p.523은 가능한 수치자료·통계적 검증을 무시하는 것도 비판한다. 새 통제실험의 표본·개입·효과량을 제시하는 논문이 아니다. 기존 실험 인용을 이 논문 자체의 새 표본으로 합산하지 않는다. 유지·전이 효과 추정/참가자 원자료 저장소를 이 논문에서 확인하지 못했다.
+
+스킬 적용(가설): 그림·표를 표현 수단으로 허용하고, 그림만 보고 동적 행동을 확정하지 않는다. 실제 관찰 또는 명시적 계산 모델을 예측과 대조한다. 관찰이 없는 가상 매개변수의 결과는 그 가정하의 결과다. ‘10분이어서 모델 불가’는 연구 결론이 아니므로 제거한다.
+
+## 3. Sterman 2009 발표본 P1113 (준실험, 역사적 비교집단)
+
+URL: https://proceedings.systemdynamics.org/2009/proceed/papers/P1113.pdf
+
+PDF pp.9–13,17,20–23,32–35: 2008 MIT 선택과목 사전 255명. 11회×80분 수업 중 **9회차 시작** 사후; 축적 과제 마감 일주일 뒤. 모델 구축·그래프 적분·시뮬레이션 등을 포함한 복합 교육. 2008 사전은 classic department-store, 사후는 graphical task여서 동일인 점수 차이를 직접 학습량으로 삼지 않는다. 같은 graphical task를 푼 2007 학기초 282명과 비교: 오답 46.1% 대 24.7%, p=5.7e-6(Table3). 이는 **다른 코호트 비교**다. Table1 사후 167명, Table3 분석 166명; 본문 p.11 첫 문장에는 173 표기도 있으므로 단일 N을 조용히 확정하지 않는다. 교육에 무작위 배정한 RCT가 아니다. 일상적 전이와 장기 유지 미측정(저자도 후속 종단연구 요구). 부록 과제/집계표는 있으나 참가자 원자료 저장소는 확인 못함.
+
+스킬 적용(가설): 이미 습득한 기초를 반복시키기보다 지원 없이 재사용하는지 확인하고 후일 다른 맥락에서 재확인한다. 짧은 설명의 전면 금지는 연구 결과가 아니다. 저자의 단기 워크숍 비효과 예상은 이 결과에서의 추론이며, 필요한 교정 설명까지 금지할 근거가 아니다.
+
+## 4. Moxnes & Saysel 2004 (조건 비교실험)
+
+URL: https://proceedings.systemdynamics.org/2004/SDS_2004/PAPERS/277MOXNE.pdf
+
+PDF pp.10–19,22–26; Tables2–3: 터키/노르웨이 3학생 집단 251명(97/75/79), 1인 1조건. T0/T1/T2/T3/T4 n=59/51/52/49/40. CO2 초기·흡수규칙·변경한도가 주어진 100년 배출정책으로 2040–2100 목표농도 유지; 가상 10년 단위. T1은 동형 풍선 문제 **프레이밍**이지 실제 풍선을 조작하거나 CO2에 전이시킨 조건이 아니다. T2는 풍선 설명 추가, T3는 흡수관계 그래프/설명, T4는 매10년 결과를 보고 다음 결정을 수정. 실제 세션 분수는 확인 못함. 종속변수 목표 절대편차·상향편향/농도. T0 집단별 평균편향 약50–230, T1/T4 약15–65 billion tons. 회귀 n=242, T1 유의는 IST 두 하위집단과 MN Able, T4는 IST 두 하위집단; 모든 집단 유의 아님. T2/T3 유의효과 확인 안 됨. 장기 유지/다른 과제 전이 미측정; 원자료 저장소 확인 못함.
+
+스킬 적용(가설): 사용자가 예측·정책을 먼저 제출하고 계산 결과를 본 뒤 수정하게 한다. T4를 단순 ‘다음날 관찰’과 동등시하지 않는다. 결과 피드백도 늦은 반응이 있었으므로 시행착오만으로 충분하다고 하지 않는다.
+
+## 5. Fischer & Degen 2012 (과제 형식·수행 비교)
+
+URL: https://proceedings.systemdynamics.org/2012/proceed/papers/P1434.pdf
+
+PDF pp.9,14–20: 총277명(73% 여성,18–75세,평균34.33), 학생/일반인. standard graphical140/textual30, interpretation-production+verbal107; 과제/순서 배정. 1세션에서 그래프 표면정보, 해석/생성, 언어형 선택문항을 비교; 교육 전후 개입 아님. 그래프 읽기97%, 언어응답83%/89%, 그래프생성57%; 차이 p=.003. 언어형 평균86%(욕조98/저금90/CO2 70%). 저자도 적절한 그래프로 정보를 전달할 가치를 인정(p.18). 실제 소요시간·유지·후일 전이·참가자 원자료 저장소는 확인하지 못했다. 과제 부록은 제공한다.
+
+스킬 적용(가설): 그래프를 못 그렸다는 이유만으로 축적 원리를 모른다고 판정하지 말고 말·표·식 사이에서 오해 위치를 확인한다. 86%를 학습 향상이나 모든 도표 금지로 변환하지 않는다. 선택문항 정답을 독립 모델 구성 능력과 같다고 평가하지 않는다.
+
+## 6. Green, Molloy & Duggan 2022 (RCT, 2×2 요인설계)
+
+DOI/출판본: https://www.mdpi.com/2071-1050/14/1/394
+출판 PDF의 공식 저장소: https://researchrepository.universityofgalway.ie/server/api/core/bitstreams/4b44ca0b-7498-4f65-8b9b-044f231acd0d/content
+
+Sections4–6, Table6(p.22): 성인 편의·자기선택 모집 후 4집단 무작위 배정, 완전자료106. 여름2020 단일 비감독 온라인 세션, 전체 실제 소요시간은 확인 못함. 대조는 기본 비시스템적 자료; ST/Sim/ST+Sim은 추가자료. 사슴 지속가능성 Quiz1, 동형 어업 Quiz2(후자는 기본자료만)로 즉시 전이 검사. Quiz1 Sim n24 평균78.4 대 대조 n27 71.9, d=.6, p=.018; ST d=.4,p=.247; 결합 d=.1 및 음의 상호작용 p=.045. Quiz2 Sim n23 평균83.1 대 대조 n26 79.8, d=.4,p=.0787: **5% 기준 비유의, 10% 기준 유의**. 사후 배제 때문에 분석별 n이 다름. 장기 유지·행동변화 미측정. 결합의 저성과 원인을 이 연구가 확정하지 않는다.
+
+스킬 적용(가설): 시뮬레이션을 허용하되 많은 개념/설명을 한꺼번에 추가하면 무조건 더 좋다고 가정하지 않는다. 즉시 전이와 후일 유지를 다른 평가로 둔다. 느낌이나 만족은 이해 점수와 구분한다.
+
+### 공개 원자료 (실제 목록 확인, 재분석 미실행)
+
+https://zenodo.org/records/5569508 (v1.1; 1.9MB zip)
+
+익명 data, R scripts4개, 사슴 .stmx 모델, 설문/퀴즈/채점표/codebooks가 있다는 저장소 목록·설명을 확인했다. 원자료를 제공하지 않았다고 쓰면 잘못이다. 이 조사에서는 분석을 재현 실행하지 않았으며 보고 효과를 독립 재산출했다고 주장하지 않는다.
+
+## 채택한 설계와 검증할 가설
+
+[역학 연습](dynamics-practice.md)은 하나의 문제를 범위·시간 경로 설정에서 상태·결정 규칙 구성, 필요한 관계 결합, 정책 예측, 관찰/계산 대조, 수정, 지원을 줄인 재적용으로 발전시킨다. 이는 위 연구의 구성요소를 일기 문답에 적용한 가설이며, 연구가 이 전체 조합의 효과를 직접 입증하지 않는다.
+
+- **학습 목표:** 상태와 흐름을 구분하는 기초 확인을 통합된 정책 판단의 완료로 바꾸지 않는다. 이미 이해한 기초는 다음 판단에 사용한다. 하루마다 요소 하나를 소진하는 방식으로 충분성을 판단하지 않는다.
+- **표현과 검증:** 말·표·그림·수치·작은 모델을 목적에 맞게 허용한다. 그림은 관계 표현에 쓸 수 있지만 동적 추론의 검증을 대신하지 않는다. 모델 결과는 명시한 가정 아래의 결과이며 현실 관측과 구분한다.
+- **지도와 독립 수행:** 초기 설명·예측을 먼저 받은 뒤 필요한 교정을 제공한다. 교정 후 복창이나 숫자 변경만으로 독립 이해를 인정하지 않는다. 어떤 판단을 사용자가 했는지 실제 답으로 확인한다.
+- **반례와 정책:** 사용자 정책을 여러 시점의 경로로 검토하고, 중요 조건을 바꾸면 결론이 달라지는지 확인한다. 결과 피드백이 있다는 것만으로 구조 이해를 획득했다고 판정하지 않는다.
+- **누적과 완료:** 의미 있는 문제 단위에서 마무리하고 남은 의문을 기존 일기에 남긴다. 같은 세션의 재적용, 후일 유지, 다른 맥락으로의 전이는 별도 관찰로 구분한다. 질문 횟수나 일기 분량을 효과 지표로 삼지 않는다.
+
+고정된 짧은 시간 때문에 수치 모델을 제외하거나, 다음 저녁의 방향 확인을 시뮬레이션과 동등하게 취급하지 않는다. 반대로 매일 모든 동적 구조·표현·시뮬레이션을 강요하지 않는다. 사용자 중단·생략·간소화는 우선하며 미완료 판단을 숙달로 바꿔 기록하지 않는다.
+
+## 보조 출처의 역할과 제외한 해석
+
+기존 보조 자료도 아래 관련절을 다시 확인했다. 질문 유형·개념·추론 한계에 참고하며, 이 일기 문답의 학습 효과를 입증한 연구로 합산하지 않는다.
+
+| 자료와 관련절 | 참고할 내용과 적용 한계 |
+|---|---|
+| [UConn CETL, Socratic Questions](https://cetl.uconn.edu/resources/teaching-your-course/leading-effective-discussions/socratic-questions/), Tips/Types | 답에 따른 후속 질문, 가정·증거·다른 관점 탐색의 교육 지침이다. 개인 일기 효과실험은 아니다 |
+| [Michigan, Summary Notes](https://public.websites.umich.edu/~scps/html/03chap/html/summary.htm), Structured Critical Reasoning | 결론·근거·가정과 반박 증거를 구분한다. 질문 선택의 보조자료이며 독립 학습효과 실험으로 세지 않는다 |
+| [Sterman 2001](https://faculty.sites.iastate.edu/tesfatsi/archive/tesfatsi/SystemDynamics.JohnSterman2001.pdf), 인쇄 pp.11, 13–14, 20–21 | 피드백·지연·축적·비선형성과 직관적 추론의 한계를 설명한다. 개념 설명을 하루별 학습 순서의 효과 근거로 바꾸지 않는다 |
+| [Booth Sweeney & Sterman 2000](https://web.mit.edu/jsterman/www/Bathtub.pdf), 원고 pp.21–23, 27–28 | 대학원생도 축적·지연을 오인할 수 있다. 일부 과제의 기술 배경 효과와 표본 변이 한계가 있어 “학력·연령과 무관”으로 일반화하지 않는다 |
+| [Cronin, Gonzalez & Sterman](https://www.mit.edu/~jsterman/CroninGonzalezSterman061210.pdf), 제공 원고 pp.10–11, 15–17, 21–23 | 형식·유인 변경의 무효 결과는 해당 비교에 한정한다. 반복 정오 피드백의 개선 결과도 있어 모든 피드백이 무효라고 확대하지 않는다. 출판 최종본과의 대조는 하지 않았다 |
+| [Repenning & Sterman 2001](https://web.mit.edu/nelsonr/www/Repenning=Sterman_CMR_su01_.pdf), 인쇄 pp.70–75, 77–78 | 작업 압력·개선 시간·역량과 지연을 조직 사례로 설명한다. 개인 생활 확장 언급은 있으나 개인 일기 실험이나 사용자 진단 근거는 아니다 |
+| [Forrester D-4405-1](https://s3.amazonaws.com/static.clexchange.org/ftp/documents/roadmaps/RM7/D-4405-1.pdf), pp.10–12 | level/rate 구분이 없는 루프 추론의 한계를 참고한다. systems thinking 용어 비판을 시스템 원형 전체의 정의 불합의로 확대하지 않는다 |
+| [Richardson 1986](https://s3.amazonaws.com/static.clexchange.org/ftp/documents/roadmaps/RM4/D-3312-2.pdf), pp.158–159, 166–167 | 정보 링크와 rate-to-level 링크의 차이를 검토한다. 숙련자도 오도될 수 있다는 p.158 문구는 Sterman의 편집자 서문이며, 그 서문도 그림 폐기를 주장하지 않는다 |
+| [추론의 사다리 재게시본](https://cdn.edreports.org/legacy/files/Ladder-of-Inference-OCDE.pdf), pp.2–3 | 관찰과 추론 경로를 묻는 데 참고한다. Fieldbook 원출판물 전체나 임상 효과연구를 확인한 것으로 표현하지 않는다 |
+| [Meadows, Leverage Points](https://donellameadows.org/archives/leverage-points-places-to-intervene-in-a-system/), 도입부/revised list | 개입 지점의 비직관성과 목록 일반화의 한계를 인정한다. 개인 실천의 효과 순위나 최적 개입을 결정하는 규칙으로 쓰지 않는다 |
+
+시스템 원형 이름과 개입 순위를 사용자 삶에 붙이지 않는 것은 이 스킬의 범위 선택이다. 위 자료가 모든 상황에서 그 사용을 금지한다고 설명하지 않는다.
 
 ## 월요일 검증의 설계 범위
 
