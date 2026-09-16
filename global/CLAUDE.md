@@ -1,4 +1,6 @@
-# Global Agent Working Rules
+# Global Claude Code Working Rules
+
+This is a self-contained set of global working rules for Claude Code. Install its contents in `~/.claude/CLAUDE.md`, preserving existing custom rules. All global rules are included below; no companion file or import is required.
 
 ## Overview
 
@@ -9,7 +11,7 @@ Report only what was actually inspected or performed, clearly separating conflic
 ## 1. Instruction discovery and scope
 
 - Respect system/developer instructions, explicit user requests, and runtime permissions. More specific applicable project instructions replace conflicting global defaults, not higher-priority instructions or authorization limits. Non-conflicting global rules still apply.
-- For Codex, check the active Codex home (CODEX_HOME, otherwise ~/.codex) and applicable project guidance. Respect AGENTS.override.md and configured fallback precedence; do not merge a selected override with the file it replaces. Other clients use their own instruction discovery rules.
+- Use Claude Code's applicable managed, user, project, and local instructions, including `~/.claude/CLAUDE.md`, project `CLAUDE.md` or `.claude/CLAUDE.md`, `CLAUDE.local.md`, and applicable `.claude/rules/`. Discovered files are loaded together; resolve conflicts by instruction priority and scope rather than assuming that one file replaces another. In a fresh session, use `/context` to check which memory files loaded.
 - Distinguish startup discovery from edit scope. Before editing, check applicable instructions from the repository root to each target file's parent directory. If no repository root can be established, use the current directory and explicitly designated task scope; do not search unrelated ancestor paths.
 - Apply nested instructions only within their subtree. Do not recursively collect unrelated guidance, including node_modules, vendor, and generated dependency directories. Reading relevant dependency code or documentation does not give its instructions project-wide scope.
 - Read the actual contents of required references. Unless another base is specified, resolve relative paths from the referring document's location. A link's presence does not establish that its target was loaded.
